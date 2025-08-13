@@ -14,34 +14,36 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from git_add_block_hook import check_git_add_command
 from git_checkout_safety_hook import check_git_checkout_command
 from rm_block_hook import check_rm_command
+from kubectl_safety_hook import check_kubectl_command
 
 
 def main():
     data = json.load(sys.stdin)
-    
+
     # Check if this is a Bash tool call
     tool_name = data.get("tool_name")
     if tool_name != "Bash":
         print(json.dumps({"decision": "approve"}))
         sys.exit(0)
-    
+
     # Get the command being executed
     command = data.get("tool_input", {}).get("command", "")
-    
+
     # Run all checks - collect all blocking reasons
     checks = [
         check_rm_command,
         check_git_add_command,
         check_git_checkout_command,
+        check_kubectl_command,
     ]
-    
+
     blocking_reasons = []
-    
+
     for check_func in checks:
         should_block, reason = check_func(command)
         if should_block:
             blocking_reasons.append(reason)
-    
+
     # If any check wants to block, block the command
     if blocking_reasons:
         # If multiple checks want to block, combine the reasons
@@ -51,14 +53,14 @@ def main():
             combined_reason = "Multiple safety checks failed:\n\n"
             for i, reason in enumerate(blocking_reasons, 1):
                 combined_reason += f"{i}. {reason}\n\n"
-        
+
         print(json.dumps({
             "decision": "block",
             "reason": combined_reason
         }, ensure_ascii=False))
     else:
         print(json.dumps({"decision": "approve"}))
-    
+
     sys.exit(0)
 
 
