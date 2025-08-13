@@ -128,6 +128,19 @@ class TmuxCLIController:
         output, code = self._run_tmux_command(['display-message', '-p', '#{pane_id}'])
         return output if code == 0 else None
     
+    def get_current_window_id(self) -> Optional[str]:
+        """Get the ID of the current tmux window."""
+        # Use TMUX_PANE environment variable to get the pane we're running in
+        import os
+        current_pane = os.environ.get('TMUX_PANE')
+        if current_pane:
+            # Get the window ID for this specific pane
+            output, code = self._run_tmux_command(['display-message', '-t', current_pane, '-p', '#{window_id}'])
+            return output if code == 0 else None
+        # Fallback to current window
+        output, code = self._run_tmux_command(['display-message', '-p', '#{window_id}'])
+        return output if code == 0 else None
+    
     def list_panes(self) -> List[Dict[str, str]]:
         """
         List all panes in the current window.
@@ -175,7 +188,14 @@ class TmuxCLIController:
         Returns:
             Pane ID of the created pane
         """
+        # Get the current window ID to ensure pane is created in this window
+        current_window_id = self.get_current_window_id()
+        
         cmd = ['split-window']
+        
+        # Target the specific window where tmux-cli was called from
+        if current_window_id:
+            cmd.extend(['-t', current_window_id])
         
         if vertical:
             cmd.append('-h')
