@@ -94,6 +94,12 @@ Example uses:
 - Launch web apps and test them with browser automation MCP tools like Puppeteer
 ```
 
+Incidentally, installing the Puppeteer MCP tool is easy:
+
+```bash
+claude mcp add puppeteer -- npx -y @modelcontextprotocol/server-puppeteer
+```
+
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
 ## 🔍 find-claude-session
