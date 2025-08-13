@@ -94,6 +94,54 @@ Set `CLAUDE_CODE_TOOLS_PATH` environment variable and reference hooks in Claude 
 export CLAUDE_CODE_TOOLS_PATH=/path/to/claude-code-tools
 ```
 
+## Fork Management
+
+This repository is a fork of [pchalasani/claude-code-tools](https://github.com/pchalasani/claude-code-tools). The fork structure is:
+
+- **origin**: `git@personal-github:steeef/claude-code-tools.git` (your fork)
+- **upstream**: `git@github.com:pchalasani/claude-code-tools.git` (original repository)
+
+### Getting Updates from Upstream
+
+To sync your fork with the latest changes from upstream:
+
+```bash
+# Fetch latest changes from upstream
+git fetch upstream
+
+# Switch to main branch
+git checkout main
+
+# Merge upstream changes into your main branch
+git merge upstream/main
+
+# Push the updated main branch to your fork
+git push origin main
+```
+
+### Alternative: Rebase Instead of Merge
+
+For a cleaner history, you can rebase instead:
+
+```bash
+git fetch upstream
+git checkout main
+git rebase upstream/main
+git push origin main --force-with-lease
+```
+
+### Checking for Updates
+
+To see if upstream has new commits:
+
+```bash
+# Compare your main with upstream main
+git log HEAD..upstream/main --oneline
+
+# Or check the diff
+git diff HEAD..upstream/main
+```
+
 ## Development Notes
 
 - The project requires Python 3.11+
