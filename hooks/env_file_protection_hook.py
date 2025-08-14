@@ -67,7 +67,6 @@ def check_env_file_access(command):
                 "- To check if a specific key exists:\n"
                 "  `grep -q '^KEY_NAME=' .env && echo 'Key exists' || echo 'Key not found'`\n\n"
                 "If you need to work with actual values, consider:\n"
-                "- Using the 'vault' command for encrypted backup/restore\n"
                 "- Manually checking the file outside of Claude Code\n"
                 "- Using environment variables that are already loaded"
             )
