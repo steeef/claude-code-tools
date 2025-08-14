@@ -7,13 +7,13 @@ import re
 
 def check_env_file_access(command):
     """
-    Check if a command attempts to read or search .env files.
+    Check if a command attempts to read, write, or edit .env files.
     Returns tuple: (should_block: bool, reason: str or None)
     """
     # Normalize the command
     normalized_cmd = ' '.join(command.strip().split())
     
-    # Patterns that indicate reading or searching .env files
+    # Patterns that indicate reading, writing, or editing .env files
     env_patterns = [
         # Direct file reading
         r'\bcat\s+.*\.env\b',
@@ -21,11 +21,30 @@ def check_env_file_access(command):
         r'\bmore\s+.*\.env\b',
         r'\bhead\s+.*\.env\b',
         r'\btail\s+.*\.env\b',
+        
+        # Editors - both reading and writing
         r'\bnano\s+.*\.env\b',
         r'\bvi\s+.*\.env\b',
         r'\bvim\s+.*\.env\b',
         r'\bemacs\s+.*\.env\b',
         r'\bcode\s+.*\.env\b',
+        r'\bsubl\s+.*\.env\b',
+        r'\batom\s+.*\.env\b',
+        r'\bgedit\s+.*\.env\b',
+        
+        # Writing/modifying .env files
+        r'>\s*\.env\b',  # Redirect to .env
+        r'>>\s*\.env\b',  # Append to .env
+        r'\becho\s+.*>\s*\.env\b',
+        r'\becho\s+.*>>\s*\.env\b',
+        r'\bprintf\s+.*>\s*\.env\b',
+        r'\bprintf\s+.*>>\s*\.env\b',
+        r'\bsed\s+.*-i.*\.env\b',  # sed in-place editing
+        r'\bawk\s+.*>\s*\.env\b',
+        r'\btee\s+.*\.env\b',
+        r'\bcp\s+.*\.env\b',  # Copying to .env
+        r'\bmv\s+.*\.env\b',  # Moving to .env
+        r'\btouch\s+.*\.env\b',  # Creating .env
         
         # Searching/grepping .env files
         r'\bgrep\s+.*\.env\b',
@@ -45,6 +64,8 @@ def check_env_file_access(command):
         r'\bcat\s+["\']?env["\']?\s*[;&|]',
         r'\bless\s+["\']?env["\']?\s*$',
         r'\bless\s+["\']?env["\']?\s*[;&|]',
+        r'>\s*["\']?env["\']?\s*$',
+        r'>>\s*["\']?env["\']?\s*$',
     ]
     
     # Check if any pattern matches
@@ -52,14 +73,16 @@ def check_env_file_access(command):
         if re.search(pattern, normalized_cmd, re.IGNORECASE):
             reason_text = (
                 "Blocked: Direct access to .env files is not allowed for security reasons.\n\n"
-                "Use the `env-safe` command instead:\n"
+                "• Reading .env files could expose sensitive values\n"
+                "• Writing/editing .env files should be done manually outside Claude Code\n\n"
+                "For safe inspection, use the `env-safe` command:\n"
                 "  • `env-safe list` - List all environment variable keys\n"
                 "  • `env-safe list --status` - Show keys with defined/empty status\n"
                 "  • `env-safe check KEY_NAME` - Check if a specific key exists\n"
                 "  • `env-safe count` - Count variables in the file\n"
                 "  • `env-safe validate` - Check .env file syntax\n"
                 "  • `env-safe --help` - See all options\n\n"
-                "This tool safely inspects .env files without exposing sensitive values."
+                "To modify .env files, please edit them manually outside of Claude Code."
             )
             return True, reason_text
     
