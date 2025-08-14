@@ -50,6 +50,7 @@ This gives you:
 - `tmux-cli` - The interactive CLI controller we just covered
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
 - `vault` - Encrypted backup for your .env files
+- `env-safe` - Safely inspect .env files without exposing values
 
 ## 🎮 tmux-cli Deep Dive
 
@@ -176,6 +177,31 @@ vault status    # Check sync status for current project
 
 For detailed documentation, see [docs/vault-documentation.md](docs/vault-documentation.md).
 
+## 🔍 env-safe
+
+Safely inspect .env files without exposing sensitive values. Designed for Claude Code and other automated tools that need to work with environment files without accidentally leaking secrets.
+
+```bash
+env-safe list                    # List all environment variable keys
+env-safe list --status           # Show keys with defined/empty status  
+env-safe check API_KEY           # Check if a specific key exists
+env-safe count                   # Count total, defined, and empty variables
+env-safe validate                # Validate .env file syntax
+env-safe --help                  # See all options
+```
+
+### Key Features
+
+- **No Value Exposure** - Never displays actual environment values
+- **Safe Inspection** - Check which keys exist without security risks
+- **Syntax Validation** - Verify .env file format is correct
+- **Status Checking** - See which variables are defined vs empty
+- **Claude Code Integration** - Works with protection hooks to provide safe alternative
+
+### Why env-safe?
+
+When Claude Code attempts to read .env files directly (via cat, grep, etc.), safety hooks block the operation to prevent accidental exposure of API keys and secrets. The `env-safe` command provides a secure alternative that lets Claude Code inspect environment configuration without security risks.
+
 ## 🛡️ Claude Code Safety Hooks
 
 This repository includes a comprehensive set of safety hooks that enhance Claude
@@ -187,6 +213,8 @@ Code's behavior and prevent dangerous operations.
   pattern
 - **Git Safety** - Prevents dangerous `git add -A`, unsafe checkouts, and
   accidental data loss  
+- **Environment Security** - Blocks direct .env file access, suggests `env-safe`
+  command instead
 - **Context Management** - Blocks reading files >500 lines to prevent context
   bloat
 - **Command Enhancement** - Enforces ripgrep (`rg`) over grep for better

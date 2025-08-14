@@ -13,13 +13,6 @@ def check_env_file_access(command):
     # Normalize the command
     normalized_cmd = ' '.join(command.strip().split())
     
-    # Safe patterns that should be allowed (only show keys, not values)
-    # These patterns only extract key names, not values
-    if ("grep -o '^[^#][^=]*' .env" in normalized_cmd or
-        "grep -o \"^[^#][^=]*\" .env" in normalized_cmd or
-        re.search(r"grep\s+-q\s+['\"]?\^[A-Z_]+=", normalized_cmd)):
-        return False, None  # Allow safe patterns
-    
     # Patterns that indicate reading or searching .env files
     env_patterns = [
         # Direct file reading
@@ -59,16 +52,14 @@ def check_env_file_access(command):
         if re.search(pattern, normalized_cmd, re.IGNORECASE):
             reason_text = (
                 "Blocked: Direct access to .env files is not allowed for security reasons.\n\n"
-                "Instead, use one of these safer alternatives:\n"
-                "- To see which environment variables are defined (keys only):\n"
-                "  `grep -o '^[^#][^=]*' .env | sort`\n"
-                "- Or create a custom command/alias like:\n"
-                "  `alias envkeys='grep -o \"^[^#][^=]*\" .env | sort'`\n"
-                "- To check if a specific key exists:\n"
-                "  `grep -q '^KEY_NAME=' .env && echo 'Key exists' || echo 'Key not found'`\n\n"
-                "If you need to work with actual values, consider:\n"
-                "- Manually checking the file outside of Claude Code\n"
-                "- Using environment variables that are already loaded"
+                "Use the `env-safe` command instead:\n"
+                "  • `env-safe list` - List all environment variable keys\n"
+                "  • `env-safe list --status` - Show keys with defined/empty status\n"
+                "  • `env-safe check KEY_NAME` - Check if a specific key exists\n"
+                "  • `env-safe count` - Count variables in the file\n"
+                "  • `env-safe validate` - Check .env file syntax\n"
+                "  • `env-safe --help` - See all options\n\n"
+                "This tool safely inspects .env files without exposing sensitive values."
             )
             return True, reason_text
     
