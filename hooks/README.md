@@ -14,20 +14,25 @@ Claude Code hooks are scripts that intercept tool operations to:
 
 ## Setup
 
-1. Copy `settings.sample.json` to `settings.json`:
-   ```bash
-   cp settings.sample.json settings.json
-   ```
-
-2. Edit `settings.json` and replace `/path/to/claude-code-tools` with the actual
-   path to your claude-code-tools repository.
-
-3. Make hook scripts executable:
+1. Make hook scripts executable:
    ```bash
    chmod +x hooks/*.py hooks/*.sh
    ```
 
-4. Place your `settings.json` at (or add contents to) your global claude location, e.g. `~/.claude/settings.json`` 
+2. Add hooks to your global Claude settings:
+   - Open or create `~/.claude/settings.json`
+   - Copy the entire "hooks" section from `settings.sample.json`
+   - Replace all instances of `/path/to/claude-code-tools` with your actual repository path
+   
+3. If you already have other settings in `~/.claude/settings.json`, merge the hooks section:
+   ```json
+   {
+     "hooks": { 
+       // ... content from settings.sample.json ...
+     },
+     // ... your other settings ...
+   }
+   ``` 
 
 ## Hook Types
 

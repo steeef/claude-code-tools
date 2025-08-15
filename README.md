@@ -222,16 +222,20 @@ Code's behavior and prevent dangerous operations.
 
 ### Quick Setup
 
-1. Copy the sample hooks configuration and update paths:
-   ```bash
-   cp hooks/settings.sample.json hooks/settings.json
-   # Edit hooks/settings.json and replace /path/to/claude-code-tools 
-   # with your actual path to this repository
-   ```
+1. Copy the hooks configuration from `hooks/settings.sample.json` 
 
-2. Reference in your Claude Code settings or use `--hooks` flag:
-   ```bash
-   claude --hooks /path/to/hooks/settings.json
+2. Add the hooks to your global Claude settings at `~/.claude/settings.json`:
+   - If the file doesn't exist, create it
+   - Copy the "hooks" section from settings.sample.json
+   - Replace `/path/to/claude-code-tools` with your actual path to this repository
+   
+   Example ~/.claude/settings.json:
+   ```json
+   {
+     "hooks": {
+       // ... hooks configuration from settings.sample.json ...
+     }
+   }
    ```
 
 ### Available Hooks
