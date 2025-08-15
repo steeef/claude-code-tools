@@ -200,7 +200,7 @@ env-safe --help                  # See all options
 
 ### Why env-safe?
 
-When Claude Code attempts to read .env files directly (via cat, grep, etc.), safety hooks block the operation to prevent accidental exposure of API keys and secrets. The `env-safe` command provides a secure alternative that lets Claude Code inspect environment configuration without security risks.
+Claude Code is completely blocked from directly accessing .env files - no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
 
 ## 🛡️ Claude Code Safety Hooks
 
@@ -213,8 +213,8 @@ Code's behavior and prevent dangerous operations.
   pattern
 - **Git Safety** - Prevents dangerous `git add -A`, unsafe checkouts, and
   accidental data loss  
-- **Environment Security** - Blocks direct .env file access, suggests `env-safe`
-  command instead
+- **Environment Security** - Blocks all .env file operations (read/write/edit),
+  suggests `env-safe` command for safe inspection
 - **Context Management** - Blocks reading files >500 lines to prevent context
   bloat
 - **Command Enhancement** - Enforces ripgrep (`rg`) over grep for better
@@ -236,6 +236,7 @@ Code's behavior and prevent dangerous operations.
 ### Available Hooks
 
 - `bash_hook.py` - Comprehensive bash command safety checks
+- `env_file_protection_hook.py` - Blocks all .env file operations
 - `file_size_conditional_hook.py` - Prevents reading huge files
 - `grep_block_hook.py` - Enforces ripgrep usage
 - `notification_hook.sh` - Sends ntfy.sh notifications
