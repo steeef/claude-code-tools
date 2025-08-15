@@ -19,10 +19,8 @@ Claude Code hooks are scripts that intercept tool operations to:
    cp settings.sample.json settings.json
    ```
 
-2. Set the `CLAUDE_CODE_TOOLS_PATH` environment variable:
-   ```bash
-   export CLAUDE_CODE_TOOLS_PATH=/path/to/claude-code-tools
-   ```
+2. Edit `settings.json` and replace `/path/to/claude-code-tools` with the actual
+   path to your claude-code-tools repository.
 
 3. Make hook scripts executable:
    ```bash

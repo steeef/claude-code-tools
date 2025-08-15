@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_CODE_TOOLS_PATH/hooks/notification_hook.sh"
+            "command": "/path/to/claude-code-tools/hooks/notification_hook.sh"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_CODE_TOOLS_PATH/hooks/bash_hook.py"
+            "command": "/path/to/claude-code-tools/hooks/bash_hook.py"
           }
         ]
       },
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_CODE_TOOLS_PATH/hooks/file_size_conditional_hook.py"
+            "command": "/path/to/claude-code-tools/hooks/file_size_conditional_hook.py"
           }
         ]
       },
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_CODE_TOOLS_PATH/hooks/pretask_subtask_flag.py"
+            "command": "/path/to/claude-code-tools/hooks/pretask_subtask_flag.py"
           }
         ]
       },
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_CODE_TOOLS_PATH/hooks/grep_block_hook.py"
+            "command": "/path/to/claude-code-tools/hooks/grep_block_hook.py"
           }
         ]
       }      
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_CODE_TOOLS_PATH/hooks/posttask_subtask_flag.py"
+            "command": "/path/to/claude-code-tools/hooks/posttask_subtask_flag.py"
           }
         ]
       }

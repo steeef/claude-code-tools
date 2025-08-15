@@ -222,10 +222,11 @@ Code's behavior and prevent dangerous operations.
 
 ### Quick Setup
 
-1. Copy the sample hooks configuration:
+1. Copy the sample hooks configuration and update paths:
    ```bash
    cp hooks/settings.sample.json hooks/settings.json
-   export CLAUDE_CODE_TOOLS_PATH=/path/to/claude-code-tools
+   # Edit hooks/settings.json and replace /path/to/claude-code-tools 
+   # with your actual path to this repository
    ```
 
 2. Reference in your Claude Code settings or use `--hooks` flag:
