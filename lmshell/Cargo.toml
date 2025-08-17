@@ -1,0 +1,17 @@
+[package]
+name = "lmshell"
+version = "0.0.1"
+edition = "2021"
+description = "Lightning-fast natural language shell (minimal scaffold)"
+
+[dependencies]
+# Keep dependencies minimal; disable heavy defaults.
+rustyline = { version = "12", default-features = false, features = ["with-file-history"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+

@@ -1,0 +1,227 @@
+use std::env;
+use std::process::{Command, Stdio};
+
+fn print_version() {
+    println!("lmshell {}", env!("CARGO_PKG_VERSION"));
+}
+
+fn main() {
+    // Tiny, predictable startup path:
+    // - Handle trivial flags first to benchmark absolute minimal path
+    // - Avoid any I/O before interactive mode (e.g., history, config)
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--version" | "-V" => {
+                print_version();
+                return;
+            }
+            // Execute and exit fast; used for startup benchmarks
+            "-c" => {
+                // Execute a one-off command for benchmarking and scripting
+                if let Some(cmd) = args.next() {
+                    let code = execute(&cmd);
+                    std::process::exit(code);
+                } else {
+                    eprintln!("-c requires a command string");
+                    std::process::exit(2);
+                }
+            }
+            "-h" | "--help" => {
+                println!(
+                    "Usage: lmshell [OPTIONS]\n\n  -c <cmd>     Run command and exit (no-op)\n  -V, --version  Print version and exit\n  -h, --help     Show this help\n"
+                );
+                return;
+            }
+            _ => {}
+        }
+    }
+
+    // Enter interactive loop with minimal setup.
+    // Defer history/config I/O until after first successful line if desired.
+    use rustyline::{error::ReadlineError, Editor};
+
+    // Keep config defaults to minimize initialization work.
+    let mut rl = Editor::<(), rustyline::history::DefaultHistory>::new().unwrap_or_else(|_| {
+        Editor::<(), rustyline::history::DefaultHistory>::new().expect("editor")
+    });
+
+    let prompt = "lmshell> ";
+    loop {
+        match rl.readline(prompt) {
+            Ok(line) => {
+                let trimmed = line.trim();
+                if trimmed == "exit" || trimmed == "quit" { break; }
+                if !trimmed.is_empty() {
+                    // Lazy-add to history after first non-empty line.
+                    let _ = rl.add_history_entry(&line);
+                }
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                // Natural language -> Claude -> suggested shell command
+                match generate_command(trimmed) {
+                    Ok(suggested) => {
+                        // Allow user to edit before execution
+                        let edit_prompt = "cmd> ";
+                        let edited = rl
+                            .readline_with_initial(edit_prompt, (&suggested, ""))
+                            .or_else(|_| rl.readline(edit_prompt));
+                        match edited {
+                            Ok(cmdline) => {
+                                let cmd = cmdline.trim();
+                                if cmd.is_empty() { continue; }
+                                let _ = rl.add_history_entry(&cmdline);
+                                let _code = execute(cmd);
+                            }
+                            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
+                            Err(err) => {
+                                eprintln!("edit error: {err}");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Claude error: {}", e);
+                        // Fallback: let user type a raw shell command
+                        let fallback = rl.readline("cmd> ");
+                        match fallback {
+                            Ok(cmdline) => {
+                                let cmd = cmdline.trim();
+                                if cmd.is_empty() { continue; }
+                                let _ = rl.add_history_entry(&cmdline);
+                                let _code = execute(cmd);
+                            }
+                            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
+                            Err(err) => eprintln!("readline error: {err}"),
+                        }
+                    }
+                }
+            }
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
+            Err(err) => {
+                eprintln!("readline error: {err}");
+                break;
+            }
+        }
+    }
+}
+
+// --- Claude integration ---
+fn generate_command(nl_prompt: &str) -> Result<String, String> {
+    // Use markers for easy extraction
+    let full_prompt = format!(
+        "Generate the shell command to: {}\n\
+         Output the command between <COMMAND> and </COMMAND> markers.\n\
+         Example: <COMMAND>ls -la</COMMAND>\n\
+         No explanation, just the command between markers.",
+        nl_prompt
+    );
+
+    let output = Command::new("claude")
+        .arg("--model")
+        .arg("sonnet")
+        .arg("-p")
+        .arg(&full_prompt)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("failed to spawn 'claude': {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("claude exited with status {}: {}", output.status, stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    extract_command_from_output(&stdout)
+        .ok_or_else(|| "could not extract a command from Claude output".to_string())
+}
+
+fn extract_command_from_output(s: &str) -> Option<String> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() { return None; }
+
+    // 1) First look for our custom markers <COMMAND>...</COMMAND>
+    if let Some(start) = trimmed.find("<COMMAND>") {
+        if let Some(end) = trimmed.find("</COMMAND>") {
+            let cmd_start = start + 9; // length of "<COMMAND>"
+            if cmd_start < end {
+                let command = &trimmed[cmd_start..end];
+                return Some(command.trim().to_string());
+            }
+        }
+    }
+
+    // 2) Try fenced code blocks (bash/sh or plain ```)
+    if let Some(cmd) = extract_from_fence(trimmed) {
+        return Some(cmd);
+    }
+
+    // 3) Look for a line beginning with '$ '
+    for line in trimmed.lines() {
+        let l = line.trim();
+        if let Some(stripped) = l.strip_prefix("$ ") {
+            let candidate = stripped.trim();
+            if !candidate.is_empty() { return Some(candidate.to_string()); }
+        }
+    }
+
+    // 4) Fallback: first non-empty, non-comment line that's not a greeting
+    for line in trimmed.lines() {
+        let l = line.trim();
+        // Skip greetings and explanations
+        if l.starts_with("Hello") || l.starts_with("Here") || l.contains("command to") {
+            continue;
+        }
+        if l.is_empty() || l.starts_with('#') { continue; }
+        return Some(l.to_string());
+    }
+
+    None
+}
+
+fn extract_from_fence(s: &str) -> Option<String> {
+    let mut lines = s.lines().peekable();
+    while let Some(line) = lines.next() {
+        let l = line.trim_start();
+        if let Some(lang) = l.strip_prefix("```") {
+            // Found a fence start. Optionally contains language like bash/sh.
+            let is_shell = lang.contains("bash") || lang.contains("sh");
+            let mut block = String::new();
+            while let Some(content) = lines.next() {
+                if content.trim_start().starts_with("```") { break; }
+                block.push_str(content);
+                block.push('\n');
+            }
+            if is_shell || !block.trim().is_empty() {
+                // Clean leading '$ ' prompts per line.
+                let cleaned = block
+                    .lines()
+                    .map(|ln| ln.strip_prefix("$ ").unwrap_or(ln))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let out = cleaned.trim();
+                if !out.is_empty() { return Some(out.to_string()); }
+            }
+        }
+    }
+    None
+}
+
+// --- Shell execution ---
+fn execute(cmd: &str) -> i32 {
+    #[cfg(windows)]
+    let status = Command::new("cmd").arg("/C").arg(cmd).status();
+
+    #[cfg(not(windows))]
+    let status = Command::new("sh").arg("-lc").arg(cmd).status();
+
+    match status {
+        Ok(s) => s.code().unwrap_or_default(),
+        Err(e) => {
+            eprintln!("failed to execute command: {e}");
+            127
+        }
+    }
+}
