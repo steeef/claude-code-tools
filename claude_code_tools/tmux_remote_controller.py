@@ -21,6 +21,9 @@ class RemoteTmuxController:
         """Initialize with session name and ensure the session exists."""
         self.session_name = session_name
         self.target_window: Optional[str] = None  # e.g., "session:0" (active pane in that window)
+        print(f"Note: tmux-cli is running outside tmux. Managing windows in session '{session_name}'.")
+        print("For better integration, consider running from inside a tmux session.")
+        print("Use 'tmux-cli attach' to view the remote session.")
         self._ensure_session()
     
     # ----------------------------
