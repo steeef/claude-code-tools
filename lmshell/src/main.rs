@@ -236,7 +236,21 @@ fn execute(cmd: &str) -> i32 {
     let status = Command::new("cmd").arg("/C").arg(cmd).status();
 
     #[cfg(not(windows))]
-    let status = Command::new("sh").arg("-lc").arg(cmd).status();
+    let status = {
+        // Try to use the user's preferred shell with proper initialization
+        // This ensures colors, aliases, and functions work correctly
+        let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        
+        // Use -ic for interactive shell to load .bashrc/.zshrc/etc
+        // This enables colors, aliases, and shell functions
+        Command::new(&shell)
+            .arg("-ic")  // -i for interactive (loads rc files), -c to run command
+            .arg(cmd)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+    };
 
     match status {
         Ok(s) => s.code().unwrap_or_default(),
