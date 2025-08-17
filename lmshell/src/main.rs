@@ -47,6 +47,7 @@ fn main() {
     });
 
     let prompt = "lmshell> ";
+    let mut history: Vec<(String, String)> = Vec::new(); // (user_input, generated_command)
     loop {
         match rl.readline(prompt) {
             Ok(line) => {
@@ -61,8 +62,10 @@ fn main() {
                 }
 
                 // Natural language -> Claude -> suggested shell command
-                match generate_command(trimmed) {
+                match generate_command(trimmed, &history) {
                     Ok(suggested) => {
+                        // Record history pair (user_input, generated_command)
+                        history.push((trimmed.to_string(), suggested.clone()));
                         // Allow user to edit before execution
                         let edit_prompt = "cmd> ";
                         let edited = rl
@@ -108,15 +111,9 @@ fn main() {
 }
 
 // --- Claude integration ---
-fn generate_command(nl_prompt: &str) -> Result<String, String> {
-    // Use markers for easy extraction
-    let full_prompt = format!(
-        "Generate the shell command to: {}\n\
-         Output the command between <COMMAND> and </COMMAND> markers.\n\
-         Example: <COMMAND>ls -la</COMMAND>\n\
-         No explanation, just the command between markers.",
-        nl_prompt
-    );
+fn generate_command(nl_prompt: &str, history: &[(String, String)]) -> Result<String, String> {
+    // Build a prompt that includes full history and requests <COMMAND> markers
+    let full_prompt = build_prompt_with_history(history, nl_prompt);
 
     let output = Command::new("claude")
         .arg("--model")
@@ -179,6 +176,30 @@ fn extract_command_from_output(s: &str) -> Option<String> {
     }
 
     None
+}
+
+fn build_prompt_with_history(history: &[(String, String)], nl_prompt: &str) -> String {
+    let mut buf = String::new();
+    buf.push_str(
+        "You are a shell command generator. Return ONLY the shell command wrapped in <COMMAND></COMMAND>. No prose.\nIf multiple steps are needed, join with '&&'.\n\nPrevious conversation:\n",
+    );
+
+    // Limit to the last 10 exchanges to bound prompt size
+    let start = history.len().saturating_sub(10);
+    for (user, cmd) in &history[start..] {
+        buf.push_str("User: ");
+        buf.push_str(user);
+        buf.push('\n');
+        buf.push_str("Command: <COMMAND>");
+        buf.push_str(cmd);
+        buf.push_str("</COMMAND>\n");
+    }
+
+    buf.push_str("\nUser: ");
+    buf.push_str(nl_prompt);
+    buf.push_str("\nGenerate command with <COMMAND></COMMAND> markers.");
+
+    buf
 }
 
 fn extract_from_fence(s: &str) -> Option<String> {
