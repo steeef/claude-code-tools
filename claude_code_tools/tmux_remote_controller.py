@@ -21,10 +21,7 @@ class RemoteTmuxController:
         """Initialize with session name and ensure the session exists."""
         self.session_name = session_name
         self.target_window: Optional[str] = None  # e.g., "session:0" (active pane in that window)
-        self._attached_once: bool = False
-        self._first_window_created: bool = False
-        # Tracks if this instance created the session (used to decide auto-attach)
-        self._session_was_created: bool = self._ensure_session()
+        self._ensure_session()
     
     # ----------------------------
     # Internal utilities
@@ -37,10 +34,8 @@ class RemoteTmuxController:
         )
         return result.stdout.strip(), result.returncode
     
-    def _ensure_session(self) -> bool:
-        """Create the session if it doesn't exist (detached).
-        Returns True if a new session was created by this call.
-        """
+    def _ensure_session(self) -> None:
+        """Create the session if it doesn't exist (detached)."""
         _, code = self._run_tmux(['has-session', '-t', self.session_name])
         if code != 0:
             # Create a detached session using user's default shell
@@ -50,14 +45,12 @@ class RemoteTmuxController:
             ])
             # Remember first window as default target
             self.target_window = f"{self.session_name}:0"
-            return True
         else:
             # If already exists and we don't have a target, set to active window
             if not self.target_window:
                 win, code2 = self._run_tmux(['display-message', '-p', '-t', self.session_name, '#{session_name}:#{window_index}'])
                 if code2 == 0 and win:
                     self.target_window = win
-            return False
     
     def _window_target(self, pane: Optional[str]) -> str:
         """Resolve user-provided pane/window hint to a tmux target.
@@ -130,13 +123,6 @@ class RemoteTmuxController:
         out, code = self._run_tmux(args)
         if code == 0 and out:
             self.target_window = out
-            # Auto-attach on the first launch_cli call for this controller instance
-            if not self._attached_once and not self._first_window_created:
-                try:
-                    subprocess.run(['tmux', 'attach-session', '-t', self.session_name])
-                finally:
-                    self._attached_once = True
-            self._first_window_created = True
             return out
         return None
     
