@@ -1,5 +1,7 @@
 use std::env;
 use std::process::{Command, Stdio};
+mod shell;
+use shell::Shell;
 
 fn print_version() {
     println!("lmshell {}", env!("CARGO_PKG_VERSION"));
@@ -46,6 +48,15 @@ fn main() {
         Editor::<(), rustyline::history::DefaultHistory>::new().expect("editor")
     });
 
+    // Start a persistent interactive shell in a PTY (aliases/functions/colors, one-time rc load)
+    let mut pshell = match Shell::new() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to start persistent shell: {e}");
+            std::process::exit(1);
+        }
+    };
+
     let prompt = "lmshell> ";
     let mut history: Vec<(String, String)> = Vec::new(); // (user_input, generated_command)
     loop {
@@ -76,7 +87,18 @@ fn main() {
                                 let cmd = cmdline.trim();
                                 if cmd.is_empty() { continue; }
                                 let _ = rl.add_history_entry(&cmdline);
-                                let _code = execute(cmd);
+                                match pshell.run(cmd) {
+                                    Ok((_code, out)) => {
+                                        if !out.is_empty() { 
+                                            print!("{}", out);
+                                            // Only add newline if output doesn't already end with one
+                                            if !out.ends_with('\n') {
+                                                println!();
+                                            }
+                                        }
+                                    }
+                                    Err(e) => eprintln!("exec error: {e}"),
+                                }
                             }
                             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
                             Err(err) => {
@@ -93,7 +115,18 @@ fn main() {
                                 let cmd = cmdline.trim();
                                 if cmd.is_empty() { continue; }
                                 let _ = rl.add_history_entry(&cmdline);
-                                let _code = execute(cmd);
+                                match pshell.run(cmd) {
+                                    Ok((_code, out)) => {
+                                        if !out.is_empty() { 
+                                            print!("{}", out);
+                                            // Only add newline if output doesn't already end with one
+                                            if !out.ends_with('\n') {
+                                                println!();
+                                            }
+                                        }
+                                    }
+                                    Err(e) => eprintln!("exec error: {e}"),
+                                }
                             }
                             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
                             Err(err) => eprintln!("readline error: {err}"),
@@ -237,14 +270,11 @@ fn execute(cmd: &str) -> i32 {
 
     #[cfg(not(windows))]
     let status = {
-        // Try to use the user's preferred shell with proper initialization
-        // This ensures colors, aliases, and functions work correctly
+        // Use user's shell - temporarily back to simple -c
         let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
         
-        // Use -ic for interactive shell to load .bashrc/.zshrc/etc
-        // This enables colors, aliases, and shell functions
         Command::new(&shell)
-            .arg("-ic")  // -i for interactive (loads rc files), -c to run command
+            .arg("-c")
             .arg(cmd)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())

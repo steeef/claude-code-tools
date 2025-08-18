@@ -7,6 +7,7 @@ description = "Lightning-fast natural language shell (minimal scaffold)"
 [dependencies]
 # Keep dependencies minimal; disable heavy defaults.
 rustyline = { version = "12", default-features = false, features = ["with-file-history"] }
+portable-pty = "0.8"
 
 [profile.release]
 opt-level = "z"
@@ -14,4 +15,3 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
-
