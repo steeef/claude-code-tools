@@ -103,6 +103,32 @@ claude mcp add puppeteer -- npx -y @modelcontextprotocol/server-puppeteer
 
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
+## 🚀 lmshell (Experimental)
+
+Natural language shell - type what you want in plain English, get an editable command.
+
+```bash
+$ lmshell
+> show me all python files modified today
+find . -name "*.py" -mtime 0  # <-- Edit before running
+```
+
+**Features:**
+- Rust-based for instant startup (<1ms binary load time)
+- Translates natural language to shell commands using Claude
+- Commands are editable before execution - full control
+- Preserves your shell environment
+
+**Note:** Claude API adds ~2-3s latency. Future versions may use local models for instant response.
+
+**Installation:** Requires Rust toolchain:
+```bash
+cd lmshell && cargo build --release
+sudo cp target/release/lmshell /usr/local/bin/
+```
+
+See [docs/lmshell.md](docs/lmshell.md) for details.
+
 ## 🔍 find-claude-session
 
 Search and resume Claude Code sessions by keywords with an interactive UI.
