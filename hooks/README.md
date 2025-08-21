@@ -123,6 +123,13 @@ The bash hook includes comprehensive git safety:
 - `git checkout -f`, `git checkout .`
 - Operations that could lose uncommitted changes
 
+**Git Commit Speed Bump:**
+- First `git commit` attempt is blocked with a reminder about user approval
+- If the user requires approval before commits, do NOT retry
+- If approval isn't needed or was already given, retry to proceed
+- Uses `.claude_git_commit_warning.flag` file to track state
+- Second attempt always succeeds (flag is cleared)
+
 **Alternatives Suggested:**
 - `git add -u` for modified files
 - `git add <specific-files>` for targeted staging

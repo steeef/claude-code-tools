@@ -16,8 +16,8 @@ def check_git_commit_command(command):
     if not normalized_cmd.startswith('git commit'):
         return False, None
     
-    # Define the flag file path (in /tmp so it's session-specific)
-    flag_file = Path('/tmp/.git_commit_warning_shown')
+    # Define the flag file path (in current directory, consistent with other hooks)
+    flag_file = Path('.claude_git_commit_warning.flag')
     
     # If flag file exists, allow the commit and clear the flag
     if flag_file.exists():
