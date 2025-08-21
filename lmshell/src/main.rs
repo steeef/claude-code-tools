@@ -11,33 +11,27 @@ fn main() {
     // Tiny, predictable startup path:
     // - Handle trivial flags first to benchmark absolute minimal path
     // - Avoid any I/O before interactive mode (e.g., history, config)
-    let mut args = env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--version" | "-V" => {
-                print_version();
-                return;
-            }
-            // Execute and exit fast; used for startup benchmarks
-            "-c" => {
-                // Execute a one-off command for benchmarking and scripting
-                if let Some(cmd) = args.next() {
-                    let code = execute(&cmd);
-                    std::process::exit(code);
-                } else {
-                    eprintln!("-c requires a command string");
-                    std::process::exit(2);
-                }
-            }
-            "-h" | "--help" => {
-                println!(
-                    "Usage: lmshell [OPTIONS]\n\n  -c <cmd>     Run command and exit (no-op)\n  -V, --version  Print version and exit\n  -h, --help     Show this help\n"
-                );
-                return;
-            }
-            _ => {}
-        }
+    let args: Vec<String> = env::args().skip(1).collect();
+    
+    // Check for flags first
+    if args.is_empty() {
+        // No args, continue to interactive mode
+    } else if args[0] == "--version" || args[0] == "-V" {
+        print_version();
+        return;
+    } else if args[0] == "-h" || args[0] == "--help" {
+        println!(
+            "Usage: lmshell [OPTIONS] [NATURAL_LANGUAGE_COMMAND]\n\n  [NATURAL_LANGUAGE_COMMAND]  Translate and execute, then enter interactive mode\n  -V, --version  Print version and exit\n  -h, --help     Show this help\n"
+        );
+        return;
     }
+    
+    // If we get here and have args, treat them as natural language
+    let initial_nl_command = if !args.is_empty() && !args[0].starts_with('-') {
+        Some(args.join(" "))
+    } else {
+        None
+    };
 
     // Enter interactive loop with minimal setup.
     // Defer history/config I/O until after first successful line if desired.
@@ -59,6 +53,49 @@ fn main() {
 
     let prompt = "lmshell> ";
     let mut history: Vec<(String, String)> = Vec::new(); // (user_input, generated_command)
+    
+    // If initial natural language command provided, process it first
+    if let Some(nl_cmd) = initial_nl_command {
+        println!("Translating: {} (this may take a few seconds...)", nl_cmd);
+        match generate_command(&nl_cmd, &history) {
+            Ok(suggested) => {
+                // Record history pair
+                history.push((nl_cmd.clone(), suggested.clone()));
+                // Allow user to edit before execution
+                let edit_prompt = "cmd> ";
+                match rl.readline_with_initial(edit_prompt, (&suggested, "")) {
+                    Ok(cmdline) => {
+                        let cmd = cmdline.trim();
+                        if !cmd.is_empty() {
+                            let _ = rl.add_history_entry(&cmdline);
+                            match pshell.run(cmd) {
+                                Ok((_code, out)) => {
+                                    if !out.is_empty() {
+                                        print!("{}", out);
+                                        if !out.ends_with('\n') {
+                                            println!();
+                                        }
+                                    }
+                                }
+                                Err(e) => eprintln!("exec error: {e}"),
+                            }
+                        }
+                    }
+                    Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                        // User cancelled, continue to interactive mode
+                    }
+                    Err(err) => {
+                        eprintln!("readline error: {err}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Claude error: {}", e);
+            }
+        }
+        println!(); // Add blank line before interactive prompt
+    }
+    
     loop {
         match rl.readline(prompt) {
             Ok(line) => {
@@ -264,29 +301,3 @@ fn extract_from_fence(s: &str) -> Option<String> {
 }
 
 // --- Shell execution ---
-fn execute(cmd: &str) -> i32 {
-    #[cfg(windows)]
-    let status = Command::new("cmd").arg("/C").arg(cmd).status();
-
-    #[cfg(not(windows))]
-    let status = {
-        // Use user's shell - temporarily back to simple -c
-        let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        
-        Command::new(&shell)
-            .arg("-c")
-            .arg(cmd)
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-    };
-
-    match status {
-        Ok(s) => s.code().unwrap_or_default(),
-        Err(e) => {
-            eprintln!("failed to execute command: {e}");
-            127
-        }
-    }
-}

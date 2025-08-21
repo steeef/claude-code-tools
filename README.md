@@ -108,9 +108,14 @@ For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-ins
 Natural language shell - type what you want in plain English, get an editable command.
 
 ```bash
-$ lmshell
-> show me all python files modified today
+# Direct usage - translate, edit, execute, then enter interactive mode
+$ lmshell "show me all python files modified today"
 find . -name "*.py" -mtime 0  # <-- Edit before running
+
+# Or interactive mode
+$ lmshell
+lmshell> show recent docker containers
+docker ps -n 5  # <-- Edit before running
 ```
 
 **Features:**
@@ -119,12 +124,13 @@ find . -name "*.py" -mtime 0  # <-- Edit before running
 - Commands are editable before execution - full control
 - Preserves your shell environment
 
-**Note:** Claude API adds ~2-3s latency. Future versions may use local models for instant response.
+**Note:** Claude API adds ~3-5s latency. Future versions may use local models for instant response.
 
 **Installation:** Requires Rust toolchain:
 ```bash
 cd lmshell && cargo build --release
-sudo cp target/release/lmshell /usr/local/bin/
+cp target/release/lmshell ~/.cargo/bin/
+# Or: make lmshell-install
 ```
 
 See [docs/lmshell.md](docs/lmshell.md) for details.

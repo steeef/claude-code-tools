@@ -20,15 +20,19 @@ Requires Rust toolchain:
 ```bash
 cd lmshell/
 cargo build --release
-sudo cp target/release/lmshell /usr/local/bin/
+cp target/release/lmshell ~/.cargo/bin/
 ```
+
+Or use the Makefile: `make lmshell-install`
+
+Note: Ensure `~/.cargo/bin` is in your PATH.
 
 ## Usage
 
 ```bash
-lmshell              # Interactive mode
-lmshell -c "command" # One-shot execution
-lmshell --version    # Version info
+lmshell                           # Interactive mode
+lmshell "show me python files"    # Translate, edit, execute, then interactive mode
+lmshell --version                # Version info
 ```
 
 ## Features

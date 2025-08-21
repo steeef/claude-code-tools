@@ -12,20 +12,19 @@ help:
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make release-github - Create GitHub release from latest tag"
 	@echo "  make lmshell      - Build lmshell binary (requires Rust)"
-	@echo "  make lmshell-install - Build and install lmshell to /usr/local/bin"
+	@echo "  make lmshell-install - Build and install lmshell to ~/.cargo/bin"
 
 install:
 	uv tool install --force -e .
 	@if command -v cargo >/dev/null 2>&1; then \
 		echo "Building and installing lmshell..."; \
 		cd lmshell && cargo build --release; \
-		if [ -w /usr/local/bin ]; then \
-			cp target/release/lmshell /usr/local/bin/; \
-		else \
-			echo "Installing lmshell requires sudo access..."; \
-			sudo cp target/release/lmshell /usr/local/bin/; \
+		mkdir -p ~/.cargo/bin; \
+		cp target/release/lmshell ~/.cargo/bin/; \
+		echo "lmshell installed to ~/.cargo/bin/lmshell"; \
+		if ! echo "$$PATH" | grep -q ".cargo/bin"; then \
+			echo "⚠️  Add ~/.cargo/bin to your PATH if not already there"; \
 		fi; \
-		echo "lmshell installed successfully to /usr/local/bin/lmshell"; \
 	else \
 		echo "Rust/cargo not found - skipping lmshell installation"; \
 		echo "To install lmshell later, run: make lmshell-install"; \
@@ -85,11 +84,10 @@ lmshell:
 	@echo "lmshell built at: lmshell/target/release/lmshell"
 
 lmshell-install: lmshell
-	@echo "Installing lmshell to /usr/local/bin..."
-	@if [ -w /usr/local/bin ]; then \
-		cp lmshell/target/release/lmshell /usr/local/bin/; \
-	else \
-		echo "Installing lmshell requires sudo access..."; \
-		sudo cp lmshell/target/release/lmshell /usr/local/bin/; \
+	@echo "Installing lmshell to ~/.cargo/bin..."
+	@mkdir -p ~/.cargo/bin
+	@cp lmshell/target/release/lmshell ~/.cargo/bin/
+	@echo "lmshell installed to ~/.cargo/bin/lmshell"
+	@if ! echo "$$PATH" | grep -q ".cargo/bin"; then \
+		echo "⚠️  Add ~/.cargo/bin to your PATH if not already there"; \
 	fi
-	@echo "lmshell installed successfully to /usr/local/bin/lmshell"

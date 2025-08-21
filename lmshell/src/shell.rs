@@ -6,7 +6,9 @@ const SENTINEL_PREFIX: &str = "<LMEND:";
 const SENTINEL_SUFFIX: &str = ">";
 
 pub struct Shell {
+    #[allow(dead_code)]
     master: Box<dyn MasterPty + Send>,
+    #[allow(dead_code)]
     child: Box<dyn Child + Send>,
     reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
