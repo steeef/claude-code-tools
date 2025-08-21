@@ -103,18 +103,18 @@ claude mcp add puppeteer -- npx -y @modelcontextprotocol/server-puppeteer
 
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
-## 🚀 lmshell (Experimental)
+## 🚀 lmsh (Experimental)
 
 Natural language shell - type what you want in plain English, get an editable command.
 
 ```bash
 # Direct usage - translate, edit, execute, then enter interactive mode
-$ lmshell "show me all python files modified today"
+$ lmsh "show me all python files modified today"
 find . -name "*.py" -mtime 0  # <-- Edit before running
 
 # Or interactive mode
-$ lmshell
-lmshell> show recent docker containers
+$ lmsh
+lmsh> show recent docker containers
 docker ps -n 5  # <-- Edit before running
 ```
 
@@ -128,12 +128,12 @@ docker ps -n 5  # <-- Edit before running
 
 **Installation:** Requires Rust toolchain:
 ```bash
-cd lmshell && cargo build --release
-cp target/release/lmshell ~/.cargo/bin/
-# Or: make lmshell-install
+cd lmsh && cargo build --release
+cp target/release/lmsh ~/.cargo/bin/
+# Or: make lmsh-install
 ```
 
-See [docs/lmshell.md](docs/lmshell.md) for details.
+See [docs/lmsh.md](docs/lmsh.md) for details.
 
 ## 🔍 find-claude-session
 

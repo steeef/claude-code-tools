@@ -1,5 +1,5 @@
 [package]
-name = "lmshell"
+name = "lmsh"
 version = "0.0.1"
 edition = "2021"
 description = "Lightning-fast natural language shell (minimal scaffold)"

@@ -1,4 +1,4 @@
-# lmshell
+# lmsh
 
 A fast, minimal natural language shell interface that translates conversational commands into editable shell commands.
 
@@ -8,7 +8,7 @@ Type natural language → Get an editable shell command → Review/modify → Ex
 
 Example:
 ```bash
-$ lmshell
+$ lmsh
 > show me all python files modified today
 find . -name "*.py" -mtime 0  # <-- Editable command appears, press Enter to run
 ```
@@ -18,21 +18,21 @@ find . -name "*.py" -mtime 0  # <-- Editable command appears, press Enter to run
 Requires Rust toolchain:
 
 ```bash
-cd lmshell/
+cd lmsh/
 cargo build --release
-cp target/release/lmshell ~/.cargo/bin/
+cp target/release/lmsh ~/.cargo/bin/
 ```
 
-Or use the Makefile: `make lmshell-install`
+Or use the Makefile: `make lmsh-install`
 
 Note: Ensure `~/.cargo/bin` is in your PATH.
 
 ## Usage
 
 ```bash
-lmshell                           # Interactive mode
-lmshell "show me python files"    # Translate, edit, execute, then interactive mode
-lmshell --version                # Version info
+lmsh                           # Interactive mode
+lmsh "show me python files"    # Translate, edit, execute, then interactive mode
+lmsh --version                # Version info
 ```
 
 ## Features

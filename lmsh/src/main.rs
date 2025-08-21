@@ -4,7 +4,7 @@ mod shell;
 use shell::Shell;
 
 fn print_version() {
-    println!("lmshell {}", env!("CARGO_PKG_VERSION"));
+    println!("lmsh {}", env!("CARGO_PKG_VERSION"));
 }
 
 fn main() {
@@ -21,7 +21,7 @@ fn main() {
         return;
     } else if args[0] == "-h" || args[0] == "--help" {
         println!(
-            "Usage: lmshell [OPTIONS] [NATURAL_LANGUAGE_COMMAND]\n\n  [NATURAL_LANGUAGE_COMMAND]  Translate and execute, then enter interactive mode\n  -V, --version  Print version and exit\n  -h, --help     Show this help\n"
+            "Usage: lmsh [OPTIONS] [NATURAL_LANGUAGE_COMMAND]\n\n  [NATURAL_LANGUAGE_COMMAND]  Translate and execute, then enter interactive mode\n  -V, --version  Print version and exit\n  -h, --help     Show this help\n"
         );
         return;
     }
@@ -51,7 +51,7 @@ fn main() {
         }
     };
 
-    let prompt = "lmshell> ";
+    let prompt = "lmsh> ";
     let mut history: Vec<(String, String)> = Vec::new(); // (user_input, generated_command)
     
     // If initial natural language command provided, process it first

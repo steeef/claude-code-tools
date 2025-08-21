@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch release-github lmshell lmshell-install
+.PHONY: install release patch minor major dev-install help clean all-patch release-github lmsh lmsh-install
 
 help:
 	@echo "Available commands:"
@@ -11,23 +11,23 @@ help:
 	@echo "  make all-patch    - Bump patch, clean, and build (ready for uv publish)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make release-github - Create GitHub release from latest tag"
-	@echo "  make lmshell      - Build lmshell binary (requires Rust)"
-	@echo "  make lmshell-install - Build and install lmshell to ~/.cargo/bin"
+	@echo "  make lmsh      - Build lmsh binary (requires Rust)"
+	@echo "  make lmsh-install - Build and install lmsh to ~/.cargo/bin"
 
 install:
 	uv tool install --force -e .
 	@if command -v cargo >/dev/null 2>&1; then \
-		echo "Building and installing lmshell..."; \
-		cd lmshell && cargo build --release; \
+		echo "Building and installing lmsh..."; \
+		cd lmsh && cargo build --release; \
 		mkdir -p ~/.cargo/bin; \
-		cp target/release/lmshell ~/.cargo/bin/; \
-		echo "lmshell installed to ~/.cargo/bin/lmshell"; \
+		cp target/release/lmsh ~/.cargo/bin/; \
+		echo "lmsh installed to ~/.cargo/bin/lmsh"; \
 		if ! echo "$$PATH" | grep -q ".cargo/bin"; then \
 			echo "⚠️  Add ~/.cargo/bin to your PATH if not already there"; \
 		fi; \
 	else \
-		echo "Rust/cargo not found - skipping lmshell installation"; \
-		echo "To install lmshell later, run: make lmshell-install"; \
+		echo "Rust/cargo not found - skipping lmsh installation"; \
+		echo "To install lmsh later, run: make lmsh-install"; \
 	fi
 
 dev-install:
@@ -78,16 +78,16 @@ release-github:
 	gh release create v$$VERSION --title "v$$VERSION" --generate-notes
 	@echo "GitHub release created!"
 
-lmshell:
-	@echo "Building lmshell..."
-	@cd lmshell && cargo build --release
-	@echo "lmshell built at: lmshell/target/release/lmshell"
+lmsh:
+	@echo "Building lmsh..."
+	@cd lmsh && cargo build --release
+	@echo "lmsh built at: lmsh/target/release/lmsh"
 
-lmshell-install: lmshell
-	@echo "Installing lmshell to ~/.cargo/bin..."
+lmsh-install: lmsh
+	@echo "Installing lmsh to ~/.cargo/bin..."
 	@mkdir -p ~/.cargo/bin
-	@cp lmshell/target/release/lmshell ~/.cargo/bin/
-	@echo "lmshell installed to ~/.cargo/bin/lmshell"
+	@cp lmsh/target/release/lmsh ~/.cargo/bin/
+	@echo "lmsh installed to ~/.cargo/bin/lmsh"
 	@if ! echo "$$PATH" | grep -q ".cargo/bin"; then \
 		echo "⚠️  Add ~/.cargo/bin to your PATH if not already there"; \
 	fi
