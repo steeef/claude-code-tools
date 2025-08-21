@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import check functions from other hooks
 from git_add_block_hook import check_git_add_command
 from git_checkout_safety_hook import check_git_checkout_command
+from git_commit_block_hook import check_git_commit_command
 from rm_block_hook import check_rm_command
 from env_file_protection_hook import check_env_file_access
 
@@ -34,6 +35,7 @@ def main():
         check_rm_command,
         check_git_add_command,
         check_git_checkout_command,
+        check_git_commit_command,
         check_env_file_access,
     ]
     
