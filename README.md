@@ -247,8 +247,11 @@ Code's behavior and prevent dangerous operations.
 
 - **File Deletion Protection** - Blocks `rm` commands, enforces TRASH directory
   pattern
-- **Git Safety** - Prevents dangerous `git add -A`, unsafe checkouts, and
-  accidental data loss  
+- **Git Safety** - Advanced git add protection with:
+  - Hard blocks: `git add .`, `git add ../`, `git add *`, `git add -A/--all`
+  - Speed bumps: Shows files before staging directories (e.g., `git add src/`)
+  - Commit speed bump: Warns on first attempt, allows on second
+  - Prevents unsafe checkouts and accidental data loss
 - **Environment Security** - Blocks all .env file operations (read/write/edit),
   suggests `env-safe` command for safe inspection
 - **Context Management** - Blocks reading files >500 lines to prevent context
