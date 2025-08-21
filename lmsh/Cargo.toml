@@ -2,7 +2,13 @@
 name = "lmsh"
 version = "0.0.1"
 edition = "2021"
-description = "Lightning-fast natural language shell (minimal scaffold)"
+description = "Lightning-fast natural language shell - translate natural language to shell commands"
+license = "MIT"
+repository = "https://github.com/pchalasani/claude-code-tools"
+homepage = "https://github.com/pchalasani/claude-code-tools/tree/main/lmsh"
+readme = "../docs/lmsh.md"
+keywords = ["shell", "cli", "natural-language", "claude", "ai"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 # Keep dependencies minimal; disable heavy defaults.
