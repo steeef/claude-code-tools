@@ -1,12 +1,13 @@
 [project]
 name = "claude-code-tools"
-version = "0.1.18"
+version = "0.1.19"
 description = "Collection of tools for working with Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.0.0",
     "fire>=0.5.0",
+    "mcp>=1.13.0",
     "rich>=13.0.0",
 ]
 
@@ -41,7 +42,7 @@ exclude = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.18"
+version = "0.1.19"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",
