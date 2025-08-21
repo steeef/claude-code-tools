@@ -19,7 +19,7 @@ install:
 	@if command -v cargo >/dev/null 2>&1; then \
 		echo "Building and installing lmshell..."; \
 		cd lmshell && cargo build --release && sudo cp target/release/lmshell /usr/local/bin/; \
-		echo "lmshell installed successfully!"; \
+		echo "lmshell installed successfully to /usr/local/bin/lmshell"; \
 	else \
 		echo "Rust/cargo not found - skipping lmshell installation"; \
 		echo "To install lmshell later, run: make lmshell-install"; \
@@ -81,4 +81,4 @@ lmshell:
 lmshell-install: lmshell
 	@echo "Installing lmshell to /usr/local/bin..."
 	@sudo cp lmshell/target/release/lmshell /usr/local/bin/
-	@echo "lmshell installed successfully!"
+	@echo "lmshell installed successfully to /usr/local/bin/lmshell"
