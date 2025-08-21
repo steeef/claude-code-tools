@@ -15,15 +15,16 @@ find . -name "*.py" -mtime 0  # <-- Editable command appears, press Enter to run
 
 ## Installation
 
-Requires Rust toolchain:
-
 ```bash
+# Install from crates.io (easiest, requires Rust)
+cargo install lmsh
+
+# Or build from source
 cd lmsh/
 cargo build --release
 cp target/release/lmsh ~/.cargo/bin/
+# Or: make lmsh-install
 ```
-
-Or use the Makefile: `make lmsh-install`
 
 Note: Ensure `~/.cargo/bin` is in your PATH.
 

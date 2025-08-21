@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch release-github lmsh lmsh-install
+.PHONY: install release patch minor major dev-install help clean all-patch release-github lmsh lmsh-install lmsh-publish
 
 help:
 	@echo "Available commands:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make release-github - Create GitHub release from latest tag"
 	@echo "  make lmsh      - Build lmsh binary (requires Rust)"
 	@echo "  make lmsh-install - Build and install lmsh to ~/.cargo/bin"
+	@echo "  make lmsh-publish - Publish lmsh to crates.io"
 
 install:
 	uv tool install --force -e .
@@ -91,3 +92,8 @@ lmsh-install: lmsh
 	@if ! echo "$$PATH" | grep -q ".cargo/bin"; then \
 		echo "⚠️  Add ~/.cargo/bin to your PATH if not already there"; \
 	fi
+
+lmsh-publish:
+	@echo "Publishing lmsh to crates.io..."
+	@cd lmsh && cargo publish --allow-dirty
+	@echo "Published! Users can now install with: cargo install lmsh"

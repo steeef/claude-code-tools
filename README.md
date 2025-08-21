@@ -126,8 +126,12 @@ docker ps -n 5  # <-- Edit before running
 
 **Note:** Claude API adds ~3-5s latency. Future versions may use local models for instant response.
 
-**Installation:** Requires Rust toolchain:
+**Installation:**
 ```bash
+# Install from crates.io (easiest, requires Rust)
+cargo install lmsh
+
+# Or build from source
 cd lmsh && cargo build --release
 cp target/release/lmsh ~/.cargo/bin/
 # Or: make lmsh-install
