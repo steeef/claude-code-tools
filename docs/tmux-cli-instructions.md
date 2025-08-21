@@ -11,12 +11,18 @@ Automatically detects whether you're inside or outside tmux and uses the appropr
 - tmux must be installed
 - The `tmux-cli` command must be available (installed via `uv tool install`)
 
+## Pane Identification
+
+Panes can be specified in two simple ways:
+- Just the pane number (e.g., `2`) - refers to pane 2 in the current window
+- Full format: `session:window.pane` (e.g., `myapp:1.2`) - for any pane in any session
+
 ## ⚠️ IMPORTANT: Always Launch a Shell First!
 
 **Always launch zsh first** to prevent losing output when commands fail:
 ```bash
 tmux-cli launch "zsh"  # Do this FIRST
-tmux-cli send "your-command" --pane=%48  # Then run commands
+tmux-cli send "your-command" --pane=2  # Then run commands
 ```
 
 If you launch a command directly and it errors, the pane closes immediately and you lose all output!
@@ -27,13 +33,13 @@ If you launch a command directly and it errors, the pane closes immediately and 
 ```bash
 tmux-cli launch "command"
 # Example: tmux-cli launch "python3"
-# Returns: pane ID (e.g., %48)
+# Returns: pane identifier (e.g., session:window.pane format like myapp:1.2)
 ```
 
 ### Send input to a pane
 ```bash
 tmux-cli send "text" --pane=PANE_ID
-# Example: tmux-cli send "print('hello')" --pane=%48
+# Example: tmux-cli send "print('hello')" --pane=3
 
 # By default, there's a 1-second delay between text and Enter.
 # This ensures compatibility with various CLI applications.
@@ -51,7 +57,7 @@ tmux-cli send "text" --pane=PANE_ID --delay-enter=0.5
 ### Capture output from a pane
 ```bash
 tmux-cli capture --pane=PANE_ID
-# Example: tmux-cli capture --pane=%48
+# Example: tmux-cli capture --pane=2
 ```
 
 ### List all panes
@@ -60,10 +66,22 @@ tmux-cli list_panes
 # Returns: JSON with pane IDs, indices, and status
 ```
 
+### Show current tmux status
+```bash
+tmux-cli status
+# Shows current location and all panes in current window
+# Example output:
+#   Current location: myapp:1.2
+#   Panes in current window:
+#    * myapp:1.0       zsh                  zsh
+#      myapp:1.1       python3              python3  
+#      myapp:1.2       vim                  main.py
+```
+
 ### Kill a pane
 ```bash
 tmux-cli kill --pane=PANE_ID
-# Example: tmux-cli kill --pane=%48
+# Example: tmux-cli kill --pane=2
 
 # SAFETY: You cannot kill your own pane - this will give an error
 # to prevent accidentally terminating your session
@@ -72,21 +90,24 @@ tmux-cli kill --pane=PANE_ID
 ### Send interrupt (Ctrl+C)
 ```bash
 tmux-cli interrupt --pane=PANE_ID
+# Example: tmux-cli interrupt --pane=2
 ```
 
 ### Send escape key
 ```bash
 tmux-cli escape --pane=PANE_ID
+# Example: tmux-cli escape --pane=3
 # Useful for exiting Claude or vim-like applications
 ```
 
 ### Wait for pane to become idle
 ```bash
 tmux-cli wait_idle --pane=PANE_ID
+# Example: tmux-cli wait_idle --pane=2
 # Waits until no output changes for 2 seconds (default)
 
 # Custom idle time and timeout:
-tmux-cli wait_idle --pane=PANE_ID --idle-time=3.0 --timeout=60
+tmux-cli wait_idle --pane=2 --idle-time=3.0 --timeout=60
 ```
 
 ### Get help
@@ -99,23 +120,23 @@ tmux-cli help
 
 1. **ALWAYS launch a shell first** (prefer zsh) - this prevents losing output on errors:
    ```bash
-   tmux-cli launch "zsh"  # Returns pane ID - DO THIS FIRST!
+   tmux-cli launch "zsh"  # Returns pane identifier - DO THIS FIRST!
    ```
 
 2. Run your command in the shell:
    ```bash
-   tmux-cli send "python script.py" --pane=%48
+   tmux-cli send "python script.py" --pane=2
    ```
 
 3. Interact with the program:
    ```bash
-   tmux-cli send "user input" --pane=%48
-   tmux-cli capture --pane=%48  # Check output
+   tmux-cli send "user input" --pane=2
+   tmux-cli capture --pane=2  # Check output
    ```
 
 4. Clean up when done:
    ```bash
-   tmux-cli kill --pane=%48
+   tmux-cli kill --pane=2
    ```
 
 ## Remote Mode Specific Commands
@@ -141,9 +162,10 @@ tmux-cli list_windows
 ```
 
 ## Tips
-- Always save the pane/window ID returned by `launch`
+- Always save the pane/window identifier returned by `launch`
 - Use `capture` to check the current state before sending input
-- In local mode: Pane IDs can be like `%48` or pane indices like `1`, `2`
+- Use `status` to see all available panes and their current state
+- In local mode: Pane identifiers can be session:window.pane format (like `myapp:1.2`) or just pane indices like `1`, `2`
 - In remote mode: Window IDs can be indices like `0`, `1` or full form like `session:0.0`
 - If you launch a command directly (not via shell), the pane/window closes when
   the command exits
@@ -154,11 +176,11 @@ tmux-cli list_windows
 Instead of repeatedly checking with `capture`, use `wait_idle`:
 ```bash
 # Send command to a CLI application
-tmux-cli send "analyze this code" --pane=%48
+tmux-cli send "analyze this code" --pane=2
 
 # Wait for it to finish (no output for 3 seconds)
-tmux-cli wait_idle --pane=%48 --idle-time=3.0
+tmux-cli wait_idle --pane=2 --idle-time=3.0
 
 # Now capture the result
-tmux-cli capture --pane=%48
+tmux-cli capture --pane=2
 ```

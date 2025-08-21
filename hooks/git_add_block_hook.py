@@ -11,12 +11,13 @@ def check_git_add_command(command):
     
     # Pattern to match git add with problematic flags
     # This catches: git add -A, git add --all, git add -a, git add ., and combined flags
+    # We need to match these as standalone arguments, not as part of filenames
     git_add_pattern = re.compile(
         r'^git\s+add\s+('
-        r'-[a-zA-Z]*[Aa][a-zA-Z]*|'  # Flags containing 'A' or 'a' (e.g., -A, -a, -fA, -Af)
-        r'--all|'                     # Long form --all
-        r'\.|'                        # git add . (adds everything in current dir)
-        r'\*'                         # git add * (shell expansion of all files)
+        r'-[a-zA-Z]*[Aa][a-zA-Z]*(\s|$)|'  # Flags containing 'A' or 'a' (e.g., -A, -a, -fA, -Af)
+        r'--all(\s|$)|'                     # Long form --all
+        r'\.(\s|$)|'                        # git add . (as a standalone argument)
+        r'\*(\s|$)'                         # git add * (as a standalone argument)
         r')', re.IGNORECASE
     )
     

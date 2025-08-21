@@ -75,8 +75,13 @@ Basic usage:
 - tmux-cli launch "command" - Launch a CLI application
 - tmux-cli send "text" --pane=PANE_ID - Send input to a pane
 - tmux-cli capture --pane=PANE_ID - Capture output from a pane
+- tmux-cli status - Show current tmux status and all panes
 - tmux-cli kill --pane=PANE_ID - Kill a pane
 - tmux-cli help - Display full help
+
+Pane Identification:
+- Just the pane number (e.g., '2') - refers to pane 2 in the current window
+- Full format: session:window.pane (e.g., 'myapp:1.2') - for any pane in any session
 
 For full documentation, see docs/tmux-cli-instructions.md in the package repository."""
 
@@ -128,6 +133,74 @@ class TmuxCLIController:
         output, code = self._run_tmux_command(['display-message', '-p', '#{pane_id}'])
         return output if code == 0 else None
     
+    def get_current_pane_index(self) -> Optional[str]:
+        """Get the index of the current tmux pane."""
+        output, code = self._run_tmux_command(['display-message', '-p', '#{pane_index}'])
+        return output if code == 0 else None
+    
+    def get_pane_command(self, pane_id: str) -> Optional[str]:
+        """Get the command running in a specific pane."""
+        output, code = self._run_tmux_command(['display-message', '-t', pane_id, '-p', '#{pane_current_command}'])
+        return output if code == 0 else None
+    
+    def format_pane_identifier(self, pane_id: str) -> str:
+        """Convert pane ID to session:window.pane format."""
+        try:
+            # Get session, window index, and pane index for this pane
+            session_output, session_code = self._run_tmux_command(['display-message', '-t', pane_id, '-p', '#{session_name}'])
+            window_output, window_code = self._run_tmux_command(['display-message', '-t', pane_id, '-p', '#{window_index}'])
+            pane_output, pane_code = self._run_tmux_command(['display-message', '-t', pane_id, '-p', '#{pane_index}'])
+            
+            if session_code == 0 and window_code == 0 and pane_code == 0:
+                return f"{session_output}:{window_output}.{pane_output}"
+            else:
+                # Fallback to pane ID
+                return pane_id
+        except:
+            return pane_id
+    
+    def resolve_pane_identifier(self, identifier: str) -> Optional[str]:
+        """Convert various pane identifier formats to pane ID.
+        
+        Supports:
+        - Pane IDs: %123
+        - session:window.pane: mysession:1.2
+        - Just pane index: 2 (for current window)
+        """
+        if not identifier:
+            return None
+        
+        # Convert to string if it's a number
+        identifier = str(identifier)
+            
+        # If it's already a pane ID (%123), return as is
+        if identifier.startswith('%'):
+            return identifier
+            
+        # If it's just a number, treat as pane index in current window
+        if identifier.isdigit():
+            panes = self.list_panes()
+            for pane in panes:
+                if pane['index'] == identifier:
+                    return pane['id']
+            return None
+            
+        # If it's session:window.pane format
+        if ':' in identifier and '.' in identifier:
+            try:
+                session_window, pane_index = identifier.rsplit('.', 1)
+                session, window = session_window.split(':', 1)
+                
+                # Get pane ID from session:window.pane
+                output, code = self._run_tmux_command([
+                    'display-message', '-t', f'{session}:{window}.{pane_index}', '-p', '#{pane_id}'
+                ])
+                return output if code == 0 else None
+            except:
+                return None
+                
+        return None
+    
     def get_current_window_id(self) -> Optional[str]:
         """Get the ID of the current tmux window."""
         # Use TMUX_PANE environment variable to get the pane we're running in
@@ -146,17 +219,17 @@ class TmuxCLIController:
         List all panes in the current window.
         
         Returns:
-            List of dicts with pane info (id, index, title, active, size)
+            List of dicts with pane info (id, index, title, active, size, command, formatted_id)
         """
         target = f"{self.session_name}:{self.window_name}" if self.session_name and self.window_name else ""
         
         output, code = self._run_tmux_command([
             'list-panes',
             '-t', target,
-            '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}'
+            '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}|#{pane_current_command}'
         ] if target else [
             'list-panes',
-            '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}'
+            '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}|#{pane_current_command}'
         ])
         
         if code != 0:
@@ -166,12 +239,15 @@ class TmuxCLIController:
         for line in output.split('\n'):
             if line:
                 parts = line.split('|')
+                pane_id = parts[0]
                 panes.append({
-                    'id': parts[0],
+                    'id': pane_id,
                     'index': parts[1],
                     'title': parts[2],
                     'active': parts[3] == '1',
-                    'size': parts[4]
+                    'size': parts[4],
+                    'command': parts[5] if len(parts) > 5 else '',
+                    'formatted_id': self.format_pane_identifier(pane_id)
                 })
         return panes
     
@@ -472,9 +548,12 @@ class TmuxCLIController:
             size: Pane size percentage
             
         Returns:
-            Pane ID of the created pane
+            Formatted pane identifier (session:window.pane) of the created pane
         """
-        return self.create_pane(vertical=vertical, size=size, start_command=command)
+        pane_id = self.create_pane(vertical=vertical, size=size, start_command=command)
+        if pane_id:
+            return self.format_pane_identifier(pane_id)
+        return None
 
 
 class CLI:
@@ -504,6 +583,36 @@ class CLI:
             self.controller = RemoteTmuxController(session_name=session_name)
             self.mode = 'remote'
     
+    def status(self):
+        """Show current tmux status and pane information."""
+        if not self.in_tmux:
+            print("Not currently in tmux")
+            if hasattr(self.controller, 'session_name'):
+                print(f"Remote session: {self.controller.session_name}")
+            return
+            
+        # Get current location
+        session = self.controller.get_current_session()
+        window = self.controller.get_current_window()
+        pane_index = self.controller.get_current_pane_index()
+        
+        if session and window and pane_index:
+            print(f"Current location: {session}:{window}.{pane_index}")
+        else:
+            print("Could not determine current tmux location")
+            
+        # List all panes in current window
+        panes = self.controller.list_panes()
+        if panes:
+            print(f"\nPanes in current window:")
+            for pane in panes:
+                active_marker = " *" if pane['active'] else "  "
+                command = pane.get('command', '')
+                title = pane.get('title', '')
+                print(f"{active_marker} {pane['formatted_id']:15} {command:20} {title}")
+        else:
+            print("\nNo panes found")
+    
     def list_panes(self):
         """List all panes in current window."""
         panes = self.controller.list_panes()
@@ -520,11 +629,11 @@ class CLI:
         """
         if self.mode == 'local':
             pane_id = self.controller.launch_cli(command, vertical=vertical, size=size)
-            print(f"Launched in pane: {pane_id}")
+            print(f"Launched '{command}' in pane {pane_id}")
         else:
             # Remote mode
             pane_id = self.controller.launch_cli(command, name=name)
-            print(f"Launched in window: {pane_id}")
+            print(f"Launched '{command}' in window: {pane_id}")
         return pane_id
     
     def send(self, text: str, pane: Optional[str] = None, enter: bool = True,
@@ -533,17 +642,19 @@ class CLI:
         
         Args:
             text: Text to send
-            pane: Target pane ID or index
+            pane: Target pane (session:window.pane, %id, or just index)
             enter: Whether to send Enter key after text
             delay_enter: If True, use 1.0s delay; if float, use that delay in seconds (default: True)
         """
         if self.mode == 'local':
-            # Local mode - use select_pane
+            # Local mode - resolve pane identifier
             if pane:
-                if pane.isdigit():
-                    self.controller.select_pane(pane_index=int(pane))
+                resolved_pane = self.controller.resolve_pane_identifier(pane)
+                if resolved_pane:
+                    self.controller.select_pane(pane_id=resolved_pane)
                 else:
-                    self.controller.select_pane(pane_id=pane)
+                    print(f"Could not resolve pane identifier: {pane}")
+                    return
             self.controller.send_keys(text, enter=enter, delay_enter=delay_enter)
         else:
             # Remote mode - pass pane_id directly
@@ -554,12 +665,14 @@ class CLI:
     def capture(self, pane: Optional[str] = None, lines: Optional[int] = None):
         """Capture and print pane content."""
         if self.mode == 'local':
-            # Local mode - use select_pane
+            # Local mode - resolve pane identifier
             if pane:
-                if pane.isdigit():
-                    self.controller.select_pane(pane_index=int(pane))
+                resolved_pane = self.controller.resolve_pane_identifier(pane)
+                if resolved_pane:
+                    self.controller.select_pane(pane_id=resolved_pane)
                 else:
-                    self.controller.select_pane(pane_id=pane)
+                    print(f"Could not resolve pane identifier: {pane}")
+                    return ""
             content = self.controller.capture_pane(lines=lines)
         else:
             # Remote mode - pass pane_id directly
@@ -570,12 +683,14 @@ class CLI:
     def interrupt(self, pane: Optional[str] = None):
         """Send Ctrl+C to a pane."""
         if self.mode == 'local':
-            # Local mode - use select_pane
+            # Local mode - resolve pane identifier
             if pane:
-                if pane.isdigit():
-                    self.controller.select_pane(pane_index=int(pane))
+                resolved_pane = self.controller.resolve_pane_identifier(pane)
+                if resolved_pane:
+                    self.controller.select_pane(pane_id=resolved_pane)
                 else:
-                    self.controller.select_pane(pane_id=pane)
+                    print(f"Could not resolve pane identifier: {pane}")
+                    return
             self.controller.send_interrupt()
         else:
             # Remote mode - resolve and pass pane_id
@@ -586,12 +701,14 @@ class CLI:
     def escape(self, pane: Optional[str] = None):
         """Send Escape key to a pane."""
         if self.mode == 'local':
-            # Local mode - use select_pane
+            # Local mode - resolve pane identifier
             if pane:
-                if pane.isdigit():
-                    self.controller.select_pane(pane_index=int(pane))
+                resolved_pane = self.controller.resolve_pane_identifier(pane)
+                if resolved_pane:
+                    self.controller.select_pane(pane_id=resolved_pane)
                 else:
-                    self.controller.select_pane(pane_id=pane)
+                    print(f"Could not resolve pane identifier: {pane}")
+                    return
             self.controller.send_escape()
         else:
             # Remote mode - resolve and pass pane_id
@@ -604,10 +721,12 @@ class CLI:
         if self.mode == 'local':
             # Local mode - kill pane
             if pane:
-                if pane.isdigit():
-                    self.controller.select_pane(pane_index=int(pane))
+                resolved_pane = self.controller.resolve_pane_identifier(pane)
+                if resolved_pane:
+                    self.controller.select_pane(pane_id=resolved_pane)
                 else:
-                    self.controller.select_pane(pane_id=pane)
+                    print(f"Could not resolve pane identifier: {pane}")
+                    return
             try:
                 self.controller.kill_pane()
                 print("Pane killed")
@@ -625,12 +744,14 @@ class CLI:
                   timeout: Optional[int] = None):
         """Wait for pane to become idle (no output changes)."""
         if self.mode == 'local':
-            # Local mode - use select_pane
+            # Local mode - resolve pane identifier
             if pane:
-                if pane.isdigit():
-                    self.controller.select_pane(pane_index=int(pane))
+                resolved_pane = self.controller.resolve_pane_identifier(pane)
+                if resolved_pane:
+                    self.controller.select_pane(pane_id=resolved_pane)
                 else:
-                    self.controller.select_pane(pane_id=pane)
+                    print(f"Could not resolve pane identifier: {pane}")
+                    return False
             target = None
         else:
             # Remote mode - resolve pane_id
@@ -683,7 +804,7 @@ class CLI:
             print("\nCurrent panes:")
             panes = self.controller.list_panes()
             for pane in panes:
-                print(f"  Pane {pane['index']}: {pane['id']} - {pane['title']}")
+                print(f"  {pane['formatted_id']}: {pane['command']} - {pane['title']}")
             
             # Create a new pane with Python REPL
             print("\nCreating new pane with Python...")
@@ -744,8 +865,16 @@ class CLI:
     
     def help(self):
         """Display tmux-cli usage instructions."""
+        # Show status first if in tmux
+        if self.in_tmux:
+            print("CURRENT TMUX STATUS:")
+            print("=" * 60)
+            self.status()
+            print("=" * 60)
+            print()
+        
         # Add mode-specific header
-        mode_info = f"\n{'='*60}\n"
+        mode_info = f"TMUX-CLI HELP\n{'='*60}\n"
         if self.mode == 'local':
             mode_info += "MODE: LOCAL (inside tmux) - Managing panes in current window\n"
         else:
@@ -762,6 +891,13 @@ class CLI:
             print("- tmux-cli cleanup: Kill the entire managed session")
             print("- tmux-cli list_windows: List all windows in the session")
             print("\nNote: In remote mode, 'panes' are actually windows for better isolation.")
+            print("="*60)
+        else:
+            print("\n" + "="*60)
+            print("LOCAL MODE PANE IDENTIFIERS:")
+            print("- session:window.pane format (e.g., 'cc-tools:1.2')")
+            print("- Pane IDs (e.g., '%12') for backwards compatibility")
+            print("- Just pane index (e.g., '2') for current window")
             print("="*60)
 
 
