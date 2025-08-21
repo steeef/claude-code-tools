@@ -183,3 +183,4 @@ reference/
 
 # Ignore config.json files at any level
 **/config.json
+*.flag
