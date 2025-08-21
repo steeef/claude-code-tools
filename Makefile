@@ -18,7 +18,13 @@ install:
 	uv tool install --force -e .
 	@if command -v cargo >/dev/null 2>&1; then \
 		echo "Building and installing lmshell..."; \
-		cd lmshell && cargo build --release && sudo cp target/release/lmshell /usr/local/bin/; \
+		cd lmshell && cargo build --release; \
+		if [ -w /usr/local/bin ]; then \
+			cp target/release/lmshell /usr/local/bin/; \
+		else \
+			echo "Installing lmshell requires sudo access..."; \
+			sudo cp target/release/lmshell /usr/local/bin/; \
+		fi; \
 		echo "lmshell installed successfully to /usr/local/bin/lmshell"; \
 	else \
 		echo "Rust/cargo not found - skipping lmshell installation"; \
@@ -80,5 +86,10 @@ lmshell:
 
 lmshell-install: lmshell
 	@echo "Installing lmshell to /usr/local/bin..."
-	@sudo cp lmshell/target/release/lmshell /usr/local/bin/
+	@if [ -w /usr/local/bin ]; then \
+		cp lmshell/target/release/lmshell /usr/local/bin/; \
+	else \
+		echo "Installing lmshell requires sudo access..."; \
+		sudo cp lmshell/target/release/lmshell /usr/local/bin/; \
+	fi
 	@echo "lmshell installed successfully to /usr/local/bin/lmshell"
