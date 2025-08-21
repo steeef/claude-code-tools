@@ -40,9 +40,9 @@ lmsh --version                # Version info
 
 - **Editable commands** - Review and modify before execution
 - **Fast startup** - Optimized Rust binary (~1ms)
-- **Claude-powered** - Uses Claude for natural language understanding
+- **Claude-powered** - Leverages your existing Claude Code CLI by calling `claude -p <prompt>` in non-interactive mode
 - **Shell preservation** - Maintains your shell environment and aliases
 
 ## Note
 
-Claude's API startup adds ~2-3s latency. Future versions may explore faster local models for instant response.
+This tool requires the Claude Code CLI (`claude` command) to be installed and configured. The translation step adds ~2-3s latency due to Claude Code CLI startup time.

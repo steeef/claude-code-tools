@@ -120,11 +120,11 @@ docker ps -n 5  # <-- Edit before running
 
 **Features:**
 - Rust-based for instant startup (<1ms binary load time)
-- Translates natural language to shell commands using Claude
+- Translates natural language to shell commands using Claude Code CLI
 - Commands are editable before execution - full control
 - Preserves your shell environment
 
-**Note:** Claude API adds ~3-5s latency. Future versions may use local models for instant response.
+**Note:** Requires Claude Code CLI (`claude` command) to be installed. The translation adds ~2-3s due to Claude Code CLI startup.
 
 **Installation:**
 ```bash
