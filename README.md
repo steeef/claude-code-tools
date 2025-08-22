@@ -291,7 +291,8 @@ For complete documentation, see [hooks/README.md](hooks/README.md).
 ## 🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers
 
 You can use Claude Code with alternative LLMs served via Anthropic-compatible
-APIs. Add these functions to your shell config (.bashrc/.zshrc):
+APIs, e.g. Kimi-k2, GLM4.5 (from zai), Deepseek-v3.1. 
+Add these functions to your shell config (.bashrc/.zshrc):
 
 ```bash
 kimi() {
@@ -309,13 +310,24 @@ zai() {
         claude "$@"
     )
 }
+
+dseek() {
+    (
+        export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+        export ANTHROPIC_AUTH_TOKEN=${DEEPSEEK_API_KEY}
+        export ANTHROPIC_MODEL=deepseek-chat
+        export ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat        
+        claude "$@"
+    )
+}
 ```
 
 After adding these functions:
-- Set your API keys: `export KIMI_API_KEY=your-kimi-key` and 
-  `export Z_API_KEY=your-z-key`
+- Set your API keys: `export KIMI_API_KEY=your-kimi-key`,
+  `export Z_API_KEY=your-z-key`, `export DEEPSEEK_API_KEY=your-deepseek-key`
 - Run `kimi` to use Claude Code with the Kimi K2 LLM
 - Run `zai` to use Claude Code with the GLM-4.5 model
+- Run `dseek` to use Claude Code with the DeepSeek model
 
 The functions use subshells to ensure the environment variables don't affect 
 your main shell session, so you could be running multiple instances of Claude Code,
