@@ -19,6 +19,7 @@ and other CLI coding agents.
 - [🛠️ Development](#development)
 - [📄 License](#license)
 
+<a id="tmux-cli-bridging-claude-code-and-interactive-clis"></a>
 ## 🎮 tmux-cli: Bridging Claude Code and Interactive CLIs
 
 > **Note**: While the description below focuses on Claude Code, tmux-cli works with any CLI coding agent.
@@ -52,6 +53,7 @@ use tmux-cli behind the scenes.
 
 **Works anywhere**: Automatically handles both local tmux panes and remote sessions.
 
+<a id="quick-start"></a>
 ## 🚀 Quick Start
 
 ```bash
@@ -68,6 +70,7 @@ This gives you:
 - `vault` - Encrypted backup for your .env files
 - `env-safe` - Safely inspect .env files without exposing values
 
+<a id="tmux-cli-deep-dive"></a>
 ## 🎮 tmux-cli Deep Dive
 
 ### What Claude Code Can Do With tmux-cli
@@ -119,6 +122,7 @@ claude mcp add puppeteer -- npx -y @modelcontextprotocol/server-puppeteer
 
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
+<a id="lmsh-experimental"></a>
 ## 🚀 lmsh (Experimental)
 
 Natural language shell - type what you want in plain English, get an editable command.
@@ -155,6 +159,7 @@ cp target/release/lmsh ~/.cargo/bin/
 
 See [docs/lmsh.md](docs/lmsh.md) for details.
 
+<a id="find-claude-session"></a>
 ## 🔍 find-claude-session
 
 Search and resume Claude Code sessions by keywords with an interactive UI.
@@ -208,6 +213,7 @@ Looks like this --
 
 ![fcs.png](docs/fcs.png)
 
+<a id="vault"></a>
 ## 🔐 vault
 
 Centralized encrypted backup for .env files across all your projects using SOPS.
@@ -229,6 +235,7 @@ vault status    # Check sync status for current project
 
 For detailed documentation, see [docs/vault-documentation.md](docs/vault-documentation.md).
 
+<a id="env-safe"></a>
 ## 🔍 env-safe
 
 Safely inspect .env files without exposing sensitive values. Designed for Claude Code and other automated tools that need to work with environment files without accidentally leaking secrets.
@@ -254,6 +261,7 @@ env-safe --help                  # See all options
 
 Claude Code is completely blocked from directly accessing .env files - no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
 
+<a id="claude-code-safety-hooks"></a>
 ## 🛡️ Claude Code Safety Hooks
 
 This repository includes a comprehensive set of safety hooks that enhance Claude
@@ -304,6 +312,7 @@ Code's behavior and prevent dangerous operations.
 
 For complete documentation, see [hooks/README.md](hooks/README.md).
 
+<a id="using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers"></a>
 ## 🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers
 
 You can use Claude Code with alternative LLMs served via Anthropic-compatible
@@ -349,6 +358,7 @@ The functions use subshells to ensure the environment variables don't affect
 your main shell session, so you could be running multiple instances of Claude Code,
 each using a different LLM.
 
+<a id="documentation"></a>
 ## 📚 Documentation
 
 - [tmux-cli detailed instructions](docs/tmux-cli-instructions.md) - 
@@ -359,6 +369,7 @@ each using a different LLM.
   Complete guide for the .env backup system
 - [Hook configuration](hooks/README.md) - Setting up Claude Code hooks
 
+<a id="requirements"></a>
 ## 📋 Requirements
 
 - Python 3.11+
@@ -366,6 +377,7 @@ each using a different LLM.
 - tmux (for tmux-cli functionality)
 - SOPS (for vault functionality)
 
+<a id="development"></a>
 ## 🛠️ Development
 
 ### Setup
@@ -422,6 +434,7 @@ Run `make help` to see all available commands:
 - `make release` - Bump patch version and install globally
 - `make patch/minor/major` - Version bump commands
 
+<a id="license"></a>
 ## 📄 License
 
 MIT
