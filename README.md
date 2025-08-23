@@ -3,6 +3,22 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
+## Table of Contents
+
+- [🎮 tmux-cli: Bridging Claude Code and Interactive CLIs — "playwright for the terminal"](#tmux-cli-bridging-claude-code-and-interactive-clis)
+- [🚀 Quick Start](#quick-start)
+- [🎮 tmux-cli Deep Dive](#tmux-cli-deep-dive)
+- [🚀 lmsh (Experimental) — natural language to shell commands](#lmsh-experimental)
+- [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
+- [🔐 vault — encrypted .env backup & sync](#vault)
+- [🔍 env-safe — inspect .env safely without values](#env-safe)
+- [🛡️ Claude Code Safety Hooks — guardrails for bash, git, env, files](#claude-code-safety-hooks)
+- [🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
+- [📚 Documentation](#documentation)
+- [📋 Requirements](#requirements)
+- [🛠️ Development](#development)
+- [📄 License](#license)
+
 ## 🎮 tmux-cli: Bridging Claude Code and Interactive CLIs
 
 > **Note**: While the description below focuses on Claude Code, tmux-cli works with any CLI coding agent.
