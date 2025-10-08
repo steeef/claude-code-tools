@@ -254,6 +254,10 @@ find-codex-session "keywords" --codex-home /custom/path
 - Reverse chronological ordering (most recent first)
 - Multi-line preview wrapping for better readability
 
+Looks like this --
+
+![find-codex-session.png](demos/find-codex-session.png)
+
 <a id="vault"></a>
 ## 🔐 vault
 
