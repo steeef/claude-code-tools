@@ -168,35 +168,56 @@ def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, 
     return matches, line_count, git_branch
 
 
+def is_system_message(text: str) -> bool:
+    """Check if text is system-generated (XML tags, env context, etc)"""
+    if not text or len(text.strip()) < 5:
+        return True
+    text = text.strip()
+    # Check for XML-like tags (user_instructions, environment_context, etc)
+    if text.startswith("<") and ">" in text[:100]:
+        return True
+    return False
+
+
 def get_session_preview(filepath: Path) -> str:
-    """Get a preview of the session from the first user message."""
+    """Get a preview of the session from the LAST user message."""
+    last_user_message = None
+
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
                     data = json.loads(line.strip())
-                    if data.get('type') == 'message' and data.get('role') == 'user':
-                        content = data.get('content', '')
+                    # Check top-level type for user messages
+                    if data.get('type') == 'user':
+                        message = data.get('message', {})
+                        content = message.get('content', '')
+                        text = None
+
                         if isinstance(content, str):
-                            # Get first 60 chars of the message
-                            preview = content.strip().replace('\n', ' ')[:60]
-                            if len(content) > 60:
-                                preview += "..."
-                            return preview
+                            text = content.strip()
                         elif isinstance(content, list):
                             # Handle structured content
                             for item in content:
                                 if isinstance(item, dict) and item.get('type') == 'text':
-                                    text = item.get('text', '')
-                                    preview = text.strip().replace('\n', ' ')[:60]
-                                    if len(text) > 60:
-                                        preview += "..."
-                                    return preview
+                                    text = item.get('text', '').strip()
+                                    break
+
+                        # Filter out system messages and keep updating to get LAST message
+                        if text and not is_system_message(text):
+                            cleaned = text.replace('\n', ' ')[:400]
+                            # Prefer substantial messages (>20 chars)
+                            if len(cleaned) > 20:
+                                last_user_message = cleaned
+                            elif last_user_message is None:
+                                last_user_message = cleaned
+
                 except (json.JSONDecodeError, KeyError):
                     continue
     except Exception:
         pass
-    return "No preview available"
+
+    return last_user_message if last_user_message else "No preview available"
 
 
 def find_sessions(keywords: List[str], global_search: bool = False, claude_home: Optional[str] = None) -> List[Tuple[str, float, int, str, str, str, Optional[str]]]:
@@ -307,7 +328,7 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
     table.add_column("Branch", style="magenta")
     table.add_column("Date", style="blue")
     table.add_column("Lines", style="cyan", justify="right")
-    table.add_column("Preview", style="white", overflow="fold")
+    table.add_column("Preview", style="white", max_width=60, overflow="fold")
     
     for idx, (session_id, mod_time, line_count, project_name, preview, _, git_branch) in enumerate(display_sessions, 1):
         mod_date = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M')
