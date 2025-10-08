@@ -7,9 +7,10 @@ Usage:
     fcs-codex "keywords" [OPTIONS]  # via shell wrapper
 
 Examples:
-    find-codex-session "langroid,MCP"
-    find-codex-session "error,debugging" -n 5
-    fcs-codex "keywords" --shell
+    find-codex-session "langroid,MCP"           # Current project only
+    find-codex-session "error,debugging" -g     # All projects
+    find-codex-session "keywords" -n 5          # Limit results
+    fcs-codex "keywords" --shell                # Via shell wrapper
 """
 
 import argparse
@@ -93,6 +94,17 @@ def get_project_name(cwd: str) -> str:
     return path.name if path.name else "unknown"
 
 
+def is_system_message(text: str) -> bool:
+    """Check if text is system-generated (XML tags, env context, etc)"""
+    if not text or len(text.strip()) < 5:
+        return True
+    text = text.strip()
+    # Check for XML-like tags (user_instructions, environment_context, etc)
+    if text.startswith("<") and ">" in text[:100]:
+        return True
+    return False
+
+
 def search_keywords_in_file(
     session_file: Path, keywords: list[str]
 ) -> tuple[bool, int, Optional[str]]:
@@ -102,12 +114,12 @@ def search_keywords_in_file(
     Returns: (found, line_count, preview)
     - found: True if all keywords found (case-insensitive AND logic)
     - line_count: total lines in file
-    - preview: first user message content
+    - preview: best user message content (skips system messages)
     """
     keywords_lower = [k.lower() for k in keywords]
     found_keywords = set()
     line_count = 0
-    preview = None
+    last_user_message = None  # Keep track of the LAST user message
 
     try:
         with open(session_file, "r", encoding="utf-8") as f:
@@ -119,10 +131,10 @@ def search_keywords_in_file(
                 try:
                     entry = json.loads(line)
 
-                    # Extract preview from first user message
+                    # Extract user messages (skip system messages)
+                    # Keep updating to get the LAST one
                     if (
-                        preview is None
-                        and entry.get("type") == "response_item"
+                        entry.get("type") == "response_item"
                         and entry.get("payload", {}).get("role") == "user"
                     ):
                         content = entry.get("payload", {}).get("content", [])
@@ -130,10 +142,15 @@ def search_keywords_in_file(
                             first_item = content[0]
                             if isinstance(first_item, dict):
                                 text = first_item.get("text", "")
-                                if text:
-                                    preview = text[:200].replace(
-                                        "\n", " "
-                                    ).strip()
+                                if text and not is_system_message(text):
+                                    # Keep updating with latest message
+                                    cleaned = text[:400].replace("\n", " ").strip()
+                                    # Only keep if it's substantial (>20 chars)
+                                    if len(cleaned) > 20:
+                                        last_user_message = cleaned
+                                    elif last_user_message is None:
+                                        # Keep even short messages if no better option
+                                        last_user_message = cleaned
 
                     # Search for keywords in all text content
                     line_lower = line.lower()
@@ -141,26 +158,30 @@ def search_keywords_in_file(
                         if kw in line_lower:
                             found_keywords.add(kw)
 
-                    # Early exit if all keywords found
-                    if len(found_keywords) == len(keywords_lower):
-                        # Continue to get accurate line count and preview
-                        pass
-
                 except json.JSONDecodeError:
                     continue
 
         all_found = len(found_keywords) == len(keywords_lower)
-        return all_found, line_count, preview
+        return all_found, line_count, last_user_message
 
     except (OSError, IOError):
         return False, 0, None
 
 
 def find_sessions(
-    codex_home: Path, keywords: list[str], num_matches: int = 10
+    codex_home: Path,
+    keywords: list[str],
+    num_matches: int = 10,
+    global_search: bool = False,
 ) -> list[dict]:
     """
     Find Codex sessions matching keywords.
+
+    Args:
+        codex_home: Path to Codex home directory
+        keywords: List of keywords to search for
+        num_matches: Maximum number of results to return
+        global_search: If False, filter to current directory only
 
     Returns list of dicts with: session_id, project, branch, date,
                                  lines, preview, cwd, file_path
@@ -168,6 +189,9 @@ def find_sessions(
     sessions_dir = codex_home / "sessions"
     if not sessions_dir.exists():
         return []
+
+    # Get current directory for filtering (if not global search)
+    current_cwd = os.getcwd() if not global_search else None
 
     matches = []
 
@@ -213,6 +237,10 @@ def find_sessions(
                             "branch": "",
                             "timestamp": "",
                         }
+
+                    # Filter by current directory if not global search
+                    if current_cwd and metadata["cwd"] != current_cwd:
+                        continue
 
                     # Parse timestamp
                     timestamp_str = metadata["timestamp"]
@@ -266,12 +294,12 @@ def display_interactive_ui(
         console = Console()
         table = Table(title="Codex Sessions", show_header=True)
         table.add_column("#", style="cyan", justify="right")
-        table.add_column("Session ID", style="yellow")
+        table.add_column("Session ID", style="yellow", no_wrap=True)
         table.add_column("Project", style="green")
         table.add_column("Branch", style="magenta")
         table.add_column("Date", style="blue")
         table.add_column("Lines", justify="right")
-        table.add_column("Preview", style="dim")
+        table.add_column("Preview", style="dim", max_width=60, overflow="fold")
 
         for i, match in enumerate(matches, 1):
             table.add_row(
@@ -281,9 +309,7 @@ def display_interactive_ui(
                 match["branch"],
                 match["date"],
                 str(match["lines"]),
-                match["preview"][:50] + "..."
-                if len(match["preview"]) > 50
-                else match["preview"],
+                match["preview"],  # No truncation, let Rich wrap it
             )
 
         console.print(table)
@@ -367,15 +393,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  find-codex-session "langroid,MCP"
-  find-codex-session "error,debugging" -n 5
-  fcs-codex "keywords" --shell
+  find-codex-session "langroid,MCP"           # Current project only
+  find-codex-session "error,debugging" -g     # All projects
+  find-codex-session "keywords" -n 5          # Limit results
+  fcs-codex "keywords" --shell                # Via shell wrapper
         """,
     )
 
     parser.add_argument(
         "keywords",
         help="Comma-separated keywords to search (AND logic)",
+    )
+    parser.add_argument(
+        "-g",
+        "--global",
+        dest="global_search",
+        action="store_true",
+        help="Search all projects (default: current project only)",
     )
     parser.add_argument(
         "-n",
@@ -409,7 +443,9 @@ Examples:
         sys.exit(1)
 
     # Find matching sessions
-    matches = find_sessions(codex_home, keywords, args.num_matches)
+    matches = find_sessions(
+        codex_home, keywords, args.num_matches, args.global_search
+    )
 
     # Display and get selection
     result = display_interactive_ui(matches)

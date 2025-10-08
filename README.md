@@ -229,8 +229,12 @@ Search and resume Codex sessions by keywords. Usage is similar to `find-claude-s
 ### Usage
 
 ```bash
-# Search for Codex sessions
+# Search in current project only (default)
 find-codex-session "keyword1,keyword2"
+
+# Search across all projects
+find-codex-session "keywords" -g
+find-codex-session "keywords" --global
 
 # Limit number of results
 find-codex-session "keywords" -n 5
@@ -241,12 +245,14 @@ find-codex-session "keywords" --codex-home /custom/path
 
 ### Features
 
+- **Project filtering**: Search current project only (default) or all projects with `-g`
 - Case-insensitive AND keyword search across all session content
 - Interactive session selection with Rich table display
-- Shows project name, git branch, date, line count, and preview
+- Shows project name, git branch, date, line count, and preview of last user message
 - Automatic session resumption with `codex resume`
 - Cross-project session support with directory change prompts
 - Reverse chronological ordering (most recent first)
+- Multi-line preview wrapping for better readability
 
 <a id="vault"></a>
 ## 🔐 vault
