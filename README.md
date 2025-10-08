@@ -201,10 +201,16 @@ fcs "keywords" -g
 
 ### Features
 
+- **Action menu** after session selection:
+  - Resume session (default)
+  - Show session file path
+  - Copy session file to file (*.jsonl) or directory
 - Interactive session selection with previews
-- Cross-project search capabilities
+- Cross-project search capabilities (local by default, `-g` for global)
+- Shows last user message preview (filtered, multi-line wrapping)
 - Automatic session resumption with `claude -r`
 - Persistent directory changes when resuming cross-project sessions
+- Press Enter to cancel (no need for Ctrl+C)
 
 Note: You can also use `find-claude-session` directly, but directory changes
 won't persist after exiting Claude Code.
@@ -245,6 +251,10 @@ find-codex-session "keywords" --codex-home /custom/path
 
 ### Features
 
+- **Action menu** after session selection:
+  - Resume session (default)
+  - Show session file path
+  - Copy session file to file (*.jsonl) or directory
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - Case-insensitive AND keyword search across all session content
 - Interactive session selection with Rich table display
@@ -253,6 +263,7 @@ find-codex-session "keywords" --codex-home /custom/path
 - Cross-project session support with directory change prompts
 - Reverse chronological ordering (most recent first)
 - Multi-line preview wrapping for better readability
+- Press Enter to cancel (no need for Ctrl+C)
 
 Looks like this --
 
