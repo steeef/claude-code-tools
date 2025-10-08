@@ -280,11 +280,11 @@ def find_sessions(
 
 def display_interactive_ui(
     matches: list[dict],
-) -> Optional[tuple[str, str]]:
+) -> Optional[dict]:
     """
     Display matches in interactive UI and get user selection.
 
-    Returns: (session_id, cwd) or None if cancelled
+    Returns: selected match dict or None if cancelled
     """
     if not matches:
         print("No matching sessions found.")
@@ -328,24 +328,111 @@ def display_interactive_ui(
     # Get user selection
     if len(matches) == 1:
         print(f"\nAuto-selecting only match: {matches[0]['session_id'][:16]}...")
-        return matches[0]["session_id"], matches[0]["cwd"]
+        return matches[0]
 
     try:
         choice = input(
-            "\nEnter number to resume session (or Enter to cancel): "
+            "\nEnter number to select session (or Enter to cancel): "
         ).strip()
         if not choice:
+            print("Cancelled.")
             return None
 
         idx = int(choice) - 1
         if 0 <= idx < len(matches):
-            return matches[idx]["session_id"], matches[idx]["cwd"]
+            return matches[idx]
         else:
             print("Invalid selection.")
             return None
-    except (ValueError, KeyboardInterrupt):
+    except ValueError:
+        print("Invalid input.")
+        return None
+    except KeyboardInterrupt:
         print("\nCancelled.")
         return None
+
+
+def show_action_menu(match: dict) -> Optional[str]:
+    """
+    Show action menu for selected session.
+
+    Returns: action choice ('resume', 'path', 'copy') or None if cancelled
+    """
+    print(f"\n=== Session: {match['session_id'][:16]}... ===")
+    print(f"Project: {match['project']}")
+    print(f"Branch: {match['branch']}")
+    print(f"\nWhat would you like to do?")
+    print("1. Resume session (default)")
+    print("2. Show session file path")
+    print("3. Copy session file to file (*.jsonl) or directory")
+    print()
+
+    try:
+        choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
+        if not choice or choice == "1":
+            return "resume"
+        elif choice == "2":
+            return "path"
+        elif choice == "3":
+            return "copy"
+        else:
+            print("Invalid choice.")
+            return None
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        return None
+
+
+def copy_session_file(file_path: str) -> None:
+    """Copy session file to user-specified file or directory."""
+    try:
+        dest = input("\nEnter destination file or directory path: ").strip()
+        if not dest:
+            print("Cancelled.")
+            return
+
+        dest_path = Path(dest).expanduser()
+        source = Path(file_path)
+
+        # Determine if destination is a directory or file
+        if dest_path.exists():
+            if dest_path.is_dir():
+                # Copy into directory with original filename
+                dest_file = dest_path / source.name
+            else:
+                # Copy to specified file
+                dest_file = dest_path
+        else:
+            # Destination doesn't exist - check if it looks like a directory
+            if dest.endswith('/') or dest.endswith(os.sep):
+                # Treat as directory - create it
+                create = input(f"Directory {dest_path} does not exist. Create it? [y/N]: ").strip().lower()
+                if create in ('y', 'yes'):
+                    dest_path.mkdir(parents=True, exist_ok=True)
+                    dest_file = dest_path / source.name
+                else:
+                    print("Cancelled.")
+                    return
+            else:
+                # Treat as file - create parent directory if needed
+                parent = dest_path.parent
+                if not parent.exists():
+                    create = input(f"Parent directory {parent} does not exist. Create it? [y/N]: ").strip().lower()
+                    if create in ('y', 'yes'):
+                        parent.mkdir(parents=True, exist_ok=True)
+                    else:
+                        print("Cancelled.")
+                        return
+                dest_file = dest_path
+
+        import shutil
+        shutil.copy2(source, dest_file)
+        print(f"\nCopied to: {dest_file}")
+
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+    except Exception as e:
+        print(f"\nError copying file: {e}")
 
 
 def resume_session(
@@ -448,10 +535,27 @@ Examples:
     )
 
     # Display and get selection
-    result = display_interactive_ui(matches)
-    if result:
-        session_id, cwd = result
-        resume_session(session_id, cwd, args.shell)
+    selected_match = display_interactive_ui(matches)
+    if not selected_match:
+        return
+
+    # Show action menu
+    action = show_action_menu(selected_match)
+    if not action:
+        return
+
+    # Perform selected action
+    if action == "resume":
+        resume_session(
+            selected_match["session_id"],
+            selected_match["cwd"],
+            args.shell
+        )
+    elif action == "path":
+        print(f"\nSession file path:")
+        print(selected_match["file_path"])
+    elif action == "copy":
+        copy_session_file(selected_match["file_path"])
 
 
 if __name__ == "__main__":
