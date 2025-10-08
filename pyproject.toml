@@ -16,6 +16,7 @@ dev = ["commitizen>=3.0.0"]
 
 [project.scripts]
 find-claude-session = "claude_code_tools.find_claude_session:main"
+find-codex-session = "claude_code_tools.find_codex_session:main"
 vault = "claude_code_tools.dotenv_vault:main"
 tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"

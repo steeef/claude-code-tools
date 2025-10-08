@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""
+Find and resume Codex sessions by searching keywords in session history.
+
+Usage:
+    find-codex-session "keywords" [OPTIONS]
+    fcs-codex "keywords" [OPTIONS]  # via shell wrapper
+
+Examples:
+    find-codex-session "langroid,MCP"
+    find-codex-session "error,debugging" -n 5
+    fcs-codex "keywords" --shell
+"""
+
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+try:
+    from rich.console import Console
+    from rich.table import Table
+
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
+
+def get_codex_home(custom_home: Optional[str] = None) -> Path:
+    """Get the Codex home directory."""
+    if custom_home:
+        return Path(custom_home).expanduser()
+    return Path.home() / ".codex"
+
+
+def extract_session_id_from_filename(filename: str) -> Optional[str]:
+    """
+    Extract session ID from Codex session filename.
+
+    Format: rollout-YYYY-MM-DDTHH-MM-SS-<SESSION_ID>.jsonl
+    Returns: SESSION_ID portion
+    """
+    # Pattern: anything after the timestamp part
+    # e.g., rollout-2025-10-07T13-48-15-0199bfc9-c444-77e1-8c8a-f91c94fcd832.jsonl
+    match = re.match(
+        r"rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-(.+)\.jsonl", filename
+    )
+    if match:
+        return match.group(1)
+    return None
+
+
+def extract_session_metadata(session_file: Path) -> Optional[dict]:
+    """
+    Extract metadata from the first session_meta entry in a Codex session file.
+
+    Returns dict with: id, cwd, branch, timestamp
+    """
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("type") == "session_meta":
+                        payload = entry.get("payload", {})
+                        git_info = payload.get("git", {})
+                        return {
+                            "id": payload.get("id", ""),
+                            "cwd": payload.get("cwd", ""),
+                            "branch": git_info.get("branch", ""),
+                            "timestamp": payload.get("timestamp", ""),
+                        }
+                except json.JSONDecodeError:
+                    continue
+        return None
+    except (OSError, IOError):
+        return None
+
+
+def get_project_name(cwd: str) -> str:
+    """Extract project name from working directory path."""
+    if not cwd:
+        return "unknown"
+    path = Path(cwd)
+    return path.name if path.name else "unknown"
+
+
+def search_keywords_in_file(
+    session_file: Path, keywords: list[str]
+) -> tuple[bool, int, Optional[str]]:
+    """
+    Search for keywords in a Codex session file.
+
+    Returns: (found, line_count, preview)
+    - found: True if all keywords found (case-insensitive AND logic)
+    - line_count: total lines in file
+    - preview: first user message content
+    """
+    keywords_lower = [k.lower() for k in keywords]
+    found_keywords = set()
+    line_count = 0
+    preview = None
+
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line_count += 1
+                if not line.strip():
+                    continue
+
+                try:
+                    entry = json.loads(line)
+
+                    # Extract preview from first user message
+                    if (
+                        preview is None
+                        and entry.get("type") == "response_item"
+                        and entry.get("payload", {}).get("role") == "user"
+                    ):
+                        content = entry.get("payload", {}).get("content", [])
+                        if isinstance(content, list) and len(content) > 0:
+                            first_item = content[0]
+                            if isinstance(first_item, dict):
+                                text = first_item.get("text", "")
+                                if text:
+                                    preview = text[:200].replace(
+                                        "\n", " "
+                                    ).strip()
+
+                    # Search for keywords in all text content
+                    line_lower = line.lower()
+                    for kw in keywords_lower:
+                        if kw in line_lower:
+                            found_keywords.add(kw)
+
+                    # Early exit if all keywords found
+                    if len(found_keywords) == len(keywords_lower):
+                        # Continue to get accurate line count and preview
+                        pass
+
+                except json.JSONDecodeError:
+                    continue
+
+        all_found = len(found_keywords) == len(keywords_lower)
+        return all_found, line_count, preview
+
+    except (OSError, IOError):
+        return False, 0, None
+
+
+def find_sessions(
+    codex_home: Path, keywords: list[str], num_matches: int = 10
+) -> list[dict]:
+    """
+    Find Codex sessions matching keywords.
+
+    Returns list of dicts with: session_id, project, branch, date,
+                                 lines, preview, cwd, file_path
+    """
+    sessions_dir = codex_home / "sessions"
+    if not sessions_dir.exists():
+        return []
+
+    matches = []
+
+    # Walk through YYYY/MM/DD directory structure
+    for year_dir in sorted(sessions_dir.iterdir(), reverse=True):
+        if not year_dir.is_dir():
+            continue
+
+        for month_dir in sorted(year_dir.iterdir(), reverse=True):
+            if not month_dir.is_dir():
+                continue
+
+            for day_dir in sorted(month_dir.iterdir(), reverse=True):
+                if not day_dir.is_dir():
+                    continue
+
+                # Process all JSONL files in this day
+                session_files = sorted(
+                    day_dir.glob("rollout-*.jsonl"), reverse=True
+                )
+
+                for session_file in session_files:
+                    # Search for keywords
+                    found, line_count, preview = search_keywords_in_file(
+                        session_file, keywords
+                    )
+
+                    if not found:
+                        continue
+
+                    # Extract metadata
+                    metadata = extract_session_metadata(session_file)
+                    if not metadata:
+                        # Fallback: extract session ID from filename
+                        session_id = extract_session_id_from_filename(
+                            session_file.name
+                        )
+                        if not session_id:
+                            continue
+                        metadata = {
+                            "id": session_id,
+                            "cwd": "",
+                            "branch": "",
+                            "timestamp": "",
+                        }
+
+                    # Parse timestamp
+                    timestamp_str = metadata["timestamp"]
+                    if timestamp_str:
+                        try:
+                            dt = datetime.fromisoformat(
+                                timestamp_str.replace("Z", "+00:00")
+                            )
+                            date_str = dt.strftime("%Y-%m-%d %H:%M")
+                        except ValueError:
+                            date_str = timestamp_str[:16]
+                    else:
+                        # Fallback to directory date
+                        date_str = f"{year_dir.name}-{month_dir.name}-{day_dir.name}"
+
+                    matches.append(
+                        {
+                            "session_id": metadata["id"],
+                            "project": get_project_name(metadata["cwd"]),
+                            "branch": metadata["branch"] or "",
+                            "date": date_str,
+                            "lines": line_count,
+                            "preview": preview or "No preview",
+                            "cwd": metadata["cwd"],
+                            "file_path": str(session_file),
+                        }
+                    )
+
+                    # Early exit if we have enough matches
+                    if len(matches) >= num_matches * 3:
+                        break
+
+    # Sort by date (reverse chronological) and limit
+    matches.sort(key=lambda x: x["date"], reverse=True)
+    return matches[:num_matches]
+
+
+def display_interactive_ui(
+    matches: list[dict],
+) -> Optional[tuple[str, str]]:
+    """
+    Display matches in interactive UI and get user selection.
+
+    Returns: (session_id, cwd) or None if cancelled
+    """
+    if not matches:
+        print("No matching sessions found.")
+        return None
+
+    if RICH_AVAILABLE:
+        console = Console()
+        table = Table(title="Codex Sessions", show_header=True)
+        table.add_column("#", style="cyan", justify="right")
+        table.add_column("Session ID", style="yellow")
+        table.add_column("Project", style="green")
+        table.add_column("Branch", style="magenta")
+        table.add_column("Date", style="blue")
+        table.add_column("Lines", justify="right")
+        table.add_column("Preview", style="dim")
+
+        for i, match in enumerate(matches, 1):
+            table.add_row(
+                str(i),
+                match["session_id"][:16] + "...",
+                match["project"],
+                match["branch"],
+                match["date"],
+                str(match["lines"]),
+                match["preview"][:50] + "..."
+                if len(match["preview"]) > 50
+                else match["preview"],
+            )
+
+        console.print(table)
+    else:
+        # Fallback to plain text
+        print("\nMatching Codex Sessions:")
+        print("-" * 80)
+        for i, match in enumerate(matches, 1):
+            print(f"{i}. {match['session_id'][:16]}...")
+            print(f"   Project: {match['project']}")
+            print(f"   Branch: {match['branch']}")
+            print(f"   Date: {match['date']}")
+            print(f"   Preview: {match['preview'][:60]}...")
+            print()
+
+    # Get user selection
+    if len(matches) == 1:
+        print(f"\nAuto-selecting only match: {matches[0]['session_id'][:16]}...")
+        return matches[0]["session_id"], matches[0]["cwd"]
+
+    try:
+        choice = input(
+            "\nEnter number to resume session (or Enter to cancel): "
+        ).strip()
+        if not choice:
+            return None
+
+        idx = int(choice) - 1
+        if 0 <= idx < len(matches):
+            return matches[idx]["session_id"], matches[idx]["cwd"]
+        else:
+            print("Invalid selection.")
+            return None
+    except (ValueError, KeyboardInterrupt):
+        print("\nCancelled.")
+        return None
+
+
+def resume_session(
+    session_id: str, cwd: str, shell_mode: bool = False
+) -> None:
+    """
+    Resume a Codex session.
+
+    In shell mode: outputs commands for eval
+    In interactive mode: executes codex resume
+    """
+    if shell_mode:
+        # Output commands for shell eval
+        # Redirect prompts to stderr, commands to stdout
+        if cwd and cwd != os.getcwd():
+            print(f"cd {shlex.quote(cwd)}", file=sys.stdout)
+        print(f"codex resume {shlex.quote(session_id)}", file=sys.stdout)
+    else:
+        # Interactive mode
+        if cwd and cwd != os.getcwd():
+            response = input(
+                f"\nSession is in different directory: {cwd}\n"
+                "Change directory and resume? [Y/n]: "
+            ).strip()
+            if response.lower() in ("", "y", "yes"):
+                try:
+                    os.chdir(cwd)
+                    print(f"Changed to: {cwd}")
+                except OSError as e:
+                    print(f"Error changing directory: {e}")
+                    return
+
+        # Execute codex resume
+        try:
+            os.execvp("codex", ["codex", "resume", session_id])
+        except OSError as e:
+            print(f"Error launching codex: {e}")
+            sys.exit(1)
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="Find and resume Codex sessions by keyword search",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  find-codex-session "langroid,MCP"
+  find-codex-session "error,debugging" -n 5
+  fcs-codex "keywords" --shell
+        """,
+    )
+
+    parser.add_argument(
+        "keywords",
+        help="Comma-separated keywords to search (AND logic)",
+    )
+    parser.add_argument(
+        "-n",
+        "--num-matches",
+        type=int,
+        default=10,
+        help="Number of matches to display (default: 10)",
+    )
+    parser.add_argument(
+        "--shell",
+        action="store_true",
+        help="Output shell commands for eval (enables persistent cd)",
+    )
+    parser.add_argument(
+        "--codex-home",
+        help="Custom Codex home directory (default: ~/.codex)",
+    )
+
+    args = parser.parse_args()
+
+    # Parse keywords
+    keywords = [k.strip() for k in args.keywords.split(",") if k.strip()]
+    if not keywords:
+        print("Error: No keywords provided", file=sys.stderr)
+        sys.exit(1)
+
+    # Get Codex home
+    codex_home = get_codex_home(args.codex_home)
+    if not codex_home.exists():
+        print(f"Error: Codex home not found: {codex_home}", file=sys.stderr)
+        sys.exit(1)
+
+    # Find matching sessions
+    matches = find_sessions(codex_home, keywords, args.num_matches)
+
+    # Display and get selection
+    result = display_interactive_ui(matches)
+    if result:
+        session_id, cwd = result
+        resume_session(session_id, cwd, args.shell)
+
+
+if __name__ == "__main__":
+    main()

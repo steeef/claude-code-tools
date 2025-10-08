@@ -10,6 +10,7 @@ and other CLI coding agents.
 - [🎮 tmux-cli Deep Dive](#tmux-cli-deep-dive)
 - [🚀 lmsh (Experimental) — natural language to shell commands](#lmsh-experimental)
 - [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
+- [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
 - [🔐 vault — encrypted .env backup & sync](#vault)
 - [🔍 env-safe — inspect .env safely without values](#env-safe)
 - [🛡️ Claude Code Safety Hooks — guardrails for bash, git, env, files](#claude-code-safety-hooks)
@@ -67,6 +68,7 @@ uv tool install git+https://github.com/pchalasani/claude-code-tools
 This gives you:
 - `tmux-cli` - The interactive CLI controller we just covered
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
+- `find-codex-session` - Search and resume Codex sessions by keywords
 - `vault` - Encrypted backup for your .env files
 - `env-safe` - Safely inspect .env files without exposing values
 
@@ -212,6 +214,39 @@ For detailed documentation, see [docs/find-claude-session.md](docs/find-claude-s
 Looks like this -- 
 
 ![fcs.png](docs/fcs.png)
+
+<a id="find-codex-session"></a>
+## 🔍 find-codex-session
+
+Search and resume Codex sessions by keywords. Usage is similar to `find-claude-session` above, but works with Codex session files instead.
+
+### Key Differences from find-claude-session
+
+- Searches `~/.codex/sessions/` (organized by YYYY/MM/DD directories)
+- Extracts metadata from `session_meta` entries in Codex JSONL files
+- Resumes sessions with `codex resume <session-id>`
+
+### Usage
+
+```bash
+# Search for Codex sessions
+find-codex-session "keyword1,keyword2"
+
+# Limit number of results
+find-codex-session "keywords" -n 5
+
+# Custom Codex home directory
+find-codex-session "keywords" --codex-home /custom/path
+```
+
+### Features
+
+- Case-insensitive AND keyword search across all session content
+- Interactive session selection with Rich table display
+- Shows project name, git branch, date, line count, and preview
+- Automatic session resumption with `codex resume`
+- Cross-project session support with directory change prompts
+- Reverse chronological ordering (most recent first)
 
 <a id="vault"></a>
 ## 🔐 vault
