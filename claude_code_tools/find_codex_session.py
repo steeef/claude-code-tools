@@ -242,19 +242,15 @@ def find_sessions(
                     if current_cwd and metadata["cwd"] != current_cwd:
                         continue
 
-                    # Parse timestamp
-                    timestamp_str = metadata["timestamp"]
-                    if timestamp_str:
-                        try:
-                            dt = datetime.fromisoformat(
-                                timestamp_str.replace("Z", "+00:00")
-                            )
-                            date_str = dt.strftime("%Y-%m-%d %H:%M")
-                        except ValueError:
-                            date_str = timestamp_str[:16]
-                    else:
-                        # Fallback to directory date
-                        date_str = f"{year_dir.name}-{month_dir.name}-{day_dir.name}"
+                    # Get file stats for timestamps
+                    stat = session_file.stat()
+                    mod_time = stat.st_mtime
+                    create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+
+                    # Format dates: "10/04 - 10/09 13:45"
+                    create_date = datetime.fromtimestamp(create_time).strftime("%m/%d")
+                    mod_date = datetime.fromtimestamp(mod_time).strftime("%m/%d %H:%M")
+                    date_str = f"{create_date} - {mod_date}"
 
                     matches.append(
                         {
@@ -262,6 +258,7 @@ def find_sessions(
                             "project": get_project_name(metadata["cwd"]),
                             "branch": metadata["branch"] or "",
                             "date": date_str,
+                            "mod_time": mod_time,  # For sorting
                             "lines": line_count,
                             "preview": preview or "No preview",
                             "cwd": metadata["cwd"],
@@ -273,8 +270,8 @@ def find_sessions(
                     if len(matches) >= num_matches * 3:
                         break
 
-    # Sort by date (reverse chronological) and limit
-    matches.sort(key=lambda x: x["date"], reverse=True)
+    # Sort by modification time (newest first) and limit
+    matches.sort(key=lambda x: x["mod_time"], reverse=True)
     return matches[:num_matches]
 
 
@@ -297,7 +294,7 @@ def display_interactive_ui(
         table.add_column("Session ID", style="yellow", no_wrap=True)
         table.add_column("Project", style="green")
         table.add_column("Branch", style="magenta")
-        table.add_column("Date", style="blue")
+        table.add_column("Date-Range", style="blue")
         table.add_column("Lines", justify="right")
         table.add_column("Preview", style="dim", max_width=60, overflow="fold")
 
