@@ -337,7 +337,7 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
     table.add_column("Branch", style="magenta")
     table.add_column("Date-Range", style="blue")
     table.add_column("Lines", style="cyan", justify="right")
-    table.add_column("Preview", style="white", max_width=60, overflow="fold")
+    table.add_column("Last User Message", style="white", max_width=60, overflow="fold")
     
     for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch) in enumerate(display_sessions, 1):
         # Format: "10/04 - 10/09 13:45"

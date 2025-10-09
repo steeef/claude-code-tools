@@ -296,7 +296,7 @@ def display_interactive_ui(
         table.add_column("Branch", style="magenta")
         table.add_column("Date-Range", style="blue")
         table.add_column("Lines", justify="right")
-        table.add_column("Preview", style="dim", max_width=60, overflow="fold")
+        table.add_column("Last User Message", style="dim", max_width=60, overflow="fold")
 
         for i, match in enumerate(matches, 1):
             table.add_row(
