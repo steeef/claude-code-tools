@@ -509,15 +509,20 @@ def copy_session_file(session_file_path: str) -> None:
         print(f"\nError copying file: {e}")
 
 
-def resume_session(session_id: str, project_path: str, shell_mode: bool = False):
+def resume_session(session_id: str, project_path: str, shell_mode: bool = False, claude_home: Optional[str] = None):
     """Resume a Claude session using claude -r command."""
     current_dir = os.getcwd()
-    
+
     # In shell mode, output commands for the shell to evaluate
     if shell_mode:
         if project_path != current_dir:
             print(f'cd {shlex.quote(project_path)}')
-        print(f'claude -r {shlex.quote(session_id)}')
+        # Set CLAUDE_CONFIG_DIR environment variable if custom path specified
+        if claude_home:
+            expanded_home = str(Path(claude_home).expanduser().absolute())
+            print(f'CLAUDE_CONFIG_DIR={shlex.quote(expanded_home)} claude -r {shlex.quote(session_id)}')
+        else:
+            print(f'claude -r {shlex.quote(session_id)}')
         return
     
     # Check if we need to change directory
@@ -560,7 +565,13 @@ def resume_session(session_id: str, project_path: str, shell_mode: bool = False)
         # Change directory if needed (won't persist after exit)
         if change_dir and project_path != current_dir:
             os.chdir(project_path)
-        
+
+        # Set CLAUDE_CONFIG_DIR environment variable if custom path specified
+        if claude_home:
+            # Expand ~ and make absolute
+            expanded_home = str(Path(claude_home).expanduser().absolute())
+            os.environ['CLAUDE_CONFIG_DIR'] = expanded_home
+
         # Execute claude
         os.execvp("claude", ["claude", "-r", session_id])
         
@@ -665,7 +676,7 @@ To persist directory changes when resuming sessions:
 
             # Perform selected action
             if action == "resume":
-                resume_session(session_id, project_path, shell_mode=args.shell)
+                resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
             elif action == "path":
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
                 print(f"\nSession file path:")
@@ -695,7 +706,7 @@ To persist directory changes when resuming sessions:
             if not args.shell:
                 print("\nOnly one match found. Resuming automatically...")
             session_id, _, _, _, _, _, project_path, _ = matching_sessions[0]
-            resume_session(session_id, project_path, shell_mode=args.shell)
+            resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
         else:
             try:
                 if args.shell:
@@ -714,7 +725,7 @@ To persist directory changes when resuming sessions:
                 idx = int(choice) - 1
                 if 0 <= idx < min(args.num_matches, len(matching_sessions)):
                     session_id, _, _, _, _, project_path, _ = matching_sessions[idx]
-                    resume_session(session_id, project_path, shell_mode=args.shell)
+                    resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
                 else:
                     print("Invalid choice", file=sys.stderr)
                     sys.exit(1)
