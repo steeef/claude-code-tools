@@ -23,16 +23,16 @@ Claude Code hooks are scripts that intercept tool operations to:
    - Open or create `~/.claude/settings.json`
    - Copy the entire "hooks" section from `settings.sample.json`
    - Replace all instances of `/path/to/claude-code-tools` with your actual repository path
-   
+
 3. If you already have other settings in `~/.claude/settings.json`, merge the hooks section:
    ```json
    {
-     "hooks": { 
+     "hooks": {
        // ... content from settings.sample.json ...
      },
      // ... your other settings ...
    }
-   ``` 
+   ```
 
 ## Hook Types
 
@@ -53,8 +53,8 @@ Triggered after a tool completes. Used for cleanup and state management.
 
 ### 1. notification_hook.sh
 
-**Type:** Notification  
-**Purpose:** Send notifications to ntfy.sh channel  
+**Type:** Notification
+**Purpose:** Send notifications to ntfy.sh channel
 **Behavior:**
 - Reads JSON input and extracts the 'message' field
 - Sends notification to ntfy.sh/cc-alerts channel
@@ -65,12 +65,14 @@ channel.
 
 ### 2. bash_hook.py
 
-**Type:** PreToolUse (Bash)  
-**Purpose:** Unified safety checks for bash commands  
+**Type:** PreToolUse (Bash)
+**Purpose:** Unified safety checks for bash commands
 **Blocks:**
 - `rm` commands (enforces TRASH directory pattern)
 - Dangerous `git add` patterns (`-A`, `--all`, `.`, `*`)
 - Unsafe `git checkout` operations
+- Destructive kubectl commands
+- Destructive terraform commands
 - Commands that could cause data loss
 
 **Features:**
@@ -80,8 +82,8 @@ channel.
 
 ### 3. file_size_conditional_hook.py
 
-**Type:** PreToolUse (Read)  
-**Purpose:** Prevent reading large files that bloat context  
+**Type:** PreToolUse (Read)
+**Purpose:** Prevent reading large files that bloat context
 **Behavior:**
 - Main agent: Blocks files > 500 lines
 - Sub-agents: Blocks files > 10,000 lines
@@ -95,8 +97,8 @@ channel.
 
 ### 4. pretask_subtask_flag.py & posttask_subtask_flag.py
 
-**Type:** PreToolUse/PostToolUse (Task)  
-**Purpose:** Track sub-agent execution state  
+**Type:** PreToolUse/PostToolUse (Task)
+**Purpose:** Track sub-agent execution state
 **Behavior:**
 - Pre: Creates `.claude_in_subtask.flag` file
 - Post: Removes the flag file
@@ -104,12 +106,31 @@ channel.
 
 ### 5. grep_block_hook.py
 
-**Type:** PreToolUse (Grep)  
-**Purpose:** Enforce use of ripgrep over grep  
+**Type:** PreToolUse (Grep)
+**Purpose:** Enforce use of ripgrep over grep
 **Behavior:**
 - Always blocks grep commands
 - Suggests using `rg` (ripgrep) instead
 - Ensures better performance and features
+
+### 6. terraform_safety_hook.py
+
+**Type:** PreToolUse (Bash)
+**Purpose:** Prevent destructive terraform operations
+**Blocks:**
+- `terraform apply` and `tf apply` commands
+- `terraform destroy` and other destructive operations
+- Commands that could modify infrastructure
+
+**Allows:**
+- Read-only commands: `plan`, `show`, `validate`, `state list`, etc.
+- Planning operations: `terraform plan`
+- Workspace management: `terraform workspace`
+
+**Features:**
+- Integrated into bash_hook.py for unified safety checks
+- Provides clear warnings about infrastructure impact
+- Suggests running `terraform plan` to preview changes first
 
 ## Safety Features
 

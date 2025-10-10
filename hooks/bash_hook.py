@@ -17,6 +17,7 @@ from git_commit_block_hook import check_git_commit_command
 from rm_block_hook import check_rm_command
 from env_file_protection_hook import check_env_file_access
 from kubectl_safety_hook import check_kubectl_command
+from terraform_safety_hook import check_terraform_command
 
 
 def main():
@@ -39,6 +40,7 @@ def main():
         check_git_commit_command,
         check_env_file_access,
         check_kubectl_command,
+        check_terraform_command,
     ]
 
     blocking_reasons = []
