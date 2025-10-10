@@ -168,48 +168,69 @@ def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, 
     return matches, line_count, git_branch
 
 
+def is_system_message(text: str) -> bool:
+    """Check if text is system-generated (XML tags, env context, etc)"""
+    if not text or len(text.strip()) < 5:
+        return True
+    text = text.strip()
+    # Check for XML-like tags (user_instructions, environment_context, etc)
+    if text.startswith("<") and ">" in text[:100]:
+        return True
+    return False
+
+
 def get_session_preview(filepath: Path) -> str:
-    """Get a preview of the session from the first user message."""
+    """Get a preview of the session from the LAST user message."""
+    last_user_message = None
+
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
                     data = json.loads(line.strip())
-                    if data.get('type') == 'message' and data.get('role') == 'user':
-                        content = data.get('content', '')
+                    # Check top-level type for user messages
+                    if data.get('type') == 'user':
+                        message = data.get('message', {})
+                        content = message.get('content', '')
+                        text = None
+
                         if isinstance(content, str):
-                            # Get first 60 chars of the message
-                            preview = content.strip().replace('\n', ' ')[:60]
-                            if len(content) > 60:
-                                preview += "..."
-                            return preview
+                            text = content.strip()
                         elif isinstance(content, list):
                             # Handle structured content
                             for item in content:
                                 if isinstance(item, dict) and item.get('type') == 'text':
-                                    text = item.get('text', '')
-                                    preview = text.strip().replace('\n', ' ')[:60]
-                                    if len(text) > 60:
-                                        preview += "..."
-                                    return preview
+                                    text = item.get('text', '').strip()
+                                    break
+
+                        # Filter out system messages and keep updating to get LAST message
+                        if text and not is_system_message(text):
+                            cleaned = text.replace('\n', ' ')[:400]
+                            # Prefer substantial messages (>20 chars)
+                            if len(cleaned) > 20:
+                                last_user_message = cleaned
+                            elif last_user_message is None:
+                                last_user_message = cleaned
+
                 except (json.JSONDecodeError, KeyError):
                     continue
     except Exception:
         pass
-    return "No preview available"
+
+    return last_user_message if last_user_message else "No preview available"
 
 
-def find_sessions(keywords: List[str], global_search: bool = False, claude_home: Optional[str] = None) -> List[Tuple[str, float, int, str, str, str, Optional[str]]]:
+def find_sessions(keywords: List[str], global_search: bool = False, claude_home: Optional[str] = None) -> List[Tuple[str, float, float, int, str, str, str, Optional[str]]]:
     """
     Find all Claude Code sessions containing the specified keywords.
-    
+
     Args:
         keywords: List of keywords to search for
         global_search: If True, search all projects; if False, search current project only
         claude_home: Optional custom Claude home directory (defaults to ~/.claude)
-        
+
     Returns:
-        List of tuples (session_id, modification_time, line_count, project_name, preview, project_path, git_branch) sorted by modification time
+        List of tuples (session_id, modification_time, creation_time, line_count, project_name, preview, project_path, git_branch) sorted by modification time
     """
     matching_sessions = []
     
@@ -235,23 +256,29 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                         matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                         if matches:
                             session_id = jsonl_file.stem
-                            mod_time = jsonl_file.stat().st_mtime
+                            stat = jsonl_file.stat()
+                            mod_time = stat.st_mtime
+                            # Get creation time (birthtime on macOS, ctime elsewhere)
+                            create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                             preview = get_session_preview(jsonl_file)
-                            matching_sessions.append((session_id, mod_time, line_count, project_name, preview, original_path, git_branch))
+                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch))
                     
                     progress.advance(task)
         else:
             # Fallback without rich
             for project_dir, original_path in projects:
                 project_name = extract_project_name(original_path)
-                
+
                 for jsonl_file in project_dir.glob("*.jsonl"):
                     matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                     if matches:
                         session_id = jsonl_file.stem
-                        mod_time = jsonl_file.stat().st_mtime
+                        stat = jsonl_file.stat()
+                        mod_time = stat.st_mtime
+                        # Get creation time (birthtime on macOS, ctime elsewhere)
+                        create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                         preview = get_session_preview(jsonl_file)
-                        matching_sessions.append((session_id, mod_time, line_count, project_name, preview, original_path, git_branch))
+                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch))
     else:
         # Search current project only
         claude_dir = get_claude_project_dir(claude_home)
@@ -266,9 +293,12 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
             matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
             if matches:
                 session_id = jsonl_file.stem
-                mod_time = jsonl_file.stat().st_mtime
+                stat = jsonl_file.stat()
+                mod_time = stat.st_mtime
+                # Get creation time (birthtime on macOS, ctime elsewhere)
+                create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                 preview = get_session_preview(jsonl_file)
-                matching_sessions.append((session_id, mod_time, line_count, project_name, preview, os.getcwd(), git_branch))
+                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, os.getcwd(), git_branch))
     
     # Sort by modification time (newest first)
     matching_sessions.sort(key=lambda x: x[1], reverse=True)
@@ -305,19 +335,22 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
     table.add_column("Session ID", style="dim")
     table.add_column("Project", style="green")
     table.add_column("Branch", style="magenta")
-    table.add_column("Date", style="blue")
+    table.add_column("Date-Range", style="blue")
     table.add_column("Lines", style="cyan", justify="right")
-    table.add_column("Preview", style="white", overflow="fold")
+    table.add_column("Last User Message", style="white", max_width=60, overflow="fold")
     
-    for idx, (session_id, mod_time, line_count, project_name, preview, _, git_branch) in enumerate(display_sessions, 1):
-        mod_date = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M')
+    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch) in enumerate(display_sessions, 1):
+        # Format: "10/04 - 10/09 13:45"
+        create_date = datetime.fromtimestamp(create_time).strftime('%m/%d')
+        mod_date = datetime.fromtimestamp(mod_time).strftime('%m/%d %H:%M')
+        date_display = f"{create_date} - {mod_date}"
         branch_display = git_branch if git_branch else "N/A"
         table.add_row(
             str(idx),
             session_id[:8] + "...",
             project_name,
             branch_display,
-            mod_date,
+            date_display,
             str(line_count),
             preview
         )
@@ -325,8 +358,8 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
     ui_console.print(table)
     ui_console.print("\n[bold]Select a session:[/bold]")
     ui_console.print(f"  • Enter number (1-{len(display_sessions)}) to select")
-    ui_console.print("  • Press Ctrl+C to cancel\n")
-    
+    ui_console.print("  • Press Enter to cancel\n")
+
     while True:
         try:
             # In stderr mode, we need to ensure nothing goes to stdout
@@ -334,37 +367,146 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
                 # Temporarily redirect stdout to devnull
                 old_stdout = sys.stdout
                 sys.stdout = open(os.devnull, 'w')
-            
+
             choice = Prompt.ask(
                 "Your choice",
-                choices=[str(i) for i in range(1, len(display_sessions) + 1)],
-                show_choices=False,
+                default="",
+                show_default=False,
                 console=ui_console
             )
-            
-            # Handle empty input
+
+            # Handle empty input - cancel
             if not choice or not choice.strip():
-                ui_console.print("[red]Invalid choice. Please try again.[/red]")
-                continue
-            
+                # Restore stdout first
+                if stderr_mode:
+                    sys.stdout.close()
+                    sys.stdout = old_stdout
+                ui_console.print("[yellow]Cancelled[/yellow]")
+                return None
+
             # Restore stdout
             if stderr_mode:
                 sys.stdout.close()
                 sys.stdout = old_stdout
-            
+
             idx = int(choice) - 1
             if 0 <= idx < len(display_sessions):
                 session_info = display_sessions[idx]
-                return (session_info[0], session_info[5])  # Return (session_id, project_path)
-                
+                return session_info  # Return full session tuple
+            else:
+                ui_console.print("[red]Invalid choice. Please try again.[/red]")
+
         except KeyboardInterrupt:
+            # Restore stdout if needed
+            if stderr_mode and sys.stdout != old_stdout:
+                sys.stdout.close()
+                sys.stdout = old_stdout
             ui_console.print("\n[yellow]Cancelled[/yellow]")
             return None
         except EOFError:
+            # Restore stdout if needed
+            if stderr_mode and sys.stdout != old_stdout:
+                sys.stdout.close()
+                sys.stdout = old_stdout
             ui_console.print("\n[yellow]Cancelled (EOF)[/yellow]")
             return None
         except ValueError:
             ui_console.print("[red]Invalid choice. Please try again.[/red]")
+
+
+def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, Optional[str]]) -> Optional[str]:
+    """
+    Show action menu for selected session.
+
+    Returns: action choice ('resume', 'path', 'copy') or None if cancelled
+    """
+    session_id, _, _, _, project_name, _, project_path, git_branch = session_info
+
+    print(f"\n=== Session: {session_id[:8]}... ===")
+    print(f"Project: {project_name}")
+    if git_branch:
+        print(f"Branch: {git_branch}")
+    print(f"\nWhat would you like to do?")
+    print("1. Resume session (default)")
+    print("2. Show session file path")
+    print("3. Copy session file to file (*.jsonl) or directory")
+    print()
+
+    try:
+        choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
+        if not choice or choice == "1":
+            return "resume"
+        elif choice == "2":
+            return "path"
+        elif choice == "3":
+            return "copy"
+        else:
+            print("Invalid choice.")
+            return None
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        return None
+
+
+def get_session_file_path(session_id: str, project_path: str, claude_home: Optional[str] = None) -> str:
+    """Get the full file path for a session."""
+    # Convert project path to Claude directory format
+    base_dir = Path(claude_home).expanduser() if claude_home else Path.home() / ".claude"
+    encoded_path = project_path.replace("/", "-")
+    claude_project_dir = base_dir / "projects" / encoded_path
+    return str(claude_project_dir / f"{session_id}.jsonl")
+
+
+def copy_session_file(session_file_path: str) -> None:
+    """Copy session file to user-specified file or directory."""
+    try:
+        dest = input("\nEnter destination file or directory path: ").strip()
+        if not dest:
+            print("Cancelled.")
+            return
+
+        dest_path = Path(dest).expanduser()
+        source = Path(session_file_path)
+
+        # Determine if destination is a directory or file
+        if dest_path.exists():
+            if dest_path.is_dir():
+                # Copy into directory with original filename
+                dest_file = dest_path / source.name
+            else:
+                # Copy to specified file
+                dest_file = dest_path
+        else:
+            # Destination doesn't exist - check if it looks like a directory
+            if dest.endswith('/') or dest.endswith(os.sep):
+                # Treat as directory - create it
+                create = input(f"Directory {dest_path} does not exist. Create it? [y/N]: ").strip().lower()
+                if create in ('y', 'yes'):
+                    dest_path.mkdir(parents=True, exist_ok=True)
+                    dest_file = dest_path / source.name
+                else:
+                    print("Cancelled.")
+                    return
+            else:
+                # Treat as file - create parent directory if needed
+                parent = dest_path.parent
+                if not parent.exists():
+                    create = input(f"Parent directory {parent} does not exist. Create it? [y/N]: ").strip().lower()
+                    if create in ('y', 'yes'):
+                        parent.mkdir(parents=True, exist_ok=True)
+                    else:
+                        print("Cancelled.")
+                        return
+                dest_file = dest_path
+
+        import shutil
+        shutil.copy2(source, dest_file)
+        print(f"\nCopied to: {dest_file}")
+
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+    except Exception as e:
+        print(f"\nError copying file: {e}")
 
 
 def resume_session(session_id: str, project_path: str, shell_mode: bool = False):
@@ -511,30 +653,48 @@ To persist directory changes when resuming sessions:
     
     # If we have rich and there are results, show interactive UI
     if RICH_AVAILABLE and console:
-        result = display_interactive_ui(matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches)
-        if result:
-            session_id, project_path = result
-            resume_session(session_id, project_path, shell_mode=args.shell)
+        selected_session = display_interactive_ui(matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches)
+        if selected_session:
+            # Show action menu
+            action = show_action_menu(selected_session)
+            if not action:
+                return
+
+            session_id = selected_session[0]
+            project_path = selected_session[6]  # Updated index after adding creation_time
+
+            # Perform selected action
+            if action == "resume":
+                resume_session(session_id, project_path, shell_mode=args.shell)
+            elif action == "path":
+                session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
+                print(f"\nSession file path:")
+                print(session_file_path)
+            elif action == "copy":
+                session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
+                copy_session_file(session_file_path)
     else:
         # Fallback: print session IDs as before
         if not args.shell:
             print("\nMatching sessions:")
-        for idx, (session_id, mod_time, line_count, project_name, preview, project_path, git_branch) in enumerate(matching_sessions[:args.num_matches], 1):
-            mod_date = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
+        for idx, (session_id, mod_time, create_time, line_count, project_name, preview, project_path, git_branch) in enumerate(matching_sessions[:args.num_matches], 1):
+            create_date = datetime.fromtimestamp(create_time).strftime('%m/%d')
+            mod_date = datetime.fromtimestamp(mod_time).strftime('%m/%d %H:%M')
+            date_display = f"{create_date} - {mod_date}"
             branch_display = git_branch if git_branch else "N/A"
             if getattr(args, 'global'):
-                print(f"{idx}. {session_id} | {project_name} | {branch_display} | {mod_date} | {line_count} lines", file=sys.stderr if args.shell else sys.stdout)
+                print(f"{idx}. {session_id} | {project_name} | {branch_display} | {date_display} | {line_count} lines", file=sys.stderr if args.shell else sys.stdout)
             else:
-                print(f"{idx}. {session_id} | {branch_display} | {mod_date} | {line_count} lines", file=sys.stderr if args.shell else sys.stdout)
-        
+                print(f"{idx}. {session_id} | {branch_display} | {date_display} | {line_count} lines", file=sys.stderr if args.shell else sys.stdout)
+
         if len(matching_sessions) > args.num_matches:
             print(f"\n... and {len(matching_sessions) - args.num_matches} more sessions", file=sys.stderr if args.shell else sys.stdout)
-        
+
         # Simple selection without rich
         if len(matching_sessions) == 1:
             if not args.shell:
                 print("\nOnly one match found. Resuming automatically...")
-            session_id, _, _, _, _, project_path, _ = matching_sessions[0]
+            session_id, _, _, _, _, _, project_path, _ = matching_sessions[0]
             resume_session(session_id, project_path, shell_mode=args.shell)
         else:
             try:

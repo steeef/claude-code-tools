@@ -3,6 +3,24 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
+## Table of Contents
+
+- [🎮 tmux-cli: Bridging Claude Code and Interactive CLIs — "playwright for the terminal"](#tmux-cli-bridging-claude-code-and-interactive-clis)
+- [🚀 Quick Start](#quick-start)
+- [🎮 tmux-cli Deep Dive](#tmux-cli-deep-dive)
+- [🚀 lmsh (Experimental) — natural language to shell commands](#lmsh-experimental)
+- [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
+- [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
+- [🔐 vault — encrypted .env backup & sync](#vault)
+- [🔍 env-safe — inspect .env safely without values](#env-safe)
+- [🛡️ Claude Code Safety Hooks — guardrails for bash, git, env, files](#claude-code-safety-hooks)
+- [🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
+- [📚 Documentation](#documentation)
+- [📋 Requirements](#requirements)
+- [🛠️ Development](#development)
+- [📄 License](#license)
+
+<a id="tmux-cli-bridging-claude-code-and-interactive-clis"></a>
 ## 🎮 tmux-cli: Bridging Claude Code and Interactive CLIs
 
 > **Note**: While the description below focuses on Claude Code, tmux-cli works with any CLI coding agent.
@@ -36,6 +54,7 @@ use tmux-cli behind the scenes.
 
 **Works anywhere**: Automatically handles both local tmux panes and remote sessions.
 
+<a id="quick-start"></a>
 ## 🚀 Quick Start
 
 ```bash
@@ -49,9 +68,11 @@ uv tool install git+https://github.com/pchalasani/claude-code-tools
 This gives you:
 - `tmux-cli` - The interactive CLI controller we just covered
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
+- `find-codex-session` - Search and resume Codex sessions by keywords
 - `vault` - Encrypted backup for your .env files
 - `env-safe` - Safely inspect .env files without exposing values
 
+<a id="tmux-cli-deep-dive"></a>
 ## 🎮 tmux-cli Deep Dive
 
 ### What Claude Code Can Do With tmux-cli
@@ -103,6 +124,7 @@ claude mcp add puppeteer -- npx -y @modelcontextprotocol/server-puppeteer
 
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
+<a id="lmsh-experimental"></a>
 ## 🚀 lmsh (Experimental)
 
 Natural language shell - type what you want in plain English, get an editable command.
@@ -139,6 +161,7 @@ cp target/release/lmsh ~/.cargo/bin/
 
 See [docs/lmsh.md](docs/lmsh.md) for details.
 
+<a id="find-claude-session"></a>
 ## 🔍 find-claude-session
 
 Search and resume Claude Code sessions by keywords with an interactive UI.
@@ -178,20 +201,75 @@ fcs "keywords" -g
 
 ### Features
 
+- **Action menu** after session selection:
+  - Resume session (default)
+  - Show session file path
+  - Copy session file to file (*.jsonl) or directory
 - Interactive session selection with previews
-- Cross-project search capabilities
+- Cross-project search capabilities (local by default, `-g` for global)
+- Shows last user message preview (filtered, multi-line wrapping)
 - Automatic session resumption with `claude -r`
 - Persistent directory changes when resuming cross-project sessions
+- Press Enter to cancel (no need for Ctrl+C)
 
 Note: You can also use `find-claude-session` directly, but directory changes
 won't persist after exiting Claude Code.
 
 For detailed documentation, see [docs/find-claude-session.md](docs/find-claude-session.md).
 
-Looks like this -- 
+Looks like this --
 
-![fcs.png](docs/fcs.png)
+![find-claude-session.png](demos/find-claude-session.png)
 
+<a id="find-codex-session"></a>
+## 🔍 find-codex-session
+
+Search and resume Codex sessions by keywords. Usage is similar to `find-claude-session` above, but works with Codex session files instead.
+
+### Key Differences from find-claude-session
+
+- Searches `~/.codex/sessions/` (organized by YYYY/MM/DD directories)
+- Extracts metadata from `session_meta` entries in Codex JSONL files
+- Resumes sessions with `codex resume <session-id>`
+
+### Usage
+
+```bash
+# Search in current project only (default)
+find-codex-session "keyword1,keyword2"
+
+# Search across all projects
+find-codex-session "keywords" -g
+find-codex-session "keywords" --global
+
+# Limit number of results
+find-codex-session "keywords" -n 5
+
+# Custom Codex home directory
+find-codex-session "keywords" --codex-home /custom/path
+```
+
+### Features
+
+- **Action menu** after session selection:
+  - Resume session (default)
+  - Show session file path
+  - Copy session file to file (*.jsonl) or directory
+- **Project filtering**: Search current project only (default) or all projects with `-g`
+- Case-insensitive AND keyword search across all session content
+- Interactive session selection with Rich table display
+- Shows project name, git branch, date, line count, and preview of last user message
+- Automatic session resumption with `codex resume`
+- Cross-project session support with directory change prompts
+- Reverse chronological ordering (most recent first)
+- Multi-line preview wrapping for better readability
+- Press Enter to cancel (no need for Ctrl+C)
+
+Looks like this --
+
+![find-codex-session.png](demos/find-codex-session.png)
+
+<a id="vault"></a>
 ## 🔐 vault
 
 Centralized encrypted backup for .env files across all your projects using SOPS.
@@ -213,6 +291,7 @@ vault status    # Check sync status for current project
 
 For detailed documentation, see [docs/vault-documentation.md](docs/vault-documentation.md).
 
+<a id="env-safe"></a>
 ## 🔍 env-safe
 
 Safely inspect .env files without exposing sensitive values. Designed for Claude Code and other automated tools that need to work with environment files without accidentally leaking secrets.
@@ -238,6 +317,7 @@ env-safe --help                  # See all options
 
 Claude Code is completely blocked from directly accessing .env files - no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
 
+<a id="claude-code-safety-hooks"></a>
 ## 🛡️ Claude Code Safety Hooks
 
 This repository includes a comprehensive set of safety hooks that enhance Claude
@@ -288,10 +368,12 @@ Code's behavior and prevent dangerous operations.
 
 For complete documentation, see [hooks/README.md](hooks/README.md).
 
+<a id="using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers"></a>
 ## 🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers
 
 You can use Claude Code with alternative LLMs served via Anthropic-compatible
-APIs. Add these functions to your shell config (.bashrc/.zshrc):
+APIs, e.g. Kimi-k2, GLM4.5 (from zai), Deepseek-v3.1. 
+Add these functions to your shell config (.bashrc/.zshrc):
 
 ```bash
 kimi() {
@@ -309,18 +391,30 @@ zai() {
         claude "$@"
     )
 }
+
+dseek() {
+    (
+        export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+        export ANTHROPIC_AUTH_TOKEN=${DEEPSEEK_API_KEY}
+        export ANTHROPIC_MODEL=deepseek-chat
+        export ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat        
+        claude "$@"
+    )
+}
 ```
 
 After adding these functions:
-- Set your API keys: `export KIMI_API_KEY=your-kimi-key` and 
-  `export Z_API_KEY=your-z-key`
+- Set your API keys: `export KIMI_API_KEY=your-kimi-key`,
+  `export Z_API_KEY=your-z-key`, `export DEEPSEEK_API_KEY=your-deepseek-key`
 - Run `kimi` to use Claude Code with the Kimi K2 LLM
 - Run `zai` to use Claude Code with the GLM-4.5 model
+- Run `dseek` to use Claude Code with the DeepSeek model
 
 The functions use subshells to ensure the environment variables don't affect 
 your main shell session, so you could be running multiple instances of Claude Code,
 each using a different LLM.
 
+<a id="documentation"></a>
 ## 📚 Documentation
 
 - [tmux-cli detailed instructions](docs/tmux-cli-instructions.md) - 
@@ -331,6 +425,7 @@ each using a different LLM.
   Complete guide for the .env backup system
 - [Hook configuration](hooks/README.md) - Setting up Claude Code hooks
 
+<a id="requirements"></a>
 ## 📋 Requirements
 
 - Python 3.11+
@@ -338,6 +433,7 @@ each using a different LLM.
 - tmux (for tmux-cli functionality)
 - SOPS (for vault functionality)
 
+<a id="development"></a>
 ## 🛠️ Development
 
 ### Setup
@@ -394,6 +490,7 @@ Run `make help` to see all available commands:
 - `make release` - Bump patch version and install globally
 - `make patch/minor/major` - Version bump commands
 
+<a id="license"></a>
 ## 📄 License
 
 MIT

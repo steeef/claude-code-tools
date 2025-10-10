@@ -1,6 +1,6 @@
 [project]
 name = "claude-code-tools"
-version = "0.1.21"
+version = "0.2.3"
 description = "Collection of tools for working with Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,7 @@ dev = ["commitizen>=3.0.0"]
 
 [project.scripts]
 find-claude-session = "claude_code_tools.find_claude_session:main"
+find-codex-session = "claude_code_tools.find_codex_session:main"
 vault = "claude_code_tools.dotenv_vault:main"
 tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"
@@ -42,7 +43,7 @@ exclude = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.21"
+version = "0.2.3"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",
