@@ -168,10 +168,28 @@ See [docs/lmsh.md](docs/lmsh.md) for details.
 
 **Unified session finder** - Search across both Claude Code and Codex sessions simultaneously.
 
-> **⚠️ Note about the `fs` command**: For convenience, this tool is available as both `find-session` and `fs`. The short `fs` alias may conflict with existing commands or aliases in your shell. If you have a conflict, you can:
-> - Use the full `find-session` command instead
-> - Create your own alias: `alias mysearch='find-session'`
-> - Uninstall and reinstall without the `fs` entry point (edit `pyproject.toml`)
+### Setup (Recommended)
+
+Add this function to your shell config (.bashrc/.zshrc) for persistent directory changes:
+
+```bash
+fs() {
+    # Check if user is asking for help
+    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        find-session --help
+        return
+    fi
+    # Run find-session in shell mode and evaluate the output
+    eval "$(find-session --shell "$@" | sed '/^$/d')"
+}
+```
+
+Or source the provided function:
+```bash
+source /path/to/claude-code-tools/scripts/fs-function.sh
+```
+
+**Why use the shell wrapper?** When you resume a session from a different directory, the wrapper ensures the directory change persists after the session exits. Without it, you'll be back in your original directory after exiting the session (though the session itself runs in the correct directory).
 
 ### Usage
 
@@ -201,6 +219,7 @@ fs "keywords" -n 15
 - **Multi-agent search**: Searches both Claude Code and Codex sessions simultaneously
 - **Unified display**: Single table showing sessions from all agents with agent column
 - **Smart resume**: Automatically uses correct CLI tool (`claude` or `codex`) based on selected session
+- **Persistent directory changes**: Using the `fs` wrapper ensures you stay in the session's directory after exit
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
 - **Action menu** after session selection:
   - Resume session (default)
@@ -213,6 +232,8 @@ fs "keywords" -n 15
 - Shows agent, project, git branch, date, line count, and preview
 - Reverse chronological ordering (most recent first)
 - Press Enter to cancel (no need for Ctrl+C)
+
+Note: You can also use `find-session` directly, but directory changes won't persist after exiting sessions.
 
 ### Configuration (Optional)
 
@@ -321,27 +342,48 @@ Search and resume Codex sessions by keywords. Usage is similar to `find-claude-s
 - Extracts metadata from `session_meta` entries in Codex JSONL files
 - Resumes sessions with `codex resume <session-id>`
 
+### Setup (Recommended)
+
+Add this function to your shell config (.bashrc/.zshrc) for persistent directory changes:
+
+```bash
+fcs-codex() {
+    # Check if user is asking for help
+    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        find-codex-session --help
+        return
+    fi
+    # Run find-codex-session in shell mode and evaluate the output
+    eval "$(find-codex-session --shell "$@" | sed '/^$/d')"
+}
+```
+
+Or source the provided function:
+```bash
+source /path/to/claude-code-tools/scripts/fcs-codex-function.sh
+```
+
 ### Usage
 
 ```bash
 # Search in current project only (default)
-find-codex-session "keyword1,keyword2"
+fcs-codex "keyword1,keyword2"
 
 # Show all sessions in current project (no keyword filtering)
-find-codex-session
+fcs-codex
 
 # Search across all projects
-find-codex-session "keywords" -g
-find-codex-session "keywords" --global
+fcs-codex "keywords" -g
+fcs-codex "keywords" --global
 
 # Show all sessions across all projects
-find-codex-session -g
+fcs-codex -g
 
 # Limit number of results
-find-codex-session "keywords" -n 5
+fcs-codex "keywords" -n 5
 
 # Custom Codex home directory
-find-codex-session "keywords" --codex-home /custom/path
+fcs-codex "keywords" --codex-home /custom/path
 ```
 
 ### Features
@@ -360,6 +402,8 @@ find-codex-session "keywords" --codex-home /custom/path
 - Reverse chronological ordering (most recent first)
 - Multi-line preview wrapping for better readability
 - Press Enter to cancel (no need for Ctrl+C)
+
+Note: You can also use `find-codex-session` directly, but directory changes won't persist after exiting Codex.
 
 Looks like this --
 

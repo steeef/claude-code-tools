@@ -262,21 +262,30 @@ def display_interactive_ui(
             ui_console.print("[red]Invalid choice. Please try again.[/red]")
 
 
-def show_action_menu(session: dict) -> Optional[str]:
+def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
     """Show action menu for selected session."""
-    print(f"\n=== Session: {session['session_id'][:16]}... ===")
-    print(f"Agent: {session['agent_display']}")
-    print(f"Project: {session['project']}")
+    output = sys.stderr if stderr_mode else sys.stdout
+
+    print(f"\n=== Session: {session['session_id'][:16]}... ===", file=output)
+    print(f"Agent: {session['agent_display']}", file=output)
+    print(f"Project: {session['project']}", file=output)
     if session.get("branch"):
-        print(f"Branch: {session['branch']}")
-    print(f"\nWhat would you like to do?")
-    print("1. Resume session (default)")
-    print("2. Show session file path")
-    print("3. Copy session file to file (*.jsonl) or directory")
-    print()
+        print(f"Branch: {session['branch']}", file=output)
+    print(f"\nWhat would you like to do?", file=output)
+    print("1. Resume session (default)", file=output)
+    print("2. Show session file path", file=output)
+    print("3. Copy session file to file (*.jsonl) or directory", file=output)
+    print(file=output)
 
     try:
-        choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
+        if stderr_mode:
+            # In stderr mode, prompt to stderr so it's visible
+            sys.stderr.write("Enter choice [1-3] (or Enter for 1): ")
+            sys.stderr.flush()
+            choice = sys.stdin.readline().strip()
+        else:
+            choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
+
         if not choice or choice == "1":
             return "resume"
         elif choice == "2":
@@ -284,10 +293,10 @@ def show_action_menu(session: dict) -> Optional[str]:
         elif choice == "3":
             return "copy"
         else:
-            print("Invalid choice.")
+            print("Invalid choice.", file=output)
             return None
     except KeyboardInterrupt:
-        print("\nCancelled.")
+        print("\nCancelled.", file=output)
         return None
 
 
@@ -421,7 +430,7 @@ Examples:
         )
         if selected_session:
             # Show action menu
-            action = show_action_menu(selected_session)
+            action = show_action_menu(selected_session, stderr_mode=args.shell)
             if action:
                 handle_action(selected_session, action, shell_mode=args.shell)
     else:
