@@ -9,6 +9,7 @@ and other CLI coding agents.
 - [🚀 Quick Start](#quick-start)
 - [🎮 tmux-cli Deep Dive](#tmux-cli-deep-dive)
 - [🚀 lmsh (Experimental) — natural language to shell commands](#lmsh-experimental)
+- [🔍 find-session — unified search across Claude & Codex sessions](#find-session)
 - [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
 - [🔐 vault — encrypted .env backup & sync](#vault)
@@ -67,6 +68,7 @@ uv tool install git+https://github.com/pchalasani/claude-code-tools
 
 This gives you:
 - `tmux-cli` - The interactive CLI controller we just covered
+- `find-session` - Unified search across Claude Code and Codex sessions
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
 - `find-codex-session` - Search and resume Codex sessions by keywords
 - `vault` - Encrypted backup for your .env files
@@ -160,6 +162,86 @@ cp target/release/lmsh ~/.cargo/bin/
 ```
 
 See [docs/lmsh.md](docs/lmsh.md) for details.
+
+<a id="find-session"></a>
+## 🔍 find-session
+
+**Unified session finder** - Search across both Claude Code and Codex sessions simultaneously.
+
+> **⚠️ Note about the `fs` command**: For convenience, this tool is available as both `find-session` and `fs`. The short `fs` alias may conflict with existing commands or aliases in your shell. If you have a conflict, you can:
+> - Use the full `find-session` command instead
+> - Create your own alias: `alias mysearch='find-session'`
+> - Uninstall and reinstall without the `fs` entry point (edit `pyproject.toml`)
+
+### Usage
+
+```bash
+# Search all agents in current project
+fs "keyword1,keyword2"
+
+# Show all sessions across all agents in current project
+fs
+
+# Search across all projects (Claude + Codex)
+fs "keywords" -g
+
+# Show all sessions across all projects
+fs -g
+
+# Search only specific agent(s)
+fs "bug,fix" --agents claude
+fs "error" --agents codex
+
+# Limit number of results
+fs "keywords" -n 15
+```
+
+### Features
+
+- **Multi-agent search**: Searches both Claude Code and Codex sessions simultaneously
+- **Unified display**: Single table showing sessions from all agents with agent column
+- **Smart resume**: Automatically uses correct CLI tool (`claude` or `codex`) based on selected session
+- **Optional keyword search**: Keywords are optional—omit them to show all sessions
+- **Action menu** after session selection:
+  - Resume session (default)
+  - Show session file path
+  - Copy session file to file (*.jsonl) or directory
+- **Project filtering**: Search current project only (default) or all projects with `-g`
+- **Agent filtering**: Use `--agents claude codex` to search specific agents only
+- **Configurable**: Optional config file at `~/.config/find-session/config.json` for customizing agents
+- Interactive session selection with Rich table display
+- Shows agent, project, git branch, date, line count, and preview
+- Reverse chronological ordering (most recent first)
+- Press Enter to cancel (no need for Ctrl+C)
+
+### Configuration (Optional)
+
+Create `~/.config/find-session/config.json` to customize agent settings:
+
+```json
+{
+  "agents": [
+    {
+      "name": "claude",
+      "display_name": "Claude",
+      "home_dir": "~/.claude",
+      "enabled": true
+    },
+    {
+      "name": "codex",
+      "display_name": "Codex",
+      "home_dir": "~/.codex",
+      "enabled": true
+    }
+  ]
+}
+```
+
+This allows you to:
+- Enable/disable specific agents
+- Override default home directories
+- Customize display names
+- Prepare for future agent additions
 
 <a id="find-claude-session"></a>
 ## 🔍 find-claude-session
