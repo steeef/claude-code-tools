@@ -112,10 +112,44 @@ def search_keywords_in_file(
     Search for keywords in a Codex session file.
 
     Returns: (found, line_count, preview)
-    - found: True if all keywords found (case-insensitive AND logic)
+    - found: True if all keywords found (case-insensitive AND logic), or True if no keywords
     - line_count: total lines in file
     - preview: best user message content (skips system messages)
     """
+    # If no keywords, match all files
+    if not keywords:
+        line_count = 0
+        last_user_message = None
+        try:
+            with open(session_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line_count += 1
+                    if not line.strip():
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        # Extract user messages (skip system messages)
+                        if (
+                            entry.get("type") == "response_item"
+                            and entry.get("payload", {}).get("role") == "user"
+                        ):
+                            content = entry.get("payload", {}).get("content", [])
+                            if isinstance(content, list) and len(content) > 0:
+                                first_item = content[0]
+                                if isinstance(first_item, dict):
+                                    text = first_item.get("text", "")
+                                    if text and not is_system_message(text):
+                                        cleaned = text[:400].replace("\n", " ").strip()
+                                        if len(cleaned) > 20:
+                                            last_user_message = cleaned
+                                        elif last_user_message is None:
+                                            last_user_message = cleaned
+                    except json.JSONDecodeError:
+                        continue
+            return True, line_count, last_user_message
+        except (OSError, IOError):
+            return False, 0, None
+
     keywords_lower = [k.lower() for k in keywords]
     found_keywords = set()
     line_count = 0
@@ -277,6 +311,7 @@ def find_sessions(
 
 def display_interactive_ui(
     matches: list[dict],
+    keywords: list[str] = None,
 ) -> Optional[dict]:
     """
     Display matches in interactive UI and get user selection.
@@ -289,7 +324,8 @@ def display_interactive_ui(
 
     if RICH_AVAILABLE:
         console = Console()
-        table = Table(title="Codex Sessions", show_header=True)
+        title = f"Codex Sessions matching: {', '.join(keywords)}" if keywords else "All Codex Sessions"
+        table = Table(title=title, show_header=True)
         table.add_column("#", style="cyan", justify="right")
         table.add_column("Session ID", style="yellow", no_wrap=True)
         table.add_column("Project", style="green")
@@ -486,7 +522,9 @@ Examples:
 
     parser.add_argument(
         "keywords",
-        help="Comma-separated keywords to search (AND logic)",
+        nargs='?',
+        default="",
+        help="Comma-separated keywords to search (AND logic). If omitted, shows all sessions.",
     )
     parser.add_argument(
         "-g",
@@ -515,10 +553,7 @@ Examples:
     args = parser.parse_args()
 
     # Parse keywords
-    keywords = [k.strip() for k in args.keywords.split(",") if k.strip()]
-    if not keywords:
-        print("Error: No keywords provided", file=sys.stderr)
-        sys.exit(1)
+    keywords = [k.strip() for k in args.keywords.split(",") if k.strip()] if args.keywords else []
 
     # Get Codex home
     codex_home = get_codex_home(args.codex_home)
@@ -532,7 +567,7 @@ Examples:
     )
 
     # Display and get selection
-    selected_match = display_interactive_ui(matches)
+    selected_match = display_interactive_ui(matches, keywords)
     if not selected_match:
         return
 

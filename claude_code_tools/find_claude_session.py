@@ -124,29 +124,49 @@ def extract_project_name(original_path: str) -> str:
 def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, int, Optional[str]]:
     """
     Check if all keywords are present in the JSONL file, count lines, and extract git branch.
-    
+
     Args:
         filepath: Path to the JSONL file
-        keywords: List of keywords to search for (case-insensitive)
-        
+        keywords: List of keywords to search for (case-insensitive). Empty list matches all files.
+
     Returns:
         Tuple of (matches: bool, line_count: int, git_branch: Optional[str])
-        - matches: True if ALL keywords are found in the file
+        - matches: True if ALL keywords are found in the file (or True if no keywords)
         - line_count: Total number of lines in the file
         - git_branch: Git branch name from the first message that has it, or None
     """
+    # If no keywords, match all files
+    if not keywords:
+        line_count = 0
+        git_branch = None
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line_count += 1
+                    # Extract git branch from JSON if not already found
+                    if git_branch is None:
+                        try:
+                            data = json.loads(line.strip())
+                            if 'gitBranch' in data and data['gitBranch']:
+                                git_branch = data['gitBranch']
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+        except Exception:
+            return False, 0, None
+        return True, line_count, git_branch
+
     # Convert keywords to lowercase for case-insensitive search
     keywords_lower = [k.lower() for k in keywords]
     found_keywords = set()
     line_count = 0
     git_branch = None
-    
+
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
                 line_count += 1
                 line_lower = line.lower()
-                
+
                 # Extract git branch from JSON if not already found
                 if git_branch is None:
                     try:
@@ -155,7 +175,7 @@ def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, 
                             git_branch = data['gitBranch']
                     except (json.JSONDecodeError, KeyError):
                         pass
-                
+
                 # Check which keywords are in this line
                 for keyword in keywords_lower:
                     if keyword in line_lower:
@@ -163,7 +183,7 @@ def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, 
     except Exception:
         # Skip files that can't be read
         return False, 0, None
-    
+
     matches = len(found_keywords) == len(keywords_lower)
     return matches, line_count, git_branch
 
@@ -310,22 +330,23 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
     """Display interactive UI for session selection."""
     if not RICH_AVAILABLE:
         return None
-    
+
     # Use stderr console if in stderr mode
     ui_console = Console(file=sys.stderr) if stderr_mode else console
     if not ui_console:
         return None
-    
+
     # Limit to specified number of sessions
     display_sessions = sessions[:num_matches]
-    
+
     if not display_sessions:
         ui_console.print("[red]No sessions found[/red]")
         return None
-    
+
     # Create table
+    title = f"Sessions matching: {', '.join(keywords)}" if keywords else "All sessions"
     table = Table(
-        title=f"Sessions matching: {', '.join(keywords)}",
+        title=title,
         box=box.ROUNDED,
         show_header=True,
         header_style="bold cyan"
@@ -609,7 +630,9 @@ To persist directory changes when resuming sessions:
     )
     parser.add_argument(
         "keywords",
-        help="Comma-separated keywords to search for (case-insensitive)"
+        nargs='?',
+        default="",
+        help="Comma-separated keywords to search for (case-insensitive). If omitted, shows all sessions."
     )
     parser.add_argument(
         "-g", "--global",
@@ -636,11 +659,7 @@ To persist directory changes when resuming sessions:
     args = parser.parse_args()
     
     # Parse keywords
-    keywords = [k.strip() for k in args.keywords.split(",") if k.strip()]
-    
-    if not keywords:
-        print("Error: No keywords provided", file=sys.stderr)
-        sys.exit(1)
+    keywords = [k.strip() for k in args.keywords.split(",") if k.strip()] if args.keywords else []
     
     # Check if searching current project only
     if not getattr(args, 'global'):
@@ -656,10 +675,11 @@ To persist directory changes when resuming sessions:
     
     if not matching_sessions:
         scope = "all projects" if getattr(args, 'global') else "current project"
+        keyword_msg = f" containing all keywords: {', '.join(keywords)}" if keywords else ""
         if RICH_AVAILABLE and console and not args.shell:
-            console.print(f"[yellow]No sessions found containing all keywords in {scope}:[/yellow] {', '.join(keywords)}")
+            console.print(f"[yellow]No sessions found{keyword_msg} in {scope}[/yellow]")
         else:
-            print(f"No sessions found containing all keywords in {scope}: {', '.join(keywords)}", file=sys.stderr)
+            print(f"No sessions found{keyword_msg} in {scope}", file=sys.stderr)
         sys.exit(0)
     
     # If we have rich and there are results, show interactive UI

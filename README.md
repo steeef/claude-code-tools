@@ -194,13 +194,20 @@ source /path/to/claude-code-tools/scripts/fcs-function.sh
 # Search in current project
 fcs "keyword1,keyword2,keyword3"
 
-# Search across all Claude projects  
+# Show all sessions in current project (no keyword filtering)
+fcs
+
+# Search across all Claude projects
 fcs "keywords" --global
 fcs "keywords" -g
+
+# Show all sessions across all projects
+fcs -g
 ```
 
 ### Features
 
+- **Optional keyword search**: Keywords are optional—omit them to show all sessions
 - **Action menu** after session selection:
   - Resume session (default)
   - Show session file path
@@ -238,9 +245,15 @@ Search and resume Codex sessions by keywords. Usage is similar to `find-claude-s
 # Search in current project only (default)
 find-codex-session "keyword1,keyword2"
 
+# Show all sessions in current project (no keyword filtering)
+find-codex-session
+
 # Search across all projects
 find-codex-session "keywords" -g
 find-codex-session "keywords" --global
+
+# Show all sessions across all projects
+find-codex-session -g
 
 # Limit number of results
 find-codex-session "keywords" -n 5
@@ -251,6 +264,7 @@ find-codex-session "keywords" --codex-home /custom/path
 
 ### Features
 
+- **Optional keyword search**: Keywords are optional—omit them to show all sessions
 - **Action menu** after session selection:
   - Resume session (default)
   - Show session file path
