@@ -115,16 +115,22 @@ Example uses:
   debugging etc
 - Run a Python script with the Pdb debugger to step thru its execution, for 
   code-understanding and debugging
-- Launch web apps and test them with browser automation MCP tools like Puppeteer
+- Launch web apps and test them with browser automation MCP tools like Playwright or 
+Chrome Dev Tools.
 ```
 
-Incidentally, installing the Puppeteer MCP tool is easy:
+More frequently, I use this method: I launch another CLI-agent (say Codex-CLI) 
+in another tmux pane, and say something like this to the first agent:
 
-```bash
-claude mcp add puppeteer -- npx -y @modelcontextprotocol/server-puppeteer
-```
+> There's another coding agent "Codex" running in tmux Pane 3. Feel free to use Codex 
+to help you with your task or review your work. You can communicate with Codex using
+the tmux-cli command; you can do tmu-cli --help to see how to use it.
+
 
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
+
+All of this assumes you're familiar and comfortable with tmux, and (like me) run 
+all CLI coding sessions inside tmux sessions.
 
 <a id="lmsh-experimental"></a>
 ## 🚀 lmsh (Experimental)
