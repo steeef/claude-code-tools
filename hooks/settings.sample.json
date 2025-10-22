@@ -46,7 +46,25 @@
             "command": "/path/to/claude-code-tools/hooks/grep_block_hook.py"
           }
         ]
-      }      
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/claude-code-tools/hooks/file_length_limit_hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/claude-code-tools/hooks/file_length_limit_hook.py"
+          }
+        ]
+      }
     ],
     "PostToolUse": [
       {
