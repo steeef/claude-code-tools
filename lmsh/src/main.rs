@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 mod shell;
 use shell::Shell;
 
-`#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum Agent {
     Claude,
     Codex,

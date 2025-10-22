@@ -389,7 +389,7 @@ def show_action_menu(match: dict) -> Optional[str]:
     """
     Show action menu for selected session.
 
-    Returns: action choice ('resume', 'path', 'copy') or None if cancelled
+    Returns: action choice ('resume', 'path', 'copy', 'clone') or None if cancelled
     """
     print(f"\n=== Session: {match['session_id'][:16]}... ===")
     print(f"Project: {match['project']}")
@@ -398,16 +398,19 @@ def show_action_menu(match: dict) -> Optional[str]:
     print("1. Resume session (default)")
     print("2. Show session file path")
     print("3. Copy session file to file (*.jsonl) or directory")
+    print("4. Clone session and resume clone")
     print()
 
     try:
-        choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
+        choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
         if not choice or choice == "1":
             return "resume"
         elif choice == "2":
             return "path"
         elif choice == "3":
             return "copy"
+        elif choice == "4":
+            return "clone"
         else:
             print("Invalid choice.")
             return None
@@ -466,6 +469,55 @@ def copy_session_file(file_path: str) -> None:
         print("\nCancelled.")
     except Exception as e:
         print(f"\nError copying file: {e}")
+
+
+def clone_session(file_path: str, session_id: str, cwd: str, shell_mode: bool = False) -> None:
+    """Clone a Codex session to a new file with new UUID and resume it."""
+    import shutil
+    import uuid
+    import re
+
+    source_path = Path(file_path)
+
+    if not source_path.exists():
+        print(f"\nError: Session file not found: {source_path}")
+        return
+
+    # Extract the timestamp part from filename
+    # Format: rollout-YYYY-MM-DDTHH-MM-SS-<SESSION_ID>.jsonl
+    filename = source_path.name
+    match = re.match(r"(rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-)(.+)(\.jsonl)", filename)
+
+    if not match:
+        print(f"\nError: Invalid Codex session filename format: {filename}")
+        return
+
+    timestamp_prefix = match.group(1)  # rollout-YYYY-MM-DDTHH-MM-SS-
+    suffix = match.group(3)  # .jsonl
+
+    # Generate new UUID
+    new_session_id = str(uuid.uuid4())
+
+    # Create new filename with same timestamp but new UUID
+    new_filename = f"{timestamp_prefix}{new_session_id}{suffix}"
+    dest_path = source_path.parent / new_filename
+
+    try:
+        # Copy the file
+        shutil.copy2(source_path, dest_path)
+
+        if not shell_mode:
+            print(f"\nCloned session:")
+            print(f"  Original: {session_id}")
+            print(f"  New:      {new_session_id}")
+            print(f"\nResuming cloned session...")
+
+        # Resume the new cloned session
+        resume_session(new_session_id, cwd, shell_mode=shell_mode)
+
+    except Exception as e:
+        print(f"\nError cloning session: {e}")
+        return
 
 
 def resume_session(
@@ -588,6 +640,13 @@ Examples:
         print(selected_match["file_path"])
     elif action == "copy":
         copy_session_file(selected_match["file_path"])
+    elif action == "clone":
+        clone_session(
+            selected_match["file_path"],
+            selected_match["session_id"],
+            selected_match["cwd"],
+            shell_mode=args.shell
+        )
 
 
 if __name__ == "__main__":

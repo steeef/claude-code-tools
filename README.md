@@ -231,6 +231,7 @@ fs "keywords" -n 15
   - Resume session (default)
   - Show session file path
   - Copy session file to file (*.jsonl) or directory
+  - Clone session and resume clone (creates a copy with new UUID)
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - **Agent filtering**: Use `--agents claude codex` to search specific agents only
 - **Configurable**: Optional config file at `~/.config/find-session/config.json` for customizing agents
@@ -321,6 +322,7 @@ fcs -g
   - Resume session (default)
   - Show session file path
   - Copy session file to file (*.jsonl) or directory
+  - Clone session and resume clone (creates a copy with new UUID)
 - Interactive session selection with previews
 - Cross-project search capabilities (local by default, `-g` for global)
 - Shows last user message preview (filtered, multi-line wrapping)
@@ -399,6 +401,7 @@ fcs-codex "keywords" --codex-home /custom/path
   - Resume session (default)
   - Show session file path
   - Copy session file to file (*.jsonl) or directory
+  - Clone session and resume clone (creates a copy with new UUID)
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - Case-insensitive AND keyword search across all session content
 - Interactive session selection with Rich table display

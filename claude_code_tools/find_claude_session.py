@@ -451,16 +451,19 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
     print("1. Resume session (default)")
     print("2. Show session file path")
     print("3. Copy session file to file (*.jsonl) or directory")
+    print("4. Clone session and resume clone")
     print()
 
     try:
-        choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
+        choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
         if not choice or choice == "1":
             return "resume"
         elif choice == "2":
             return "path"
         elif choice == "3":
             return "copy"
+        elif choice == "4":
+            return "clone"
         else:
             print("Invalid choice.")
             return None
@@ -528,6 +531,42 @@ def copy_session_file(session_file_path: str) -> None:
         print("\nCancelled.")
     except Exception as e:
         print(f"\nError copying file: {e}")
+
+
+def clone_session(session_id: str, project_path: str, shell_mode: bool = False, claude_home: Optional[str] = None):
+    """Clone a Claude session to a new file with new UUID and resume it."""
+    import shutil
+    import uuid
+
+    # Get the original session file path
+    source_path = Path(get_session_file_path(session_id, project_path, claude_home))
+
+    if not source_path.exists():
+        print(f"\nError: Session file not found: {source_path}")
+        return
+
+    # Generate new UUID for cloned session
+    new_session_id = str(uuid.uuid4())
+
+    # Create destination path with new UUID in same directory
+    dest_path = source_path.parent / f"{new_session_id}.jsonl"
+
+    try:
+        # Copy the file
+        shutil.copy2(source_path, dest_path)
+
+        if not shell_mode:
+            print(f"\nCloned session:")
+            print(f"  Original: {session_id}")
+            print(f"  New:      {new_session_id}")
+            print(f"\nResuming cloned session...")
+
+        # Resume the new cloned session
+        resume_session(new_session_id, project_path, shell_mode=shell_mode, claude_home=claude_home)
+
+    except Exception as e:
+        print(f"\nError cloning session: {e}")
+        return
 
 
 def resume_session(session_id: str, project_path: str, shell_mode: bool = False, claude_home: Optional[str] = None):
@@ -704,6 +743,8 @@ To persist directory changes when resuming sessions:
             elif action == "copy":
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
                 copy_session_file(session_file_path)
+            elif action == "clone":
+                clone_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
     else:
         # Fallback: print session IDs as before
         if not args.shell:

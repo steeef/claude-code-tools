@@ -26,12 +26,14 @@ from claude_code_tools.find_claude_session import (
     resume_session as resume_claude_session,
     get_session_file_path as get_claude_session_file_path,
     copy_session_file as copy_claude_session_file,
+    clone_session as clone_claude_session,
 )
 from claude_code_tools.find_codex_session import (
     find_sessions as find_codex_sessions,
     resume_session as resume_codex_session,
     get_codex_home,
     copy_session_file as copy_codex_session_file,
+    clone_session as clone_codex_session,
 )
 
 try:
@@ -275,16 +277,17 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
     print("1. Resume session (default)", file=output)
     print("2. Show session file path", file=output)
     print("3. Copy session file to file (*.jsonl) or directory", file=output)
+    print("4. Clone session and resume clone", file=output)
     print(file=output)
 
     try:
         if stderr_mode:
             # In stderr mode, prompt to stderr so it's visible
-            sys.stderr.write("Enter choice [1-3] (or Enter for 1): ")
+            sys.stderr.write("Enter choice [1-4] (or Enter for 1): ")
             sys.stderr.flush()
             choice = sys.stdin.readline().strip()
         else:
-            choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
+            choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
 
         if not choice or choice == "1":
             return "resume"
@@ -292,6 +295,8 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
             return "path"
         elif choice == "3":
             return "copy"
+        elif choice == "4":
+            return "clone"
         else:
             print("Invalid choice.", file=output)
             return None
@@ -340,6 +345,22 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
             copy_claude_session_file(file_path)
         elif agent == "codex":
             copy_codex_session_file(session.get("file_path", ""))
+
+    elif action == "clone":
+        if agent == "claude":
+            clone_claude_session(
+                session["session_id"],
+                session["cwd"],
+                shell_mode=shell_mode,
+                claude_home=session.get("claude_home"),
+            )
+        elif agent == "codex":
+            clone_codex_session(
+                session.get("file_path", ""),
+                session["session_id"],
+                session["cwd"],
+                shell_mode=shell_mode,
+            )
 
 
 def main():
