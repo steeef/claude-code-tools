@@ -12,6 +12,7 @@ and other CLI coding agents.
 - [🔍 find-session — unified search across Claude & Codex sessions](#find-session)
 - [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
+- [🗜️ suppress-tool-results — compress session files for context management](#suppress-tool-results)
 - [🔐 vault — encrypted .env backup & sync](#vault)
 - [🔍 env-safe — inspect .env safely without values](#env-safe)
 - [🛡️ Claude Code Safety Hooks — guardrails for bash, git, env, files](#claude-code-safety-hooks)
@@ -71,6 +72,7 @@ This gives you:
 - `find-session` - Unified search across Claude Code and Codex sessions
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
 - `find-codex-session` - Search and resume Codex sessions by keywords
+- `suppress-tool-results` - Compress session files by replacing large tool results
 - `vault` - Encrypted backup for your .env files
 - `env-safe` - Safely inspect .env files without exposing values
 
@@ -417,6 +419,118 @@ Note: You can also use `find-codex-session` directly, but directory changes won'
 Looks like this --
 
 ![find-codex-session.png](demos/find-codex-session.png)
+
+<a id="suppress-tool-results"></a>
+## 🗜️ suppress-tool-results
+
+Compress Claude Code session files by replacing large tool results with
+placeholders. This is especially useful for managing sessions that are
+approaching the context window limit or compaction threshold.
+
+### Why suppress-tool-results?
+
+When working on complex tasks, Claude Code sessions can accumulate large tool
+outputs—file contents, bash command results, search results, etc. These outputs
+can push your session close to the context limit, triggering automatic
+compaction. By selectively suppressing large tool results, you can:
+
+- **Extend conversation length**: Reclaim thousands of tokens by replacing
+  verbose tool outputs with concise placeholders
+- **Resume conversations efficiently**: Continue working on a task without
+  hitting context limits
+- **Preserve conversation flow**: Keep the structure and reasoning intact while
+  removing redundant data
+- **Target specific tools**: Choose which types of tool results to suppress
+  (e.g., only large file reads)
+
+### Usage
+
+```bash
+# Suppress all tool results over 500 characters (default)
+suppress-tool-results session.jsonl
+
+# Suppress only specific tools (e.g., file operations)
+suppress-tool-results session.jsonl --tools read,edit,bash
+
+# Use custom length threshold (e.g., 1000 characters)
+suppress-tool-results session.jsonl --len 1000
+
+# Suppress Task tool results over 1000 chars
+suppress-tool-results session.jsonl --tools task --len 1000
+
+# Custom output directory
+suppress-tool-results session.jsonl --output-dir ~/compressed-sessions
+```
+
+### How it works
+
+The tool processes your session file and replaces large tool results with
+informative placeholders:
+
+**Before:**
+```
+[6,708 characters of detailed file exploration results]
+```
+
+**After:**
+```
+[Results from Task tool suppressed - original content was 6,708 characters]
+```
+
+The output file is named with a new UUID (e.g.,
+`4e470f01-706e-496b-95d3-b1d93db8b5f8.jsonl`) and can be resumed like any
+other Claude Code session using `claude -r <session-uuid>`.
+
+### Features
+
+- **Flexible filtering**: Suppress all tools or target specific ones (bash,
+  read, edit, task, etc.)
+- **Configurable threshold**: Set minimum size for suppression (default: 500
+  characters)
+- **Token estimates**: Shows estimated tokens saved using standard heuristics
+  (~4 chars per token)
+- **Resume-compatible**: Output files work seamlessly with `claude -r`
+- **Non-destructive**: Original session files remain unchanged
+- **Detailed statistics**: Reports number of results suppressed, characters
+  saved, and estimated tokens saved
+
+### Example output
+
+```
+======================================================================
+SUPPRESSION SUMMARY
+======================================================================
+Tool results suppressed: 55
+Characters saved: 263,338
+Estimated tokens saved: 65,834
+
+Output file: ai-chats/4e470f01-706e-496b-95d3-b1d93db8b5f8.jsonl
+
+Session UUID:
+4e470f01-706e-496b-95d3-b1d93db8b5f8
+======================================================================
+```
+
+### When to use
+
+- **Before hitting context limits**: Proactively compress sessions when they
+  grow large
+- **After exploratory work**: Clean up sessions after extensive file reading
+  or code exploration
+- **For long-running tasks**: Maintain session viability across multiple work
+  sessions
+- **When resuming old sessions**: Refresh old sessions by removing outdated
+  tool outputs
+
+### Available tool types
+
+Common tools you can target with `--tools`:
+- `task` - Sub-agent results (often the largest)
+- `read` - File contents
+- `bash` - Shell command outputs
+- `edit` - File edit results
+- `glob` - File search results
+- `grep` - Content search results
 
 <a id="vault"></a>
 ## 🔐 vault

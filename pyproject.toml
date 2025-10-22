@@ -21,6 +21,7 @@ find-session = "claude_code_tools.find_session:main"
 vault = "claude_code_tools.dotenv_vault:main"
 tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"
+suppress-tool-results = "claude_code_tools.suppress_tool_results:main"
 
 [build-system]
 requires = ["hatchling"]
