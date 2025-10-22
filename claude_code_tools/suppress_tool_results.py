@@ -1,109 +1,21 @@
 #!/usr/bin/env python3
 """
-Suppress large tool results in Claude Code JSONL session files.
+Suppress large tool results in CLI agent JSONL session files.
 
-This script processes JSONL session logs and replaces large tool results
-with placeholder text to reduce file size while preserving conversation flow.
+This script processes JSONL session logs from Claude Code or Codex and
+replaces large tool results with placeholder text to reduce file size while
+preserving conversation flow.
 """
 
 import argparse
-import json
 import sys
 import uuid
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Optional, Set, Tuple
 
-
-def build_tool_name_mapping(input_file: Path) -> Dict[str, str]:
-    """
-    Build a mapping of tool_use_id to tool name.
-
-    Args:
-        input_file: Path to the input JSONL file.
-
-    Returns:
-        Dictionary mapping tool_use_id to tool name.
-    """
-    tool_map = {}
-
-    with open(input_file, "r") as f:
-        for line in f:
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            if data.get("type") != "assistant":
-                continue
-
-            content = data.get("message", {}).get("content", [])
-            if not isinstance(content, list):
-                continue
-
-            for item in content:
-                if (
-                    isinstance(item, dict)
-                    and item.get("type") == "tool_use"
-                ):
-                    tool_id = item.get("id")
-                    tool_name = item.get("name")
-                    if tool_id and tool_name:
-                        tool_map[tool_id] = tool_name
-
-    return tool_map
-
-
-def get_content_length(content: Any) -> int:
-    """
-    Calculate the length of tool result content.
-
-    Args:
-        content: The content field from a tool_result.
-
-    Returns:
-        Length in characters.
-    """
-    if isinstance(content, str):
-        return len(content)
-    elif isinstance(content, list):
-        total = 0
-        for item in content:
-            if isinstance(item, dict) and "text" in item:
-                total += len(item["text"])
-            else:
-                total += len(str(item))
-        return total
-    else:
-        return len(str(content))
-
-
-def should_suppress(
-    tool_name: str,
-    content_length: int,
-    target_tools: Optional[Set[str]],
-    threshold: int,
-) -> bool:
-    """
-    Determine if a tool result should be suppressed.
-
-    Args:
-        tool_name: Name of the tool.
-        content_length: Length of the result content.
-        target_tools: Set of tool names to suppress (None means all).
-        threshold: Minimum length threshold for suppression.
-
-    Returns:
-        True if the result should be suppressed.
-    """
-    # Check length threshold
-    if content_length < threshold:
-        return False
-
-    # Check if tool is in target list
-    if target_tools is None:
-        return True  # Suppress all tools over threshold
-
-    return tool_name.lower() in target_tools
+from . import suppress_tool_results_claude as claude_processor
+from . import suppress_tool_results_codex as codex_processor
 
 
 def create_placeholder(tool_name: str, original_length: int) -> str:
@@ -123,16 +35,18 @@ def create_placeholder(tool_name: str, original_length: int) -> str:
     )
 
 
-def process_jsonl(
+def process_session(
+    agent: str,
     input_file: Path,
     output_file: Path,
     target_tools: Optional[Set[str]],
     threshold: int,
 ) -> Tuple[int, int]:
     """
-    Process JSONL file and suppress tool results.
+    Process session file and suppress tool results.
 
     Args:
+        agent: Agent type ('claude' or 'codex').
         input_file: Path to input JSONL file.
         output_file: Path to output JSONL file.
         target_tools: Set of tool names to suppress (None means all).
@@ -142,108 +56,39 @@ def process_jsonl(
         Tuple of (num_suppressed, chars_saved).
     """
     print("Building tool name mapping...", file=sys.stderr)
-    tool_map = build_tool_name_mapping(input_file)
-    print(
-        f"Found {len(tool_map)} tool invocations", file=sys.stderr
-    )
 
-    num_suppressed = 0
-    chars_saved = 0
+    if agent == "claude":
+        tool_map = claude_processor.build_tool_name_mapping(input_file)
+        print(
+            f"Found {len(tool_map)} tool invocations", file=sys.stderr
+        )
+        print("Processing tool results...", file=sys.stderr)
 
-    print("Processing tool results...", file=sys.stderr)
+        return claude_processor.process_claude_session(
+            input_file,
+            output_file,
+            tool_map,
+            target_tools,
+            threshold,
+            create_placeholder,
+        )
+    elif agent == "codex":
+        tool_map = codex_processor.build_tool_name_mapping(input_file)
+        print(
+            f"Found {len(tool_map)} tool invocations", file=sys.stderr
+        )
+        print("Processing tool results...", file=sys.stderr)
 
-    with open(input_file, "r") as infile, open(
-        output_file, "w"
-    ) as outfile:
-        for line_num, line in enumerate(infile, start=1):
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError as e:
-                print(
-                    f"Warning: Skipping line {line_num} "
-                    f"due to JSON error: {e}",
-                    file=sys.stderr,
-                )
-                outfile.write(line)
-                continue
-
-            # Check if this is a user message with tool results
-            if data.get("type") == "user":
-                content = data.get("message", {}).get("content")
-
-                # Handle array content with tool_result
-                if isinstance(content, list):
-                    for item in content:
-                        if (
-                            isinstance(item, dict)
-                            and item.get("type") == "tool_result"
-                        ):
-                            tool_use_id = item.get("tool_use_id")
-                            tool_name = tool_map.get(
-                                tool_use_id, "Unknown"
-                            )
-                            result_content = item.get("content", "")
-
-                            content_length = get_content_length(
-                                result_content
-                            )
-
-                            if should_suppress(
-                                tool_name,
-                                content_length,
-                                target_tools,
-                                threshold,
-                            ):
-                                placeholder = create_placeholder(
-                                    tool_name, content_length
-                                )
-                                item["content"] = placeholder
-                                num_suppressed += 1
-                                chars_saved += (
-                                    content_length - len(placeholder)
-                                )
-
-                # Also suppress in toolUseResult.content if present
-                if (
-                    "toolUseResult" in data
-                    and isinstance(data["toolUseResult"], dict)
-                ):
-                    tool_result = data["toolUseResult"]
-                    if "content" in tool_result:
-                        # Find the tool_use_id from message content
-                        tool_use_id = None
-                        if isinstance(content, list):
-                            for item in content:
-                                if item.get("type") == "tool_result":
-                                    tool_use_id = item.get(
-                                        "tool_use_id"
-                                    )
-                                    break
-
-                        if tool_use_id:
-                            tool_name = tool_map.get(
-                                tool_use_id, "Unknown"
-                            )
-                            result_content = tool_result["content"]
-                            content_length = get_content_length(
-                                result_content
-                            )
-
-                            if should_suppress(
-                                tool_name,
-                                content_length,
-                                target_tools,
-                                threshold,
-                            ):
-                                placeholder = create_placeholder(
-                                    tool_name, content_length
-                                )
-                                tool_result["content"] = placeholder
-
-            # Write the (potentially modified) line
-            outfile.write(json.dumps(data) + "\n")
-
-    return num_suppressed, chars_saved
+        return codex_processor.process_codex_session(
+            input_file,
+            output_file,
+            tool_map,
+            target_tools,
+            threshold,
+            create_placeholder,
+        )
+    else:
+        raise ValueError(f"Unknown agent type: {agent}")
 
 
 def main() -> None:
@@ -253,8 +98,11 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Suppress all tool results over 500 chars (default)
+  # Suppress all tool results over 500 chars in Claude session
   %(prog)s session.jsonl
+
+  # Suppress Codex session results
+  %(prog)s session.jsonl --agent codex
 
   # Suppress only specific tools
   %(prog)s session.jsonl --tools bash,read,edit
@@ -272,6 +120,13 @@ Examples:
 
     parser.add_argument(
         "input_file", help="Input JSONL session file path"
+    )
+    parser.add_argument(
+        "--agent",
+        "-a",
+        choices=["claude", "codex"],
+        default="claude",
+        help="Agent type: claude or codex (default: claude)",
     )
     parser.add_argument(
         "--tools",
@@ -322,16 +177,42 @@ Examples:
         )
 
     print(
+        f"Agent: {args.agent}", file=sys.stderr
+    )
+    print(
         f"Length threshold: {args.len} characters", file=sys.stderr
     )
 
-    # Generate output filename with UUID (same format as original)
+    # Generate output filename and directory based on agent type
     session_uuid = str(uuid.uuid4())
-    output_dir = (
-        Path(args.output_dir) if args.output_dir else input_path.parent
-    )
-    # Use just the UUID as filename (Claude Code session file format)
-    output_filename = f"{session_uuid}{input_path.suffix}"
+
+    if args.agent == "codex":
+        # Codex format: YYYY/MM/DD/rollout-YYYY-MM-DDTHH-MM-SS-{uuid}.jsonl
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%dT%H-%M-%S")
+        date_path = now.strftime("%Y/%m/%d")
+        output_filename = f"rollout-{timestamp}-{session_uuid}{input_path.suffix}"
+
+        # Determine base directory for Codex
+        if args.output_dir:
+            # User specified output directory
+            output_dir = Path(args.output_dir) / date_path
+        else:
+            # Find sessions root by going up from input file
+            # Structure: ~/.codex/sessions/YYYY/MM/DD/file.jsonl
+            # Go up 3 levels to get to sessions directory
+            sessions_root = input_path.parent.parent.parent.parent
+            output_dir = sessions_root / date_path
+
+        # Create date-based directory structure
+        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        # Claude format: {uuid}.jsonl
+        output_dir = (
+            Path(args.output_dir) if args.output_dir else input_path.parent
+        )
+        output_filename = f"{session_uuid}{input_path.suffix}"
+
     output_path = output_dir / output_filename
 
     # Process the file
@@ -339,8 +220,8 @@ Examples:
     print(f"Output: {output_path}", file=sys.stderr)
     print("", file=sys.stderr)
 
-    num_suppressed, chars_saved = process_jsonl(
-        input_path, output_path, target_tools, args.len
+    num_suppressed, chars_saved = process_session(
+        args.agent, input_path, output_path, target_tools, args.len
     )
 
     # Estimate tokens saved using heuristic (4 chars per token)
@@ -350,6 +231,7 @@ Examples:
     print("\n" + "=" * 70)
     print("SUPPRESSION SUMMARY")
     print("=" * 70)
+    print(f"Agent: {args.agent}")
     print(f"Tool results suppressed: {num_suppressed}")
     print(f"Characters saved: {chars_saved:,}")
     print(f"Estimated tokens saved: {tokens_saved:,}")

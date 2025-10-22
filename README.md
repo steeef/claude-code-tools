@@ -423,16 +423,16 @@ Looks like this --
 <a id="suppress-tool-results"></a>
 ## 🗜️ suppress-tool-results
 
-Compress Claude Code session files by replacing large tool results with
-placeholders. This is especially useful for managing sessions that are
+Compress Claude Code and Codex session files by replacing large tool results
+with placeholders. This is especially useful for managing sessions that are
 approaching the context window limit or compaction threshold.
 
 ### Why suppress-tool-results?
 
-When working on complex tasks, Claude Code sessions can accumulate large tool
-outputs—file contents, bash command results, search results, etc. These outputs
-can push your session close to the context limit, triggering automatic
-compaction. By selectively suppressing large tool results, you can:
+When working on complex tasks, Claude Code and Codex sessions can accumulate
+large tool outputs—file contents, bash command results, search results, etc.
+These outputs can push your session close to the context limit, triggering
+automatic compaction. By selectively suppressing large tool results, you can:
 
 - **Extend conversation length**: Reclaim thousands of tokens by replacing
   verbose tool outputs with concise placeholders
@@ -446,8 +446,11 @@ compaction. By selectively suppressing large tool results, you can:
 ### Usage
 
 ```bash
-# Suppress all tool results over 500 characters (default)
+# Suppress all tool results over 500 characters (default, Claude Code)
 suppress-tool-results session.jsonl
+
+# Suppress Codex session results
+suppress-tool-results session.jsonl --agent codex
 
 # Suppress only specific tools (e.g., file operations)
 suppress-tool-results session.jsonl --tools read,edit,bash
@@ -455,8 +458,11 @@ suppress-tool-results session.jsonl --tools read,edit,bash
 # Use custom length threshold (e.g., 1000 characters)
 suppress-tool-results session.jsonl --len 1000
 
-# Suppress Task tool results over 1000 chars
+# Suppress Task tool results over 1000 chars in Claude Code
 suppress-tool-results session.jsonl --tools task --len 1000
+
+# Suppress Codex session with custom threshold
+suppress-tool-results session.jsonl --agent codex --len 1000
 
 # Custom output directory
 suppress-tool-results session.jsonl --output-dir ~/compressed-sessions
@@ -477,19 +483,22 @@ informative placeholders:
 [Results from Task tool suppressed - original content was 6,708 characters]
 ```
 
-The output file is named with a new UUID (e.g.,
-`4e470f01-706e-496b-95d3-b1d93db8b5f8.jsonl`) and can be resumed like any
-other Claude Code session using `claude -r <session-uuid>`.
+The output file is named appropriately for the agent type:
+- **Claude Code**: `{uuid}.jsonl` - Resume with `claude -r <session-uuid>`
+- **Codex**: `rollout-{timestamp}-{uuid}.jsonl` in dated directory - Resume
+  with `codex resume <session-uuid>`
 
 ### Features
 
+- **Multi-agent support**: Works with both Claude Code and Codex sessions
 - **Flexible filtering**: Suppress all tools or target specific ones (bash,
   read, edit, task, etc.)
 - **Configurable threshold**: Set minimum size for suppression (default: 500
   characters)
 - **Token estimates**: Shows estimated tokens saved using standard heuristics
   (~4 chars per token)
-- **Resume-compatible**: Output files work seamlessly with `claude -r`
+- **Resume-compatible**: Output files work seamlessly with `claude -r` and
+  `codex resume`
 - **Non-destructive**: Original session files remain unchanged
 - **Detailed statistics**: Reports number of results suppressed, characters
   saved, and estimated tokens saved
