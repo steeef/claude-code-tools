@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 
 def build_tool_name_mapping(input_file: Path) -> Dict[str, str]:
@@ -75,6 +75,7 @@ def process_claude_session(
     target_tools: Set[str],
     threshold: int,
     create_placeholder: callable,
+    new_session_id: Optional[str] = None,
 ) -> Tuple[int, int]:
     """
     Process Claude Code session file and suppress tool results.
@@ -86,6 +87,7 @@ def process_claude_session(
         target_tools: Set of tool names to suppress (None means all).
         threshold: Minimum length threshold for suppression.
         create_placeholder: Function to create placeholder text.
+        new_session_id: Optional new session ID to replace in all events.
 
     Returns:
         Tuple of (num_suppressed, chars_saved).
@@ -172,6 +174,10 @@ def process_claude_session(
                                     tool_name, content_length
                                 )
                                 tool_result["content"] = placeholder
+
+            # Replace sessionId if new_session_id provided
+            if new_session_id and "sessionId" in data:
+                data["sessionId"] = new_session_id
 
             # Write the (potentially modified) line
             outfile.write(json.dumps(data) + "\n")

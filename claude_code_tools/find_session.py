@@ -16,9 +16,10 @@ import argparse
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # Import search functions from existing tools
 from claude_code_tools.find_claude_session import (
@@ -34,6 +35,9 @@ from claude_code_tools.find_codex_session import (
     get_codex_home,
     copy_session_file as copy_codex_session_file,
     clone_session as clone_codex_session,
+)
+from claude_code_tools.suppress_tool_results import (
+    suppress_and_create_session,
 )
 
 try:
@@ -264,6 +268,237 @@ def display_interactive_ui(
             ui_console.print("[red]Invalid choice. Please try again.[/red]")
 
 
+def show_resume_submenu(stderr_mode: bool = False) -> Optional[str]:
+    """Show resume options submenu."""
+    output = sys.stderr if stderr_mode else sys.stdout
+
+    print(f"\nResume options:", file=output)
+    print("1. Default, just resume as is (default)", file=output)
+    print("2. Suppress tool results and resume", file=output)
+    print(file=output)
+
+    try:
+        if stderr_mode:
+            sys.stderr.write("Enter choice [1-2] (or Enter for 1): ")
+            sys.stderr.flush()
+            choice = sys.stdin.readline().strip()
+        else:
+            choice = input("Enter choice [1-2] (or Enter for 1): ").strip()
+
+        if not choice or choice == "1":
+            return "resume"
+        elif choice == "2":
+            return "suppress_resume"
+        else:
+            print("Invalid choice.", file=output)
+            return None
+    except KeyboardInterrupt:
+        print("\nCancelled.", file=output)
+        return None
+
+
+def prompt_suppress_options(
+    stderr_mode: bool = False
+) -> Optional[Tuple[Optional[str], int]]:
+    """
+    Prompt user for suppress-tool-results options.
+
+    Returns:
+        Tuple of (tools, threshold) or None if cancelled
+    """
+    output = sys.stderr if stderr_mode else sys.stdout
+
+    print(f"\nSuppress tool results options:", file=output)
+    print(
+        "Enter tool names to suppress (comma-separated, e.g., 'bash,read,edit')",
+        file=output,
+    )
+    print("Or press Enter to suppress all tools:", file=output)
+
+    try:
+        if stderr_mode:
+            sys.stderr.write("Tools (or Enter for all): ")
+            sys.stderr.flush()
+            tools_input = sys.stdin.readline().strip()
+        else:
+            tools_input = input("Tools (or Enter for all): ").strip()
+
+        tools = tools_input if tools_input else None
+
+        print(
+            f"\nEnter length threshold in characters (default: 500):",
+            file=output,
+        )
+        if stderr_mode:
+            sys.stderr.write("Threshold (or Enter for 500): ")
+            sys.stderr.flush()
+            threshold_input = sys.stdin.readline().strip()
+        else:
+            threshold_input = input("Threshold (or Enter for 500): ").strip()
+
+        threshold = int(threshold_input) if threshold_input else 500
+
+        return (tools, threshold)
+    except KeyboardInterrupt:
+        print("\nCancelled.", file=output)
+        return None
+    except ValueError:
+        print("Invalid threshold value.", file=output)
+        return None
+
+
+def append_to_codex_history(
+    session_id: str, first_user_msg: str, codex_home: str
+) -> None:
+    """
+    Append session to Codex history.jsonl file.
+
+    Args:
+        session_id: Session UUID
+        first_user_msg: First user message text
+        codex_home: Codex home directory
+    """
+    history_file = Path(codex_home) / "history.jsonl"
+    history_entry = {
+        "session_id": session_id,
+        "ts": int(time.time()),
+        "text": first_user_msg[:500],  # Limit to 500 chars
+    }
+
+    with open(history_file, "a") as f:
+        f.write(json.dumps(history_entry) + "\n")
+
+
+def extract_first_user_message(session_file: Path, agent: str) -> str:
+    """
+    Extract first user message from session file.
+
+    Args:
+        session_file: Path to session file
+        agent: Agent type ('claude' or 'codex')
+
+    Returns:
+        First user message text
+    """
+    with open(session_file, "r") as f:
+        for line in f:
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if agent == "claude":
+                if data.get("type") == "user":
+                    content = data.get("message", {}).get("content")
+                    if isinstance(content, str):
+                        return content
+                    elif isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                return item.get("text", "")
+            elif agent == "codex":
+                if data.get("type") == "response_item":
+                    payload = data.get("payload", {})
+                    if payload.get("type") == "message":
+                        role = payload.get("role")
+                        if role == "user":
+                            # Codex stores text in content array
+                            content = payload.get("content", [])
+                            if content and isinstance(content, list):
+                                for item in content:
+                                    if isinstance(item, dict):
+                                        text = item.get("text", "")
+                                        # Skip environment_context, get actual user message
+                                        if text and "<environment_context>" not in text:
+                                            return text
+                            # If content structure is different, try payload.text
+                            if payload.get("text"):
+                                return payload.get("text")
+                            # Otherwise continue to next message
+
+    return "Suppressed session"
+
+
+def handle_suppress_resume(
+    session: dict, tools: Optional[str], threshold: int, shell_mode: bool = False
+) -> None:
+    """
+    Suppress tool results and resume session.
+
+    Args:
+        session: Session dict
+        tools: Tool names to suppress (comma-separated) or None for all
+        threshold: Length threshold
+        shell_mode: Whether in shell mode
+    """
+    agent = session["agent"]
+
+    # Get session file path based on agent type
+    if agent == "claude":
+        session_file = Path(
+            get_claude_session_file_path(
+                session["session_id"],
+                session["cwd"],
+                claude_home=session.get("claude_home"),
+            )
+        )
+    else:  # codex
+        session_file = Path(session["file_path"])
+
+    output = sys.stderr if shell_mode else sys.stdout
+    print(f"\n🔧 Suppressing tool results...", file=output)
+
+    # Parse tools into set if provided
+    target_tools = None
+    if tools:
+        target_tools = {tool.strip().lower() for tool in tools.split(",")}
+
+    try:
+        # Use helper function to suppress and create new session
+        result = suppress_and_create_session(
+            agent, session_file, target_tools, threshold
+        )
+    except Exception as e:
+        print(f"❌ Error suppressing tool results: {e}", file=output)
+        return
+
+    new_session_id = result["session_id"]
+    new_session_file = result["output_file"]
+
+    print(f"\n{'='*70}", file=output)
+    print(f"✅ SUPPRESSION COMPLETE", file=output)
+    print(f"{'='*70}", file=output)
+    print(f"📁 New session file created:", file=output)
+    print(f"   {new_session_file}", file=output)
+    print(f"🆔 New session UUID: {new_session_id}", file=output)
+    print(
+        f"📊 Suppressed {result['num_suppressed']} tool results, "
+        f"saved ~{result['tokens_saved']:,} tokens",
+        file=output,
+    )
+
+    # For Codex, append to history.jsonl
+    if agent == "codex":
+        # Get first user message from original session
+        first_msg = extract_first_user_message(session_file, agent)
+
+        # Append to history
+        codex_home = get_codex_home()
+        history_file = Path(codex_home) / "history.jsonl"
+        append_to_codex_history(new_session_id, first_msg, codex_home)
+        print(f"📝 Added entry to Codex history:", file=output)
+        print(f"   {history_file}", file=output)
+
+    print(f"\n🚀 Resuming suppressed session: {new_session_id[:16]}...", file=output)
+    print(f"{'='*70}\n", file=output)
+
+    # Resume the new session
+    if agent == "claude":
+        resume_claude_session(new_session_id, session["cwd"], shell_mode)
+    elif agent == "codex":
+        resume_codex_session(new_session_id, session["cwd"], shell_mode)
+
+
 def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
     """Show action menu for selected session."""
     output = sys.stderr if stderr_mode else sys.stdout
@@ -290,7 +525,8 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
             choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
 
         if not choice or choice == "1":
-            return "resume"
+            # Show resume submenu
+            return show_resume_submenu(stderr_mode)
         elif choice == "2":
             return "path"
         elif choice == "3":
@@ -321,6 +557,13 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
             resume_codex_session(
                 session["session_id"], session["cwd"], shell_mode=shell_mode
             )
+
+    elif action == "suppress_resume":
+        # Prompt for suppress options
+        options = prompt_suppress_options(stderr_mode=shell_mode)
+        if options:
+            tools, threshold = options
+            handle_suppress_resume(session, tools, threshold, shell_mode)
 
     elif action == "path":
         if agent == "claude":

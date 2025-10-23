@@ -19,11 +19,13 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Set, Tuple, Optional
+
+from claude_code_tools.suppress_tool_results import suppress_and_create_session
 
 try:
     from rich.console import Console
@@ -435,6 +437,125 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
             ui_console.print("[red]Invalid choice. Please try again.[/red]")
 
 
+def show_resume_submenu() -> Optional[str]:
+    """Show resume options submenu."""
+    print(f"\nResume options:")
+    print("1. Default, just resume as is (default)")
+    print("2. Suppress tool results and resume")
+    print()
+
+    try:
+        choice = input("Enter choice [1-2] (or Enter for 1): ").strip()
+        if not choice or choice == "1":
+            return "resume"
+        elif choice == "2":
+            return "suppress_resume"
+        else:
+            print("Invalid choice.")
+            return None
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        return None
+
+
+def prompt_suppress_options() -> Optional[Tuple[Optional[str], int]]:
+    """
+    Prompt user for suppress-tool-results options.
+
+    Returns:
+        Tuple of (tools, threshold) or None if cancelled
+    """
+    print(f"\nSuppress tool results options:")
+    print("Enter tool names to suppress (comma-separated, e.g., 'bash,read,edit')")
+    print("Or press Enter to suppress all tools:")
+
+    try:
+        tools_input = input("Tools (or Enter for all): ").strip()
+        tools = tools_input if tools_input else None
+
+        print(f"\nEnter length threshold in characters (default: 500):")
+        threshold_input = input("Threshold (or Enter for 500): ").strip()
+        threshold = int(threshold_input) if threshold_input else 500
+
+        return (tools, threshold)
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        return None
+    except ValueError:
+        print("Invalid threshold value.")
+        return None
+
+
+def extract_first_user_message_claude(session_file: Path) -> str:
+    """Extract first user message from Claude session file."""
+    with open(session_file, "r") as f:
+        for line in f:
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if data.get("type") == "user":
+                content = data.get("message", {}).get("content")
+                if isinstance(content, str):
+                    return content
+                elif isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            return item.get("text", "")
+
+    return "Suppressed session"
+
+
+def handle_suppress_resume_claude(
+    session_id: str,
+    project_path: str,
+    tools: Optional[str],
+    threshold: int,
+    claude_home: Optional[str] = None,
+) -> None:
+    """
+    Suppress tool results and resume Claude Code session.
+    """
+    session_file = Path(get_session_file_path(session_id, project_path, claude_home))
+
+    print(f"\n🔧 Suppressing tool results...")
+
+    # Parse tools into set if provided
+    target_tools = None
+    if tools:
+        target_tools = {tool.strip().lower() for tool in tools.split(",")}
+
+    try:
+        # Use helper function to suppress and create new session
+        result = suppress_and_create_session(
+            "claude", session_file, target_tools, threshold
+        )
+    except Exception as e:
+        print(f"❌ Error suppressing tool results: {e}")
+        return
+
+    new_session_id = result["session_id"]
+    new_session_file = result["output_file"]
+
+    print(f"\n{'='*70}")
+    print(f"✅ SUPPRESSION COMPLETE")
+    print(f"{'='*70}")
+    print(f"📁 New session file created:")
+    print(f"   {new_session_file}")
+    print(f"🆔 New session UUID: {new_session_id}")
+    print(
+        f"📊 Suppressed {result['num_suppressed']} tool results, "
+        f"saved ~{result['tokens_saved']:,} tokens"
+    )
+
+    print(f"\n🚀 Resuming suppressed session: {new_session_id[:16]}...")
+    print(f"{'='*70}\n")
+
+    # Resume the new session
+    resume_session(new_session_id, project_path, claude_home=claude_home)
+
+
 def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, Optional[str]]) -> Optional[str]:
     """
     Show action menu for selected session.
@@ -457,7 +578,8 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
     try:
         choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
         if not choice or choice == "1":
-            return "resume"
+            # Show resume submenu
+            return show_resume_submenu()
         elif choice == "2":
             return "path"
         elif choice == "3":
@@ -736,6 +858,12 @@ To persist directory changes when resuming sessions:
             # Perform selected action
             if action == "resume":
                 resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
+            elif action == "suppress_resume":
+                # Prompt for suppress options
+                options = prompt_suppress_options()
+                if options:
+                    tools, threshold = options
+                    handle_suppress_resume_claude(session_id, project_path, tools, threshold, args.claude_home)
             elif action == "path":
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
                 print(f"\nSession file path:")

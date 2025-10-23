@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 
 def build_tool_name_mapping(input_file: Path) -> Dict[str, str]:
@@ -101,6 +101,7 @@ def process_codex_session(
     target_tools: Set[str],
     threshold: int,
     create_placeholder: callable,
+    new_session_id: Optional[str] = None,
 ) -> Tuple[int, int]:
     """
     Process Codex session file and suppress tool results.
@@ -113,6 +114,7 @@ def process_codex_session(
         threshold: Minimum length threshold for suppression.
         create_placeholder: Function to create placeholder text (unused
             for Codex, we use create_suppressed_output instead).
+        new_session_id: Optional new session ID to replace in session_meta events.
 
     Returns:
         Tuple of (num_suppressed, chars_saved).
@@ -129,6 +131,11 @@ def process_codex_session(
             except json.JSONDecodeError:
                 outfile.write(line)
                 continue
+
+            # Replace session_id in session_meta events if new_session_id provided
+            if new_session_id and data.get("type") == "session_meta":
+                if "payload" in data and "id" in data["payload"]:
+                    data["payload"]["id"] = new_session_id
 
             # Look for function_call_output entries
             if data.get("type") != "response_item":

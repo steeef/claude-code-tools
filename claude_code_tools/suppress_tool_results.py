@@ -35,12 +35,88 @@ def create_placeholder(tool_name: str, original_length: int) -> str:
     )
 
 
+def suppress_and_create_session(
+    agent: str,
+    input_file: Path,
+    target_tools: Optional[Set[str]],
+    threshold: int,
+    output_dir: Optional[Path] = None,
+) -> dict:
+    """
+    Suppress tool results and create a new session file.
+
+    Args:
+        agent: Agent type ('claude' or 'codex').
+        input_file: Path to input JSONL file.
+        target_tools: Set of tool names to suppress (None means all).
+        threshold: Minimum length threshold for suppression.
+        output_dir: Output directory (None = auto-detect based on agent).
+
+    Returns:
+        Dict with:
+            - session_id: New session UUID
+            - output_file: Path to new session file
+            - num_suppressed: Number of tool results suppressed
+            - chars_saved: Characters saved
+            - tokens_saved: Estimated tokens saved
+    """
+    # Generate session UUID
+    session_uuid = str(uuid.uuid4())
+
+    # Determine output directory and filename based on agent
+    if agent == "codex":
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%dT%H-%M-%S")
+        date_path = now.strftime("%Y/%m/%d")
+        output_filename = (
+            f"rollout-{timestamp}-{session_uuid}{input_file.suffix}"
+        )
+
+        if output_dir:
+            final_output_dir = output_dir / date_path
+        else:
+            # Find sessions root by going up from input file
+            sessions_root = input_file.parent.parent.parent.parent
+            final_output_dir = sessions_root / date_path
+
+        final_output_dir.mkdir(parents=True, exist_ok=True)
+    else:  # claude
+        output_filename = f"{session_uuid}{input_file.suffix}"
+        final_output_dir = output_dir if output_dir else input_file.parent
+
+    output_path = final_output_dir / output_filename
+
+    # Process the session
+    num_suppressed, chars_saved = process_session(
+        agent,
+        input_file,
+        output_path,
+        target_tools,
+        threshold,
+        verbose=False,
+        new_session_id=session_uuid,
+    )
+
+    # Estimate tokens saved
+    tokens_saved = int(chars_saved / 4)
+
+    return {
+        "session_id": session_uuid,
+        "output_file": str(output_path),
+        "num_suppressed": num_suppressed,
+        "chars_saved": chars_saved,
+        "tokens_saved": tokens_saved,
+    }
+
+
 def process_session(
     agent: str,
     input_file: Path,
     output_file: Path,
     target_tools: Optional[Set[str]],
     threshold: int,
+    verbose: bool = True,
+    new_session_id: Optional[str] = None,
 ) -> Tuple[int, int]:
     """
     Process session file and suppress tool results.
@@ -51,18 +127,22 @@ def process_session(
         output_file: Path to output JSONL file.
         target_tools: Set of tool names to suppress (None means all).
         threshold: Minimum length threshold for suppression.
+        verbose: Whether to print progress messages.
+        new_session_id: Optional new session ID to replace in session metadata.
 
     Returns:
         Tuple of (num_suppressed, chars_saved).
     """
-    print("Building tool name mapping...", file=sys.stderr)
+    if verbose:
+        print("Building tool name mapping...", file=sys.stderr)
 
     if agent == "claude":
         tool_map = claude_processor.build_tool_name_mapping(input_file)
-        print(
-            f"Found {len(tool_map)} tool invocations", file=sys.stderr
-        )
-        print("Processing tool results...", file=sys.stderr)
+        if verbose:
+            print(
+                f"Found {len(tool_map)} tool invocations", file=sys.stderr
+            )
+            print("Processing tool results...", file=sys.stderr)
 
         return claude_processor.process_claude_session(
             input_file,
@@ -71,13 +151,15 @@ def process_session(
             target_tools,
             threshold,
             create_placeholder,
+            new_session_id=new_session_id,
         )
     elif agent == "codex":
         tool_map = codex_processor.build_tool_name_mapping(input_file)
-        print(
-            f"Found {len(tool_map)} tool invocations", file=sys.stderr
-        )
-        print("Processing tool results...", file=sys.stderr)
+        if verbose:
+            print(
+                f"Found {len(tool_map)} tool invocations", file=sys.stderr
+            )
+            print("Processing tool results...", file=sys.stderr)
 
         return codex_processor.process_codex_session(
             input_file,
@@ -86,6 +168,7 @@ def process_session(
             target_tools,
             threshold,
             create_placeholder,
+            new_session_id=new_session_id,
         )
     else:
         raise ValueError(f"Unknown agent type: {agent}")
@@ -176,70 +259,30 @@ Examples:
             file=sys.stderr,
         )
 
-    print(
-        f"Agent: {args.agent}", file=sys.stderr
-    )
-    print(
-        f"Length threshold: {args.len} characters", file=sys.stderr
-    )
+    print(f"Agent: {args.agent}", file=sys.stderr)
+    print(f"Length threshold: {args.len} characters", file=sys.stderr)
 
-    # Generate output filename and directory based on agent type
-    session_uuid = str(uuid.uuid4())
-
-    if args.agent == "codex":
-        # Codex format: YYYY/MM/DD/rollout-YYYY-MM-DDTHH-MM-SS-{uuid}.jsonl
-        now = datetime.now()
-        timestamp = now.strftime("%Y-%m-%dT%H-%M-%S")
-        date_path = now.strftime("%Y/%m/%d")
-        output_filename = f"rollout-{timestamp}-{session_uuid}{input_path.suffix}"
-
-        # Determine base directory for Codex
-        if args.output_dir:
-            # User specified output directory
-            output_dir = Path(args.output_dir) / date_path
-        else:
-            # Find sessions root by going up from input file
-            # Structure: ~/.codex/sessions/YYYY/MM/DD/file.jsonl
-            # Go up 3 levels to get to sessions directory
-            sessions_root = input_path.parent.parent.parent.parent
-            output_dir = sessions_root / date_path
-
-        # Create date-based directory structure
-        output_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        # Claude format: {uuid}.jsonl
-        output_dir = (
-            Path(args.output_dir) if args.output_dir else input_path.parent
-        )
-        output_filename = f"{session_uuid}{input_path.suffix}"
-
-    output_path = output_dir / output_filename
-
-    # Process the file
+    # Process the file using helper function
     print(f"\nInput: {input_path}", file=sys.stderr)
-    print(f"Output: {output_path}", file=sys.stderr)
-    print("", file=sys.stderr)
 
-    num_suppressed, chars_saved = process_session(
-        args.agent, input_path, output_path, target_tools, args.len
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    result = suppress_and_create_session(
+        args.agent, input_path, target_tools, args.len, output_dir
     )
-
-    # Estimate tokens saved using heuristic (4 chars per token)
-    tokens_saved = int(chars_saved / 4)
 
     # Print statistics
     print("\n" + "=" * 70)
     print("SUPPRESSION SUMMARY")
     print("=" * 70)
     print(f"Agent: {args.agent}")
-    print(f"Tool results suppressed: {num_suppressed}")
-    print(f"Characters saved: {chars_saved:,}")
-    print(f"Estimated tokens saved: {tokens_saved:,}")
+    print(f"Tool results suppressed: {result['num_suppressed']}")
+    print(f"Characters saved: {result['chars_saved']:,}")
+    print(f"Estimated tokens saved: {result['tokens_saved']:,}")
     print("")
-    print(f"Output file: {output_path}")
+    print(f"Output file: {result['output_file']}")
     print("")
     print("Session UUID:")
-    print(session_uuid)
+    print(result["session_id"])
     print("=" * 70)
 
 
