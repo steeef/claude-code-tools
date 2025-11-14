@@ -315,10 +315,6 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                     for jsonl_file in project_dir.glob("*.jsonl"):
                         matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                         if matches:
-                            # Skip sidechain (sub-agent) sessions
-                            if is_sidechain_session(jsonl_file):
-                                continue
-
                             # Check if session is trimmed
                             is_trimmed = is_trimmed_session(jsonl_file)
 
@@ -326,13 +322,16 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                             if original_only and is_trimmed:
                                 continue
 
+                            # Check if session is sidechain (sub-agent)
+                            is_sidechain = is_sidechain_session(jsonl_file)
+
                             session_id = jsonl_file.stem
                             stat = jsonl_file.stat()
                             mod_time = stat.st_mtime
                             # Get creation time (birthtime on macOS, ctime elsewhere)
                             create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                             preview = get_session_preview(jsonl_file)
-                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed))
+                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed, is_sidechain))
                     
                     progress.advance(task)
         else:
@@ -343,10 +342,6 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                 for jsonl_file in project_dir.glob("*.jsonl"):
                     matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                     if matches:
-                        # Skip sidechain (sub-agent) sessions
-                        if is_sidechain_session(jsonl_file):
-                            continue
-
                         # Check if session is trimmed
                         is_trimmed = is_trimmed_session(jsonl_file)
 
@@ -354,13 +349,16 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                         if original_only and is_trimmed:
                             continue
 
+                        # Check if session is sidechain (sub-agent)
+                        is_sidechain = is_sidechain_session(jsonl_file)
+
                         session_id = jsonl_file.stem
                         stat = jsonl_file.stat()
                         mod_time = stat.st_mtime
                         # Get creation time (birthtime on macOS, ctime elsewhere)
                         create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                         preview = get_session_preview(jsonl_file)
-                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed))
+                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed, is_sidechain))
     else:
         # Search current project only
         claude_dir = get_claude_project_dir(claude_home)
@@ -374,10 +372,6 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
         for jsonl_file in claude_dir.glob("*.jsonl"):
             matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
             if matches:
-                # Skip sidechain (sub-agent) sessions
-                if is_sidechain_session(jsonl_file):
-                    continue
-
                 # Check if session is trimmed
                 is_trimmed = is_trimmed_session(jsonl_file)
 
@@ -385,13 +379,16 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                 if original_only and is_trimmed:
                     continue
 
+                # Check if session is sidechain (sub-agent)
+                is_sidechain = is_sidechain_session(jsonl_file)
+
                 session_id = jsonl_file.stem
                 stat = jsonl_file.stat()
                 mod_time = stat.st_mtime
                 # Get creation time (birthtime on macOS, ctime elsewhere)
                 create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                 preview = get_session_preview(jsonl_file)
-                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, os.getcwd(), git_branch, is_trimmed))
+                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, os.getcwd(), git_branch, is_trimmed, is_sidechain))
     
     # Sort by modification time (newest first)
     matching_sessions.sort(key=lambda x: x[1], reverse=True)
@@ -433,17 +430,19 @@ def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str
     table.add_column("Lines", style="cyan", justify="right")
     table.add_column("Last User Message", style="white", max_width=60, overflow="fold")
     
-    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch, is_trimmed) in enumerate(display_sessions, 1):
+    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch, is_trimmed, is_sidechain) in enumerate(display_sessions, 1):
         # Format: "10/04 - 10/09 13:45"
         create_date = datetime.fromtimestamp(create_time).strftime('%m/%d')
         mod_date = datetime.fromtimestamp(mod_time).strftime('%m/%d %H:%M')
         date_display = f"{create_date} - {mod_date}"
         branch_display = git_branch if git_branch else "N/A"
 
-        # Add star indicator for trimmed sessions
+        # Add indicators for trimmed and sidechain sessions
         session_id_display = session_id[:8] + "..."
         if is_trimmed:
             session_id_display += " *"
+        if is_sidechain:
+            session_id_display += " (sub)"
 
         table.add_row(
             str(idx),
@@ -457,10 +456,16 @@ def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str
     
     ui_console.print(table)
 
-    # Show footnote if any sessions are trimmed
+    # Show footnotes if any sessions are trimmed or sidechain
     has_trimmed = any(s[8] for s in display_sessions)  # is_trimmed is index 8
-    if has_trimmed:
-        ui_console.print("[dim]* = Trimmed session (reduced from original)[/dim]")
+    has_sidechain = any(s[9] for s in display_sessions)  # is_sidechain is index 9
+    if has_trimmed or has_sidechain:
+        footnotes = []
+        if has_trimmed:
+            footnotes.append("* = Trimmed session (reduced from original)")
+        if has_sidechain:
+            footnotes.append("(sub) = Sub-agent session (not directly resumable)")
+        ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")
 
     ui_console.print("\n[bold]Select a session:[/bold]")
     ui_console.print(f"  • Enter number (1-{len(display_sessions)}) to select")
@@ -661,36 +666,60 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
 
     Returns: action choice ('resume', 'path', 'copy') or None if cancelled
     """
-    session_id, _, _, _, project_name, _, project_path, git_branch, _ = session_info
+    session_id, _, _, _, project_name, _, project_path, git_branch, _, is_sidechain = session_info
 
     print(f"\n=== Session: {session_id[:8]}... ===")
     print(f"Project: {project_name}")
     if git_branch:
         print(f"Branch: {git_branch}")
-    print(f"\nWhat would you like to do?")
-    print("1. Resume session (default)")
-    print("2. Show session file path")
-    print("3. Copy session file to file (*.jsonl) or directory")
-    print("4. Clone session and resume clone")
-    print()
 
-    try:
-        choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
-        if not choice or choice == "1":
-            # Show resume submenu
-            return show_resume_submenu()
-        elif choice == "2":
-            return "path"
-        elif choice == "3":
-            return "copy"
-        elif choice == "4":
-            return "clone"
-        else:
-            print("Invalid choice.")
+    if is_sidechain:
+        print("\n[Note: This is a sub-agent session and cannot be resumed directly]")
+        print(f"\nWhat would you like to do?")
+        print("1. Show session file path")
+        print("2. Copy session file to file (*.jsonl) or directory")
+        print()
+
+        try:
+            choice = input("Enter choice [1-2] (or Enter to cancel): ").strip()
+            if not choice:
+                print("Cancelled.")
+                return None
+            elif choice == "1":
+                return "path"
+            elif choice == "2":
+                return "copy"
+            else:
+                print("Invalid choice.")
+                return None
+        except KeyboardInterrupt:
+            print("\nCancelled.")
             return None
-    except KeyboardInterrupt:
-        print("\nCancelled.")
-        return None
+    else:
+        print(f"\nWhat would you like to do?")
+        print("1. Resume session (default)")
+        print("2. Show session file path")
+        print("3. Copy session file to file (*.jsonl) or directory")
+        print("4. Clone session and resume clone")
+        print()
+
+        try:
+            choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
+            if not choice or choice == "1":
+                # Show resume submenu
+                return show_resume_submenu()
+            elif choice == "2":
+                return "path"
+            elif choice == "3":
+                return "copy"
+            elif choice == "4":
+                return "clone"
+            else:
+                print("Invalid choice.")
+                return None
+        except KeyboardInterrupt:
+            print("\nCancelled.")
+            return None
 
 
 def get_session_file_path(session_id: str, project_path: str, claude_home: Optional[str] = None) -> str:
@@ -1000,7 +1029,7 @@ To persist directory changes when resuming sessions:
         if len(matching_sessions) == 1:
             if not args.shell:
                 print("\nOnly one match found. Resuming automatically...")
-            session_id, _, _, _, _, _, project_path, _, _ = matching_sessions[0]
+            session_id, _, _, _, _, _, project_path, _, _, _ = matching_sessions[0]
             resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
         else:
             try:
@@ -1011,15 +1040,15 @@ To persist directory changes when resuming sessions:
                     choice = sys.stdin.readline().strip()
                 else:
                     choice = input("\nEnter number to resume session (or Ctrl+C to cancel): ")
-                
+
                 # Handle empty input or EOF
                 if not choice:
                     print("Cancelled (EOF)", file=sys.stderr)
                     sys.exit(0)
-                    
+
                 idx = int(choice) - 1
                 if 0 <= idx < min(args.num_matches, len(matching_sessions)):
-                    session_id, _, _, _, _, _, project_path, _, _ = matching_sessions[idx]
+                    session_id, _, _, _, _, _, project_path, _, _, _ = matching_sessions[idx]
                     resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
                 else:
                     print("Invalid choice", file=sys.stderr)

@@ -28,6 +28,7 @@ from claude_code_tools.find_claude_session import (
     get_session_file_path as get_claude_session_file_path,
     copy_session_file as copy_claude_session_file,
     clone_session as clone_claude_session,
+    is_sidechain_session,
 )
 from claude_code_tools.find_codex_session import (
     find_sessions as find_codex_sessions,
@@ -154,6 +155,9 @@ def search_all_agents(
                 if original_only and is_trimmed:
                     continue
 
+                # Check if session is sidechain (sub-agent)
+                is_sidechain = is_sidechain_session(file_path)
+
                 session_dict = {
                     "agent": "claude",
                     "agent_display": agent_config.display_name,
@@ -167,6 +171,7 @@ def search_all_agents(
                     "branch": session[7] if len(session) > 7 else "",
                     "claude_home": home,
                     "is_trimmed": is_trimmed,
+                    "is_sidechain": is_sidechain,
                 }
                 all_sessions.append(session_dict)
 
@@ -205,6 +210,7 @@ def search_all_agents(
                         "branch": session.get("branch", ""),
                         "file_path": session.get("file_path", ""),
                         "is_trimmed": is_trimmed,
+                        "is_sidechain": False,  # Codex doesn't have sidechain sessions
                     }
                     all_sessions.append(session_dict)
 
@@ -256,10 +262,12 @@ def display_interactive_ui(
 
         branch_display = session.get("branch", "") or "N/A"
 
-        # Add star indicator for trimmed sessions
+        # Add indicators for trimmed and sidechain sessions
         session_id_display = session["session_id"][:8] + "..."
         if session.get("is_trimmed", False):
             session_id_display += " *"
+        if session.get("is_sidechain", False):
+            session_id_display += " (sub)"
 
         table.add_row(
             str(idx),
@@ -274,10 +282,16 @@ def display_interactive_ui(
 
     ui_console.print(table)
 
-    # Show footnote if any sessions are trimmed
+    # Show footnotes if any sessions are trimmed or sidechain
     has_trimmed = any(s.get("is_trimmed", False) for s in display_sessions)
-    if has_trimmed:
-        ui_console.print("[dim]* = Trimmed session (reduced from original)[/dim]")
+    has_sidechain = any(s.get("is_sidechain", False) for s in display_sessions)
+    if has_trimmed or has_sidechain:
+        footnotes = []
+        if has_trimmed:
+            footnotes.append("* = Trimmed session (reduced from original)")
+        if has_sidechain:
+            footnotes.append("(sub) = Sub-agent session (not directly resumable)")
+        ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")
 
     ui_console.print("\n[bold]Select a session:[/bold]")
     ui_console.print(f"  • Enter number (1-{len(display_sessions)}) to select")
@@ -578,37 +592,69 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
     print(f"Project: {session['project']}", file=output)
     if session.get("branch"):
         print(f"Branch: {session['branch']}", file=output)
-    print(f"\nWhat would you like to do?", file=output)
-    print("1. Resume session (default)", file=output)
-    print("2. Show session file path", file=output)
-    print("3. Copy session file to file (*.jsonl) or directory", file=output)
-    print("4. Clone session and resume clone", file=output)
-    print(file=output)
 
-    try:
-        if stderr_mode:
-            # In stderr mode, prompt to stderr so it's visible
-            sys.stderr.write("Enter choice [1-4] (or Enter for 1): ")
-            sys.stderr.flush()
-            choice = sys.stdin.readline().strip()
-        else:
-            choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
+    is_sidechain = session.get("is_sidechain", False)
 
-        if not choice or choice == "1":
-            # Show resume submenu
-            return show_resume_submenu(stderr_mode)
-        elif choice == "2":
-            return "path"
-        elif choice == "3":
-            return "copy"
-        elif choice == "4":
-            return "clone"
-        else:
-            print("Invalid choice.", file=output)
+    if is_sidechain:
+        print("\n[Note: This is a sub-agent session and cannot be resumed directly]", file=output)
+        print(f"\nWhat would you like to do?", file=output)
+        print("1. Show session file path", file=output)
+        print("2. Copy session file to file (*.jsonl) or directory", file=output)
+        print(file=output)
+
+        try:
+            if stderr_mode:
+                sys.stderr.write("Enter choice [1-2] (or Enter to cancel): ")
+                sys.stderr.flush()
+                choice = sys.stdin.readline().strip()
+            else:
+                choice = input("Enter choice [1-2] (or Enter to cancel): ").strip()
+
+            if not choice:
+                print("Cancelled.", file=output)
+                return None
+            elif choice == "1":
+                return "path"
+            elif choice == "2":
+                return "copy"
+            else:
+                print("Invalid choice.", file=output)
+                return None
+        except KeyboardInterrupt:
+            print("\nCancelled.", file=output)
             return None
-    except KeyboardInterrupt:
-        print("\nCancelled.", file=output)
-        return None
+    else:
+        print(f"\nWhat would you like to do?", file=output)
+        print("1. Resume session (default)", file=output)
+        print("2. Show session file path", file=output)
+        print("3. Copy session file to file (*.jsonl) or directory", file=output)
+        print("4. Clone session and resume clone", file=output)
+        print(file=output)
+
+        try:
+            if stderr_mode:
+                # In stderr mode, prompt to stderr so it's visible
+                sys.stderr.write("Enter choice [1-4] (or Enter for 1): ")
+                sys.stderr.flush()
+                choice = sys.stdin.readline().strip()
+            else:
+                choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
+
+            if not choice or choice == "1":
+                # Show resume submenu
+                return show_resume_submenu(stderr_mode)
+            elif choice == "2":
+                return "path"
+            elif choice == "3":
+                return "copy"
+            elif choice == "4":
+                return "clone"
+            else:
+                print("Invalid choice.", file=output)
+                return None
+        except KeyboardInterrupt:
+            print("\nCancelled.", file=output)
+            return None
 
 
 def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
