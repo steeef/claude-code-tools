@@ -102,26 +102,77 @@ def process_codex_session(
     threshold: int,
     create_placeholder: callable,
     new_session_id: Optional[str] = None,
-) -> Tuple[int, int]:
+    trim_assistant_messages: Optional[int] = None,
+) -> Tuple[int, int, int]:
     """
-    Process Codex session file and suppress tool results.
+    Process Codex session file and trim tool results and assistant messages.
 
     Args:
         input_file: Path to input JSONL file.
         output_file: Path to output JSONL file.
         tool_map: Mapping of call_id to tool name.
         target_tools: Set of tool names to suppress (None means all).
-        threshold: Minimum length threshold for suppression.
+        threshold: Minimum length threshold for trimming.
         create_placeholder: Function to create placeholder text (unused
             for Codex, we use create_suppressed_output instead).
         new_session_id: Optional new session ID to replace in session_meta events.
+        trim_assistant_messages: Optional assistant message trimming (see trim_and_create_session).
 
     Returns:
-        Tuple of (num_suppressed, chars_saved).
+        Tuple of (num_tools_trimmed, num_assistant_trimmed, chars_saved).
     """
-    num_suppressed = 0
+    num_tools_trimmed = 0
+    num_assistant_trimmed = 0
     chars_saved = 0
 
+    # First pass: identify assistant messages to trim
+    assistant_indices_to_trim = set()
+    if trim_assistant_messages is not None:
+        assistant_messages = []  # List of (line_num, length, data)
+
+        with open(input_file, "r") as f:
+            for line_num, line in enumerate(f, start=1):
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if data.get("type") == "response_item":
+                    payload = data.get("payload", {})
+                    if (
+                        payload.get("type") == "message"
+                        and payload.get("role") == "assistant"
+                    ):
+                        content = payload.get("content", [])
+                        total_length = sum(
+                            len(str(item.get("text", "")))
+                            for item in content
+                            if isinstance(item, dict)
+                            and item.get("type") == "output_text"
+                        )
+                        if total_length >= threshold:
+                            assistant_messages.append(
+                                (line_num, total_length, data)
+                            )
+
+        # Determine which to trim based on parameter
+        if trim_assistant_messages > 0:
+            # Trim first N
+            count = min(trim_assistant_messages, len(assistant_messages))
+            assistant_indices_to_trim = {
+                msg[0] for msg in assistant_messages[:count]
+            }
+        elif trim_assistant_messages < 0:
+            # Trim all except last abs(N)
+            keep_count = min(
+                abs(trim_assistant_messages), len(assistant_messages)
+            )
+            trim_count = len(assistant_messages) - keep_count
+            assistant_indices_to_trim = {
+                msg[0] for msg in assistant_messages[:trim_count]
+            }
+
+    # Second pass: process and trim
     with open(input_file, "r") as infile, open(
         output_file, "w"
     ) as outfile:
@@ -136,6 +187,30 @@ def process_codex_session(
             if new_session_id and data.get("type") == "session_meta":
                 if "payload" in data and "id" in data["payload"]:
                     data["payload"]["id"] = new_session_id
+
+            # Trim assistant messages if needed
+            if (
+                data.get("type") == "response_item"
+                and line_num in assistant_indices_to_trim
+            ):
+                payload = data.get("payload", {})
+                if (
+                    payload.get("type") == "message"
+                    and payload.get("role") == "assistant"
+                ):
+                    content = payload.get("content", [])
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "output_text":
+                            original_text = item.get("text", "")
+                            original_length = len(original_text)
+                            if original_length >= threshold:
+                                placeholder = (
+                                    f"[Assistant message trimmed - "
+                                    f"original content was {original_length:,} characters]"
+                                )
+                                item["text"] = placeholder
+                                chars_saved += original_length - len(placeholder)
+                                num_assistant_trimmed += 1
 
             # Look for function_call_output entries
             if data.get("type") != "response_item":
@@ -179,10 +254,10 @@ def process_codex_session(
 
                 # Replace the output
                 payload["output"] = suppressed_output
-                num_suppressed += 1
+                num_tools_trimmed += 1
                 chars_saved += output_length - len(suppressed_output)
 
             # Write the (potentially modified) line
             outfile.write(json.dumps(data) + "\n")
 
-    return num_suppressed, chars_saved
+    return num_tools_trimmed, num_assistant_trimmed, chars_saved

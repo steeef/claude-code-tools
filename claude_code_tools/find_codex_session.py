@@ -24,7 +24,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 
-from claude_code_tools.suppress_tool_results import suppress_and_create_session
+from claude_code_tools.trim_session import (
+    trim_and_create_session,
+    is_trimmed_session,
+)
 
 try:
     from rich.console import Console
@@ -209,6 +212,7 @@ def find_sessions(
     keywords: list[str],
     num_matches: int = 10,
     global_search: bool = False,
+    original_only: bool = False,
 ) -> list[dict]:
     """
     Find Codex sessions matching keywords.
@@ -218,9 +222,10 @@ def find_sessions(
         keywords: List of keywords to search for
         num_matches: Maximum number of results to return
         global_search: If False, filter to current directory only
+        original_only: If True, show only original (non-trimmed) sessions
 
     Returns list of dicts with: session_id, project, branch, date,
-                                 lines, preview, cwd, file_path
+                                 lines, preview, cwd, file_path, is_trimmed
     """
     sessions_dir = codex_home / "sessions"
     if not sessions_dir.exists():
@@ -278,6 +283,13 @@ def find_sessions(
                     if current_cwd and metadata["cwd"] != current_cwd:
                         continue
 
+                    # Check if session is trimmed
+                    is_trimmed = is_trimmed_session(session_file)
+
+                    # Skip if original_only and session is trimmed
+                    if original_only and is_trimmed:
+                        continue
+
                     # Get file stats for timestamps
                     stat = session_file.stat()
                     mod_time = stat.st_mtime
@@ -299,6 +311,7 @@ def find_sessions(
                             "preview": preview or "No preview",
                             "cwd": metadata["cwd"],
                             "file_path": str(session_file),
+                            "is_trimmed": is_trimmed,
                         }
                     )
 
@@ -337,9 +350,14 @@ def display_interactive_ui(
         table.add_column("Last User Message", style="dim", max_width=60, overflow="fold")
 
         for i, match in enumerate(matches, 1):
+            # Add star indicator for trimmed sessions
+            session_id_display = match["session_id"][:16] + "..."
+            if match.get("is_trimmed", False):
+                session_id_display += " *"
+
             table.add_row(
                 str(i),
-                match["session_id"][:16] + "...",
+                session_id_display,
                 match["project"],
                 match["branch"],
                 match["date"],
@@ -348,17 +366,32 @@ def display_interactive_ui(
             )
 
         console.print(table)
+
+        # Show footnote if any sessions are trimmed
+        has_trimmed = any(m.get("is_trimmed", False) for m in matches)
+        if has_trimmed:
+            console.print("[dim]* = Trimmed session (reduced from original)[/dim]")
     else:
         # Fallback to plain text
         print("\nMatching Codex Sessions:")
         print("-" * 80)
         for i, match in enumerate(matches, 1):
-            print(f"{i}. {match['session_id'][:16]}...")
+            # Add star indicator for trimmed sessions
+            session_id_display = match['session_id'][:16] + "..."
+            if match.get("is_trimmed", False):
+                session_id_display += " *"
+
+            print(f"{i}. {session_id_display}")
             print(f"   Project: {match['project']}")
             print(f"   Branch: {match['branch']}")
             print(f"   Date: {match['date']}")
             print(f"   Preview: {match['preview'][:60]}...")
             print()
+
+        # Show footnote if any sessions are trimmed
+        has_trimmed = any(m.get("is_trimmed", False) for m in matches)
+        if has_trimmed:
+            print("* = Trimmed session (reduced from original)")
 
     # Get user selection
     if len(matches) == 1:
@@ -391,7 +424,7 @@ def show_resume_submenu() -> Optional[str]:
     """Show resume options submenu."""
     print(f"\nResume options:")
     print("1. Default, just resume as is (default)")
-    print("2. Suppress tool results and resume")
+    print("2. Trim session (tool results + assistant messages) and resume")
     print()
 
     try:
@@ -408,16 +441,16 @@ def show_resume_submenu() -> Optional[str]:
         return None
 
 
-def prompt_suppress_options() -> Optional[Tuple[Optional[str], int]]:
+def prompt_suppress_options() -> Optional[Tuple[Optional[str], int, Optional[int]]]:
     """
     Prompt user for suppress-tool-results options.
 
     Returns:
-        Tuple of (tools, threshold) or None if cancelled
+        Tuple of (tools, threshold, trim_assistant_messages) or None if cancelled
     """
-    print(f"\nSuppress tool results options:")
-    print("Enter tool names to suppress (comma-separated, e.g., 'bash,read,edit')")
-    print("Or press Enter to suppress all tools:")
+    print(f"\nTrim session options:")
+    print("Enter tool names to trim (comma-separated, e.g., 'bash,read,edit')")
+    print("Or press Enter to trim all tools:")
 
     try:
         tools_input = input("Tools (or Enter for all): ").strip()
@@ -427,12 +460,22 @@ def prompt_suppress_options() -> Optional[Tuple[Optional[str], int]]:
         threshold_input = input("Threshold (or Enter for 500): ").strip()
         threshold = int(threshold_input) if threshold_input else 500
 
-        return (tools, threshold)
+        print(f"\nTrim assistant messages (optional):")
+        print("  • Positive number (e.g., 10): Trim first 10 messages exceeding threshold")
+        print("  • Negative number (e.g., -5): Trim all except last 5 messages exceeding threshold")
+        print("  • Press Enter to skip (no assistant message trimming)")
+        assistant_input = input("Assistant messages (or Enter to skip): ").strip()
+
+        trim_assistant = None
+        if assistant_input:
+            trim_assistant = int(assistant_input)
+
+        return (tools, threshold, trim_assistant)
     except KeyboardInterrupt:
         print("\nCancelled.")
         return None
     except ValueError:
-        print("Invalid threshold value.")
+        print("Invalid value entered.")
         return None
 
 
@@ -481,6 +524,7 @@ def handle_suppress_resume_codex(
     match: dict,
     tools: Optional[str],
     threshold: int,
+    trim_assistant_messages: Optional[int],
     codex_home: Path,
 ) -> None:
     """
@@ -488,7 +532,7 @@ def handle_suppress_resume_codex(
     """
     session_file = Path(match["file_path"])
 
-    print(f"\n🔧 Suppressing tool results...")
+    print(f"\n🔧 Trimming session...")
 
     # Parse tools into set if provided
     target_tools = None
@@ -496,25 +540,30 @@ def handle_suppress_resume_codex(
         target_tools = {tool.strip().lower() for tool in tools.split(",")}
 
     try:
-        # Use helper function to suppress and create new session
-        result = suppress_and_create_session(
-            "codex", session_file, target_tools, threshold
+        # Use helper function to trim and create new session
+        result = trim_and_create_session(
+            "codex",
+            session_file,
+            target_tools,
+            threshold,
+            trim_assistant_messages=trim_assistant_messages
         )
     except Exception as e:
-        print(f"❌ Error suppressing tool results: {e}")
+        print(f"❌ Error trimming session: {e}")
         return
 
     new_session_id = result["session_id"]
     new_session_file = result["output_file"]
 
     print(f"\n{'='*70}")
-    print(f"✅ SUPPRESSION COMPLETE")
+    print(f"✅ TRIM COMPLETE")
     print(f"{'='*70}")
     print(f"📁 New session file created:")
     print(f"   {new_session_file}")
     print(f"🆔 New session UUID: {new_session_id}")
     print(
-        f"📊 Suppressed {result['num_suppressed']} tool results, "
+        f"📊 Trimmed {result['num_tools_trimmed']} tool results, "
+        f"{result['num_assistant_trimmed']} assistant messages, "
         f"saved ~{result['tokens_saved']:,} tokens"
     )
 
@@ -751,6 +800,11 @@ Examples:
         "--codex-home",
         help="Custom Codex home directory (default: ~/.codex)",
     )
+    parser.add_argument(
+        "--original",
+        action="store_true",
+        help="Show only original (non-trimmed) sessions",
+    )
 
     args = parser.parse_args()
 
@@ -765,7 +819,7 @@ Examples:
 
     # Find matching sessions
     matches = find_sessions(
-        codex_home, keywords, args.num_matches, args.global_search
+        codex_home, keywords, args.num_matches, args.global_search, args.original
     )
 
     # Display and get selection
@@ -789,9 +843,11 @@ Examples:
         # Prompt for suppress options
         options = prompt_suppress_options()
         if options:
-            tools, threshold = options
+            tools, threshold, trim_assistant = options
             codex_home = get_codex_home(args.codex_home)
-            handle_suppress_resume_codex(selected_match, tools, threshold, codex_home)
+            handle_suppress_resume_codex(
+                selected_match, tools, threshold, trim_assistant, codex_home
+            )
     elif action == "path":
         print(f"\nSession file path:")
         print(selected_match["file_path"])

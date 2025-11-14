@@ -12,7 +12,9 @@ and other CLI coding agents.
 - [🔍 find-session — unified search across Claude & Codex sessions](#find-session)
 - [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
-- [🗜️ suppress-tool-results — compress session files for context management](#suppress-tool-results)
+- [🗜️ trim-session — compress session files for context management](#trim-session)
+- [📍 find-original-session — trace trimmed sessions to their source](#find-original-session)
+- [🌳 find-trimmed-sessions — find all trimmed versions of a session](#find-trimmed-sessions)
 - [🔐 vault — encrypted .env backup & sync](#vault)
 - [🔍 env-safe — inspect .env safely without values](#env-safe)
 - [🛡️ Claude Code Safety Hooks — guardrails for bash, git, env, files](#claude-code-safety-hooks)
@@ -72,7 +74,9 @@ This gives you:
 - `find-session` - Unified search across Claude Code and Codex sessions
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
 - `find-codex-session` - Search and resume Codex sessions by keywords
-- `suppress-tool-results` - Compress session files by replacing large tool results
+- `trim-session` - Compress session files by trimming large tool results and assistant messages
+- `find-original-session` - Trace trimmed sessions back to their original source
+- `find-trimmed-sessions` - Find all trimmed descendants of a session
 - `vault` - Encrypted backup for your .env files
 - `env-safe` - Safely inspect .env files without exposing values
 
@@ -220,17 +224,29 @@ fs "error" --agents codex
 
 # Limit number of results
 fs "keywords" -n 15
+
+# Show only original (non-trimmed) sessions
+fs "keywords" --original
+fs -g --original
 ```
 
 ### Features
 
 - **Multi-agent search**: Searches both Claude Code and Codex sessions simultaneously
 - **Unified display**: Single table showing sessions from all agents with agent column
+- **Trimmed session indicators**: Star (*) next to trimmed sessions with explanatory
+  footnote
+- **Original session filtering**: Use `--original` flag to show only non-trimmed
+  sessions
+- **Smart sidechain filtering**: Automatically excludes non-resumable sub-agent
+  sessions
 - **Smart resume**: Automatically uses correct CLI tool (`claude` or `codex`) based on selected session
 - **Persistent directory changes**: Using the `fs` wrapper ensures you stay in the session's directory after exit
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
 - **Action menu** after session selection:
-  - Resume session (default)
+  - **Resume session** - Choose to resume as-is or trim before resuming:
+    - Resume as-is (default)
+    - Trim session (tool results + assistant messages) and resume trimmed copy
   - Show session file path
   - Copy session file to file (*.jsonl) or directory
   - Clone session and resume clone (creates a copy with new UUID)
@@ -315,13 +331,25 @@ fcs "keywords" -g
 
 # Show all sessions across all projects
 fcs -g
+
+# Show only original (non-trimmed) sessions
+fcs "keywords" --original
+fcs -g --original
 ```
 
 ### Features
 
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
+- **Trimmed session indicators**: Star (*) next to trimmed sessions with explanatory
+  footnote
+- **Original session filtering**: Use `--original` flag to show only non-trimmed
+  sessions
+- **Smart sidechain filtering**: Automatically excludes non-resumable sub-agent
+  sessions
 - **Action menu** after session selection:
-  - Resume session (default)
+  - **Resume session** - Choose to resume as-is or trim before resuming:
+    - Resume as-is (default)
+    - Trim session (tool results + assistant messages) and resume trimmed copy
   - Show session file path
   - Copy session file to file (*.jsonl) or directory
   - Clone session and resume clone (creates a copy with new UUID)
@@ -394,13 +422,23 @@ fcs-codex "keywords" -n 5
 
 # Custom Codex home directory
 fcs-codex "keywords" --codex-home /custom/path
+
+# Show only original (non-trimmed) sessions
+fcs-codex "keywords" --original
+fcs-codex -g --original
 ```
 
 ### Features
 
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
+- **Trimmed session indicators**: Star (*) next to trimmed sessions with explanatory
+  footnote
+- **Original session filtering**: Use `--original` flag to show only non-trimmed
+  sessions
 - **Action menu** after session selection:
-  - Resume session (default)
+  - **Resume session** - Choose to resume as-is or trim before resuming:
+    - Resume as-is (default)
+    - Trim session (tool results + assistant messages) and resume trimmed copy
   - Show session file path
   - Copy session file to file (*.jsonl) or directory
   - Clone session and resume clone (creates a copy with new UUID)
@@ -420,67 +458,87 @@ Looks like this --
 
 ![find-codex-session.png](demos/find-codex-session.png)
 
-<a id="suppress-tool-results"></a>
-## 🗜️ suppress-tool-results
+<a id="trim-session"></a>
+## 🗜️ trim-session
 
-Compress Claude Code and Codex session files by replacing large tool results
-with placeholders. This is especially useful for managing sessions that are
+Compress Claude Code and Codex session files by trimming large tool results
+and assistant messages. This is especially useful for managing sessions that are
 approaching the context window limit or compaction threshold.
 
-### Why suppress-tool-results?
+### Why trim-session?
 
 When working on complex tasks, Claude Code and Codex sessions can accumulate
 large tool outputs—file contents, bash command results, search results, etc.
 These outputs can push your session close to the context limit, triggering
-automatic compaction. By selectively suppressing large tool results, you can:
+automatic compaction. By selectively trimming large tool results and assistant
+messages, you can:
 
 - **Extend conversation length**: Reclaim thousands of tokens by replacing
-  verbose tool outputs with concise placeholders
+  verbose tool outputs and messages with concise placeholders
 - **Resume conversations efficiently**: Continue working on a task without
   hitting context limits
 - **Preserve conversation flow**: Keep the structure and reasoning intact while
   removing redundant data
-- **Target specific tools**: Choose which types of tool results to suppress
+- **Target specific tools**: Choose which types of tool results to trim
   (e.g., only large file reads)
+- **Trim early assistant messages**: Remove verbose explanations from early
+  in the conversation while keeping recent context
 
 ### Usage
 
 ```bash
-# Suppress all tool results over 500 characters (default, Claude Code)
-suppress-tool-results session.jsonl
+# Trim all tool results over 500 characters (default, auto-detect agent)
+trim-session session.jsonl
 
-# Suppress Codex session results
-suppress-tool-results session.jsonl --agent codex
+# Specify agent type explicitly (Claude Code or Codex)
+trim-session session.jsonl --agent claude
+trim-session session.jsonl --agent codex
 
-# Suppress only specific tools (e.g., file operations)
-suppress-tool-results session.jsonl --tools read,edit,bash
+# Trim only specific tools (e.g., file operations)
+trim-session session.jsonl --tools read,edit,bash
 
 # Use custom length threshold (e.g., 1000 characters)
-suppress-tool-results session.jsonl --len 1000
+trim-session session.jsonl --len 1000
 
-# Suppress Task tool results over 1000 chars in Claude Code
-suppress-tool-results session.jsonl --tools task --len 1000
+# Trim Task tool results over 1000 chars
+trim-session session.jsonl --tools task --len 1000
 
-# Suppress Codex session with custom threshold
-suppress-tool-results session.jsonl --agent codex --len 1000
+# Trim first 5 assistant messages (keep tool results)
+trim-session session.jsonl --trim-assistant-messages 5
+
+# Trim all assistant messages except last 3 (negative number)
+trim-session session.jsonl --trim-assistant-messages -3
+
+# Combine: trim tools AND first 10 assistant messages
+trim-session session.jsonl --len 1000 --trim-assistant-messages 10
 
 # Custom output directory
-suppress-tool-results session.jsonl --output-dir ~/compressed-sessions
+trim-session session.jsonl --output-dir ~/compressed-sessions
 ```
 
 ### How it works
 
-The tool processes your session file and replaces large tool results with
-informative placeholders:
+The tool processes your session file and replaces large tool results and
+assistant messages with informative placeholders:
 
-**Before:**
+**Tool results - Before:**
 ```
 [6,708 characters of detailed file exploration results]
 ```
 
-**After:**
+**Tool results - After:**
 ```
-[Results from Task tool suppressed - original content was 6,708 characters]
+[Results from Task tool trimmed - original content was 6,708 characters]
+```
+
+**Assistant messages - Before:**
+```
+[Long assistant explanation with detailed reasoning...]
+```
+
+**Assistant messages - After:**
+```
+[Assistant message trimmed - original content was 2,431 characters]
 ```
 
 The output file is named appropriately for the agent type:
@@ -491,27 +549,33 @@ The output file is named appropriately for the agent type:
 ### Features
 
 - **Multi-agent support**: Works with both Claude Code and Codex sessions
-- **Flexible filtering**: Suppress all tools or target specific ones (bash,
+- **Automatic agent detection**: Auto-detects agent type from session format
+- **Flexible filtering**: Trim all tools or target specific ones (bash,
   read, edit, task, etc.)
-- **Configurable threshold**: Set minimum size for suppression (default: 500
+- **Assistant message trimming**: Optionally trim first N or all except last N
+  assistant messages
+- **Configurable threshold**: Set minimum size for trimming (default: 500
   characters)
+- **Trim metadata tracking**: Adds metadata to first line tracking parent file,
+  trim parameters, and statistics
 - **Token estimates**: Shows estimated tokens saved using standard heuristics
   (~4 chars per token)
 - **Resume-compatible**: Output files work seamlessly with `claude -r` and
   `codex resume`
 - **Non-destructive**: Original session files remain unchanged
-- **Detailed statistics**: Reports number of results suppressed, characters
+- **Detailed statistics**: Reports number of results trimmed, characters
   saved, and estimated tokens saved
 
 ### Example output
 
 ```
 ======================================================================
-SUPPRESSION SUMMARY
+TRIM SUMMARY
 ======================================================================
-Tool results suppressed: 55
-Characters saved: 263,338
-Estimated tokens saved: 65,834
+Tool results trimmed: 55
+Assistant messages trimmed: 8
+Characters saved: 268,449
+Estimated tokens saved: 67,112
 
 Output file: ai-chats/4e470f01-706e-496b-95d3-b1d93db8b5f8.jsonl
 
@@ -540,6 +604,86 @@ Common tools you can target with `--tools`:
 - `edit` - File edit results
 - `glob` - File search results
 - `grep` - Content search results
+
+<a id="find-original-session"></a>
+## 📍 find-original-session
+
+Trace a trimmed session back to its original source file. When you have a
+trimmed session and want to find the original session it was created from,
+this tool follows the parent file chain.
+
+### Usage
+
+```bash
+# Find the original session for a trimmed session
+find-original-session trimmed-session.jsonl
+
+# Works with both Claude Code and Codex sessions
+find-original-session ~/.claude/ai-chats/abc123.jsonl
+find-original-session ~/.codex/sessions/2024/11/14/rollout-*.jsonl
+```
+
+### Features
+
+- **Parent chain traversal**: Follows the `trim_metadata.parent_file` chain
+  back to the original
+- **Multi-agent support**: Works with both Claude Code and Codex sessions
+- **Validation**: Verifies that target file is actually a trimmed session
+- **Clear output**: Shows the full path to the original session file
+
+### Example
+
+```bash
+$ find-original-session ~/.claude/ai-chats/abc123.jsonl
+Original session: ~/.claude/ai-chats/def456.jsonl
+```
+
+<a id="find-trimmed-sessions"></a>
+## 🌳 find-trimmed-sessions
+
+Find all trimmed sessions that were derived from an original session. This is
+the inverse of `find-original-session` - it searches for all sessions that
+have the specified session as their parent.
+
+### Usage
+
+```bash
+# Find all trimmed descendants of a session
+find-trimmed-sessions original-session.jsonl
+
+# Show results in tree format
+find-trimmed-sessions original-session.jsonl --tree
+
+# Show statistics about each trimmed session
+find-trimmed-sessions original-session.jsonl --stats
+
+# Combine tree view with statistics
+find-trimmed-sessions original-session.jsonl --tree --stats
+```
+
+### Features
+
+- **Recursive search**: Finds all descendants, not just direct children
+- **Multi-agent support**: Works with both Claude Code and Codex sessions
+- **Tree visualization**: Optional tree view showing parent-child relationships
+- **Statistics display**: Shows trim stats (tools trimmed, chars saved) for each
+  descendant
+- **Sorted output**: Results sorted by creation time (most recent first)
+
+### Example
+
+```bash
+$ find-trimmed-sessions ~/.claude/ai-chats/abc123.jsonl --tree
+Original: ~/.claude/ai-chats/abc123.jsonl
+
+Trimmed descendants:
+├── def456.jsonl (2024-11-14 10:30:15)
+│   55 tools, 8 assistant msgs, 268K chars saved
+└── ghi789.jsonl (2024-11-14 11:45:22)
+    12 tools, 3 assistant msgs, 45K chars saved
+
+Total: 2 trimmed sessions found
+```
 
 <a id="vault"></a>
 ## 🔐 vault

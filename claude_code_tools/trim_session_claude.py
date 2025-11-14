@@ -76,25 +76,66 @@ def process_claude_session(
     threshold: int,
     create_placeholder: callable,
     new_session_id: Optional[str] = None,
-) -> Tuple[int, int]:
+    trim_assistant_messages: Optional[int] = None,
+) -> Tuple[int, int, int]:
     """
-    Process Claude Code session file and suppress tool results.
+    Process Claude Code session file and trim tool results and assistant messages.
 
     Args:
         input_file: Path to input JSONL file.
         output_file: Path to output JSONL file.
         tool_map: Mapping of tool_use_id to tool name.
         target_tools: Set of tool names to suppress (None means all).
-        threshold: Minimum length threshold for suppression.
+        threshold: Minimum length threshold for trimming.
         create_placeholder: Function to create placeholder text.
         new_session_id: Optional new session ID to replace in all events.
+        trim_assistant_messages: Optional assistant message trimming (see trim_and_create_session).
 
     Returns:
-        Tuple of (num_suppressed, chars_saved).
+        Tuple of (num_tools_trimmed, num_assistant_trimmed, chars_saved).
     """
-    num_suppressed = 0
+    num_tools_trimmed = 0
+    num_assistant_trimmed = 0
     chars_saved = 0
 
+    # First pass: identify assistant messages to trim
+    assistant_indices_to_trim = set()
+    if trim_assistant_messages is not None:
+        assistant_messages = []  # List of (line_num, length, data)
+
+        with open(input_file, "r") as f:
+            for line_num, line in enumerate(f, start=1):
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if data.get("type") == "assistant":
+                    content = data.get("message", {}).get("content", [])
+                    total_length = sum(
+                        len(str(item.get("text", "")))
+                        for item in content
+                        if isinstance(item, dict) and item.get("type") == "text"
+                    )
+                    if total_length >= threshold:
+                        assistant_messages.append((line_num, total_length, data))
+
+        # Determine which to trim based on parameter
+        if trim_assistant_messages > 0:
+            # Trim first N
+            count = min(trim_assistant_messages, len(assistant_messages))
+            assistant_indices_to_trim = {
+                msg[0] for msg in assistant_messages[:count]
+            }
+        elif trim_assistant_messages < 0:
+            # Trim all except last abs(N)
+            keep_count = min(abs(trim_assistant_messages), len(assistant_messages))
+            trim_count = len(assistant_messages) - keep_count
+            assistant_indices_to_trim = {
+                msg[0] for msg in assistant_messages[:trim_count]
+            }
+
+    # Second pass: process and trim
     with open(input_file, "r") as infile, open(
         output_file, "w"
     ) as outfile:
@@ -105,8 +146,24 @@ def process_claude_session(
                 outfile.write(line)
                 continue
 
+            # Trim assistant messages if needed
+            if data.get("type") == "assistant" and line_num in assistant_indices_to_trim:
+                content = data.get("message", {}).get("content", [])
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        original_text = item.get("text", "")
+                        original_length = len(original_text)
+                        if original_length >= threshold:
+                            placeholder = (
+                                f"[Assistant message trimmed - "
+                                f"original content was {original_length:,} characters]"
+                            )
+                            item["text"] = placeholder
+                            chars_saved += original_length - len(placeholder)
+                            num_assistant_trimmed += 1
+
             # Check if this is a user message with tool results
-            if data.get("type") == "user":
+            elif data.get("type") == "user":
                 content = data.get("message", {}).get("content")
 
                 # Handle array content with tool_result
@@ -135,7 +192,7 @@ def process_claude_session(
                                     tool_name, content_length
                                 )
                                 item["content"] = placeholder
-                                num_suppressed += 1
+                                num_tools_trimmed += 1
                                 chars_saved += (
                                     content_length - len(placeholder)
                                 )
@@ -182,4 +239,4 @@ def process_claude_session(
             # Write the (potentially modified) line
             outfile.write(json.dumps(data) + "\n")
 
-    return num_suppressed, chars_saved
+    return num_tools_trimmed, num_assistant_trimmed, chars_saved

@@ -36,8 +36,9 @@ from claude_code_tools.find_codex_session import (
     copy_session_file as copy_codex_session_file,
     clone_session as clone_codex_session,
 )
-from claude_code_tools.suppress_tool_results import (
-    suppress_and_create_session,
+from claude_code_tools.trim_session import (
+    trim_and_create_session,
+    is_trimmed_session,
 )
 
 try:
@@ -103,9 +104,19 @@ def search_all_agents(
     agents: Optional[List[str]] = None,
     claude_home: Optional[str] = None,
     codex_home: Optional[str] = None,
+    original_only: bool = False,
 ) -> List[dict]:
     """
     Search sessions across all enabled agents.
+
+    Args:
+        keywords: List of keywords to search for
+        global_search: Search across all projects
+        num_matches: Number of matches to return
+        agents: List of agent names to search
+        claude_home: Claude home directory
+        codex_home: Codex home directory
+        original_only: Only return original (non-trimmed) sessions
 
     Returns list of dicts with agent metadata added.
     """
@@ -130,18 +141,32 @@ def search_all_agents(
 
             # Add agent metadata to each session
             for session in sessions:
+                session_id = session[0]
+                cwd = session[6]
+
+                # Get file path and check if trimmed
+                file_path = Path(
+                    get_claude_session_file_path(session_id, cwd, claude_home=home)
+                )
+                is_trimmed = is_trimmed_session(file_path)
+
+                # Skip if original_only and session is trimmed
+                if original_only and is_trimmed:
+                    continue
+
                 session_dict = {
                     "agent": "claude",
                     "agent_display": agent_config.display_name,
-                    "session_id": session[0],
+                    "session_id": session_id,
                     "mod_time": session[1],
                     "create_time": session[2],
                     "lines": session[3],
                     "project": session[4],
                     "preview": session[5],
-                    "cwd": session[6],
+                    "cwd": cwd,
                     "branch": session[7] if len(session) > 7 else "",
                     "claude_home": home,
+                    "is_trimmed": is_trimmed,
                 }
                 all_sessions.append(session_dict)
 
@@ -160,6 +185,13 @@ def search_all_agents(
 
                 # Add agent metadata to each session
                 for session in sessions:
+                    file_path = Path(session.get("file_path", ""))
+                    is_trimmed = is_trimmed_session(file_path)
+
+                    # Skip if original_only and session is trimmed
+                    if original_only and is_trimmed:
+                        continue
+
                     session_dict = {
                         "agent": "codex",
                         "agent_display": agent_config.display_name,
@@ -172,6 +204,7 @@ def search_all_agents(
                         "cwd": session["cwd"],
                         "branch": session.get("branch", ""),
                         "file_path": session.get("file_path", ""),
+                        "is_trimmed": is_trimmed,
                     }
                     all_sessions.append(session_dict)
 
@@ -223,10 +256,15 @@ def display_interactive_ui(
 
         branch_display = session.get("branch", "") or "N/A"
 
+        # Add star indicator for trimmed sessions
+        session_id_display = session["session_id"][:8] + "..."
+        if session.get("is_trimmed", False):
+            session_id_display += " *"
+
         table.add_row(
             str(idx),
             session["agent_display"],
-            session["session_id"][:8] + "...",
+            session_id_display,
             session["project"],
             branch_display,
             date_str,
@@ -235,6 +273,12 @@ def display_interactive_ui(
         )
 
     ui_console.print(table)
+
+    # Show footnote if any sessions are trimmed
+    has_trimmed = any(s.get("is_trimmed", False) for s in display_sessions)
+    if has_trimmed:
+        ui_console.print("[dim]* = Trimmed session (reduced from original)[/dim]")
+
     ui_console.print("\n[bold]Select a session:[/bold]")
     ui_console.print(f"  • Enter number (1-{len(display_sessions)}) to select")
     ui_console.print("  • Press Enter to cancel\n")
@@ -274,7 +318,7 @@ def show_resume_submenu(stderr_mode: bool = False) -> Optional[str]:
 
     print(f"\nResume options:", file=output)
     print("1. Default, just resume as is (default)", file=output)
-    print("2. Suppress tool results and resume", file=output)
+    print("2. Trim session (tool results + assistant messages) and resume", file=output)
     print(file=output)
 
     try:
@@ -299,21 +343,21 @@ def show_resume_submenu(stderr_mode: bool = False) -> Optional[str]:
 
 def prompt_suppress_options(
     stderr_mode: bool = False
-) -> Optional[Tuple[Optional[str], int]]:
+) -> Optional[Tuple[Optional[str], int, Optional[int]]]:
     """
     Prompt user for suppress-tool-results options.
 
     Returns:
-        Tuple of (tools, threshold) or None if cancelled
+        Tuple of (tools, threshold, trim_assistant_messages) or None if cancelled
     """
     output = sys.stderr if stderr_mode else sys.stdout
 
-    print(f"\nSuppress tool results options:", file=output)
+    print(f"\nTrim session options:", file=output)
     print(
-        "Enter tool names to suppress (comma-separated, e.g., 'bash,read,edit')",
+        "Enter tool names to trim (comma-separated, e.g., 'bash,read,edit')",
         file=output,
     )
-    print("Or press Enter to suppress all tools:", file=output)
+    print("Or press Enter to trim all tools:", file=output)
 
     try:
         if stderr_mode:
@@ -338,12 +382,28 @@ def prompt_suppress_options(
 
         threshold = int(threshold_input) if threshold_input else 500
 
-        return (tools, threshold)
+        print(f"\nTrim assistant messages (optional):", file=output)
+        print("  • Positive number (e.g., 10): Trim first 10 messages exceeding threshold", file=output)
+        print("  • Negative number (e.g., -5): Trim all except last 5 messages exceeding threshold", file=output)
+        print("  • Press Enter to skip (no assistant message trimming)", file=output)
+
+        if stderr_mode:
+            sys.stderr.write("Assistant messages (or Enter to skip): ")
+            sys.stderr.flush()
+            assistant_input = sys.stdin.readline().strip()
+        else:
+            assistant_input = input("Assistant messages (or Enter to skip): ").strip()
+
+        trim_assistant = None
+        if assistant_input:
+            trim_assistant = int(assistant_input)
+
+        return (tools, threshold, trim_assistant)
     except KeyboardInterrupt:
         print("\nCancelled.", file=output)
         return None
     except ValueError:
-        print("Invalid threshold value.", file=output)
+        print("Invalid value entered.", file=output)
         return None
 
 
@@ -420,7 +480,11 @@ def extract_first_user_message(session_file: Path, agent: str) -> str:
 
 
 def handle_suppress_resume(
-    session: dict, tools: Optional[str], threshold: int, shell_mode: bool = False
+    session: dict,
+    tools: Optional[str],
+    threshold: int,
+    trim_assistant_messages: Optional[int] = None,
+    shell_mode: bool = False
 ) -> None:
     """
     Suppress tool results and resume session.
@@ -429,6 +493,7 @@ def handle_suppress_resume(
         session: Session dict
         tools: Tool names to suppress (comma-separated) or None for all
         threshold: Length threshold
+        trim_assistant_messages: Optional assistant message trimming
         shell_mode: Whether in shell mode
     """
     agent = session["agent"]
@@ -446,7 +511,7 @@ def handle_suppress_resume(
         session_file = Path(session["file_path"])
 
     output = sys.stderr if shell_mode else sys.stdout
-    print(f"\n🔧 Suppressing tool results...", file=output)
+    print(f"\n🔧 Trimming session...", file=output)
 
     # Parse tools into set if provided
     target_tools = None
@@ -454,25 +519,30 @@ def handle_suppress_resume(
         target_tools = {tool.strip().lower() for tool in tools.split(",")}
 
     try:
-        # Use helper function to suppress and create new session
-        result = suppress_and_create_session(
-            agent, session_file, target_tools, threshold
+        # Use helper function to trim and create new session
+        result = trim_and_create_session(
+            agent,
+            session_file,
+            target_tools,
+            threshold,
+            trim_assistant_messages=trim_assistant_messages
         )
     except Exception as e:
-        print(f"❌ Error suppressing tool results: {e}", file=output)
+        print(f"❌ Error trimming session: {e}", file=output)
         return
 
     new_session_id = result["session_id"]
     new_session_file = result["output_file"]
 
     print(f"\n{'='*70}", file=output)
-    print(f"✅ SUPPRESSION COMPLETE", file=output)
+    print(f"✅ TRIM COMPLETE", file=output)
     print(f"{'='*70}", file=output)
     print(f"📁 New session file created:", file=output)
     print(f"   {new_session_file}", file=output)
     print(f"🆔 New session UUID: {new_session_id}", file=output)
     print(
-        f"📊 Suppressed {result['num_suppressed']} tool results, "
+        f"📊 Trimmed {result['num_tools_trimmed']} tool results, "
+        f"{result['num_assistant_trimmed']} assistant messages, "
         f"saved ~{result['tokens_saved']:,} tokens",
         file=output,
     )
@@ -562,8 +632,10 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
         # Prompt for suppress options
         options = prompt_suppress_options(stderr_mode=shell_mode)
         if options:
-            tools, threshold = options
-            handle_suppress_resume(session, tools, threshold, shell_mode)
+            tools, threshold, trim_assistant = options
+            handle_suppress_resume(
+                session, tools, threshold, trim_assistant, shell_mode
+            )
 
     elif action == "path":
         if agent == "claude":
@@ -655,6 +727,11 @@ Examples:
     parser.add_argument(
         "--codex-home", type=str, help="Path to Codex home directory (default: ~/.codex)"
     )
+    parser.add_argument(
+        "--original",
+        action="store_true",
+        help="Show only original (non-trimmed) sessions",
+    )
 
     args = parser.parse_args()
 
@@ -673,6 +750,7 @@ Examples:
         agents=args.agents,
         claude_home=args.claude_home,
         codex_home=args.codex_home,
+        original_only=args.original,
     )
 
     if not matching_sessions:

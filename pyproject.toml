@@ -18,10 +18,12 @@ dev = ["commitizen>=3.0.0"]
 find-claude-session = "claude_code_tools.find_claude_session:main"
 find-codex-session = "claude_code_tools.find_codex_session:main"
 find-session = "claude_code_tools.find_session:main"
+find-original-session = "claude_code_tools.find_original_session:main"
+find-trimmed-sessions = "claude_code_tools.find_trimmed_sessions:main"
 vault = "claude_code_tools.dotenv_vault:main"
 tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"
-suppress-tool-results = "claude_code_tools.suppress_tool_results:main"
+trim-session = "claude_code_tools.trim_session:main"
 
 [build-system]
 requires = ["hatchling"]

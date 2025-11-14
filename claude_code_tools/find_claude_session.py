@@ -25,7 +25,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Set, Tuple, Optional
 
-from claude_code_tools.suppress_tool_results import suppress_and_create_session
+from claude_code_tools.trim_session import (
+    trim_and_create_session,
+    is_trimmed_session,
+)
 
 try:
     from rich.console import Console
@@ -201,6 +204,40 @@ def is_system_message(text: str) -> bool:
     return False
 
 
+def is_sidechain_session(filepath: Path) -> bool:
+    """
+    Check if a session file is a sidechain (sub-agent) session.
+
+    Sidechain sessions are created when launching sub-agents via the Task tool
+    and cannot be resumed directly.
+
+    Args:
+        filepath: Path to session JSONL file.
+
+    Returns:
+        True if session is a sidechain, False otherwise.
+    """
+    if not filepath.exists():
+        return False
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            # Check first few lines for isSidechain field
+            for i, line in enumerate(f):
+                if i >= 10:  # Only check first 10 lines
+                    break
+                try:
+                    data = json.loads(line.strip())
+                    if "isSidechain" in data:
+                        return data["isSidechain"] is True
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    except (OSError, IOError):
+        pass
+
+    return False
+
+
 def get_session_preview(filepath: Path) -> str:
     """Get a preview of the session from the LAST user message."""
     last_user_message = None
@@ -242,7 +279,7 @@ def get_session_preview(filepath: Path) -> str:
     return last_user_message if last_user_message else "No preview available"
 
 
-def find_sessions(keywords: List[str], global_search: bool = False, claude_home: Optional[str] = None) -> List[Tuple[str, float, float, int, str, str, str, Optional[str]]]:
+def find_sessions(keywords: List[str], global_search: bool = False, claude_home: Optional[str] = None, original_only: bool = False) -> List[Tuple[str, float, float, int, str, str, str, Optional[str], bool]]:
     """
     Find all Claude Code sessions containing the specified keywords.
 
@@ -250,9 +287,10 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
         keywords: List of keywords to search for
         global_search: If True, search all projects; if False, search current project only
         claude_home: Optional custom Claude home directory (defaults to ~/.claude)
+        original_only: If True, show only original (non-trimmed) sessions
 
     Returns:
-        List of tuples (session_id, modification_time, creation_time, line_count, project_name, preview, project_path, git_branch) sorted by modification time
+        List of tuples (session_id, modification_time, creation_time, line_count, project_name, preview, project_path, git_branch, is_trimmed) sorted by modification time
     """
     matching_sessions = []
     
@@ -277,13 +315,24 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                     for jsonl_file in project_dir.glob("*.jsonl"):
                         matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                         if matches:
+                            # Skip sidechain (sub-agent) sessions
+                            if is_sidechain_session(jsonl_file):
+                                continue
+
+                            # Check if session is trimmed
+                            is_trimmed = is_trimmed_session(jsonl_file)
+
+                            # Skip if original_only and session is trimmed
+                            if original_only and is_trimmed:
+                                continue
+
                             session_id = jsonl_file.stem
                             stat = jsonl_file.stat()
                             mod_time = stat.st_mtime
                             # Get creation time (birthtime on macOS, ctime elsewhere)
                             create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                             preview = get_session_preview(jsonl_file)
-                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch))
+                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed))
                     
                     progress.advance(task)
         else:
@@ -294,13 +343,24 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                 for jsonl_file in project_dir.glob("*.jsonl"):
                     matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                     if matches:
+                        # Skip sidechain (sub-agent) sessions
+                        if is_sidechain_session(jsonl_file):
+                            continue
+
+                        # Check if session is trimmed
+                        is_trimmed = is_trimmed_session(jsonl_file)
+
+                        # Skip if original_only and session is trimmed
+                        if original_only and is_trimmed:
+                            continue
+
                         session_id = jsonl_file.stem
                         stat = jsonl_file.stat()
                         mod_time = stat.st_mtime
                         # Get creation time (birthtime on macOS, ctime elsewhere)
                         create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                         preview = get_session_preview(jsonl_file)
-                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch))
+                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed))
     else:
         # Search current project only
         claude_dir = get_claude_project_dir(claude_home)
@@ -314,13 +374,24 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
         for jsonl_file in claude_dir.glob("*.jsonl"):
             matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
             if matches:
+                # Skip sidechain (sub-agent) sessions
+                if is_sidechain_session(jsonl_file):
+                    continue
+
+                # Check if session is trimmed
+                is_trimmed = is_trimmed_session(jsonl_file)
+
+                # Skip if original_only and session is trimmed
+                if original_only and is_trimmed:
+                    continue
+
                 session_id = jsonl_file.stem
                 stat = jsonl_file.stat()
                 mod_time = stat.st_mtime
                 # Get creation time (birthtime on macOS, ctime elsewhere)
                 create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                 preview = get_session_preview(jsonl_file)
-                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, os.getcwd(), git_branch))
+                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, os.getcwd(), git_branch, is_trimmed))
     
     # Sort by modification time (newest first)
     matching_sessions.sort(key=lambda x: x[1], reverse=True)
@@ -328,7 +399,7 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
     return matching_sessions
 
 
-def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, Optional[str]]], keywords: List[str], stderr_mode: bool = False, num_matches: int = 10) -> Optional[Tuple[str, str]]:
+def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str, str, Optional[str], bool]], keywords: List[str], stderr_mode: bool = False, num_matches: int = 10) -> Optional[Tuple[str, str]]:
     """Display interactive UI for session selection."""
     if not RICH_AVAILABLE:
         return None
@@ -362,15 +433,21 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
     table.add_column("Lines", style="cyan", justify="right")
     table.add_column("Last User Message", style="white", max_width=60, overflow="fold")
     
-    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch) in enumerate(display_sessions, 1):
+    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch, is_trimmed) in enumerate(display_sessions, 1):
         # Format: "10/04 - 10/09 13:45"
         create_date = datetime.fromtimestamp(create_time).strftime('%m/%d')
         mod_date = datetime.fromtimestamp(mod_time).strftime('%m/%d %H:%M')
         date_display = f"{create_date} - {mod_date}"
         branch_display = git_branch if git_branch else "N/A"
+
+        # Add star indicator for trimmed sessions
+        session_id_display = session_id[:8] + "..."
+        if is_trimmed:
+            session_id_display += " *"
+
         table.add_row(
             str(idx),
-            session_id[:8] + "...",
+            session_id_display,
             project_name,
             branch_display,
             date_display,
@@ -379,6 +456,12 @@ def display_interactive_ui(sessions: List[Tuple[str, float, int, str, str, str, 
         )
     
     ui_console.print(table)
+
+    # Show footnote if any sessions are trimmed
+    has_trimmed = any(s[8] for s in display_sessions)  # is_trimmed is index 8
+    if has_trimmed:
+        ui_console.print("[dim]* = Trimmed session (reduced from original)[/dim]")
+
     ui_console.print("\n[bold]Select a session:[/bold]")
     ui_console.print(f"  • Enter number (1-{len(display_sessions)}) to select")
     ui_console.print("  • Press Enter to cancel\n")
@@ -441,7 +524,7 @@ def show_resume_submenu() -> Optional[str]:
     """Show resume options submenu."""
     print(f"\nResume options:")
     print("1. Default, just resume as is (default)")
-    print("2. Suppress tool results and resume")
+    print("2. Trim session (tool results + assistant messages) and resume")
     print()
 
     try:
@@ -458,16 +541,16 @@ def show_resume_submenu() -> Optional[str]:
         return None
 
 
-def prompt_suppress_options() -> Optional[Tuple[Optional[str], int]]:
+def prompt_suppress_options() -> Optional[Tuple[Optional[str], int, Optional[int]]]:
     """
     Prompt user for suppress-tool-results options.
 
     Returns:
-        Tuple of (tools, threshold) or None if cancelled
+        Tuple of (tools, threshold, trim_assistant_messages) or None if cancelled
     """
-    print(f"\nSuppress tool results options:")
-    print("Enter tool names to suppress (comma-separated, e.g., 'bash,read,edit')")
-    print("Or press Enter to suppress all tools:")
+    print(f"\nTrim session options:")
+    print("Enter tool names to trim (comma-separated, e.g., 'bash,read,edit')")
+    print("Or press Enter to trim all tools:")
 
     try:
         tools_input = input("Tools (or Enter for all): ").strip()
@@ -477,12 +560,22 @@ def prompt_suppress_options() -> Optional[Tuple[Optional[str], int]]:
         threshold_input = input("Threshold (or Enter for 500): ").strip()
         threshold = int(threshold_input) if threshold_input else 500
 
-        return (tools, threshold)
+        print(f"\nTrim assistant messages (optional):")
+        print("  • Positive number (e.g., 10): Trim first 10 messages exceeding threshold")
+        print("  • Negative number (e.g., -5): Trim all except last 5 messages exceeding threshold")
+        print("  • Press Enter to skip (no assistant message trimming)")
+        assistant_input = input("Assistant messages (or Enter to skip): ").strip()
+
+        trim_assistant = None
+        if assistant_input:
+            trim_assistant = int(assistant_input)
+
+        return (tools, threshold, trim_assistant)
     except KeyboardInterrupt:
         print("\nCancelled.")
         return None
     except ValueError:
-        print("Invalid threshold value.")
+        print("Invalid value entered.")
         return None
 
 
@@ -512,6 +605,7 @@ def handle_suppress_resume_claude(
     project_path: str,
     tools: Optional[str],
     threshold: int,
+    trim_assistant_messages: Optional[int] = None,
     claude_home: Optional[str] = None,
 ) -> None:
     """
@@ -519,7 +613,7 @@ def handle_suppress_resume_claude(
     """
     session_file = Path(get_session_file_path(session_id, project_path, claude_home))
 
-    print(f"\n🔧 Suppressing tool results...")
+    print(f"\n🔧 Trimming session...")
 
     # Parse tools into set if provided
     target_tools = None
@@ -527,25 +621,30 @@ def handle_suppress_resume_claude(
         target_tools = {tool.strip().lower() for tool in tools.split(",")}
 
     try:
-        # Use helper function to suppress and create new session
-        result = suppress_and_create_session(
-            "claude", session_file, target_tools, threshold
+        # Use helper function to trim and create new session
+        result = trim_and_create_session(
+            "claude",
+            session_file,
+            target_tools,
+            threshold,
+            trim_assistant_messages=trim_assistant_messages
         )
     except Exception as e:
-        print(f"❌ Error suppressing tool results: {e}")
+        print(f"❌ Error trimming session: {e}")
         return
 
     new_session_id = result["session_id"]
     new_session_file = result["output_file"]
 
     print(f"\n{'='*70}")
-    print(f"✅ SUPPRESSION COMPLETE")
+    print(f"✅ TRIM COMPLETE")
     print(f"{'='*70}")
     print(f"📁 New session file created:")
     print(f"   {new_session_file}")
     print(f"🆔 New session UUID: {new_session_id}")
     print(
-        f"📊 Suppressed {result['num_suppressed']} tool results, "
+        f"📊 Trimmed {result['num_tools_trimmed']} tool results, "
+        f"{result['num_assistant_trimmed']} assistant messages, "
         f"saved ~{result['tokens_saved']:,} tokens"
     )
 
@@ -562,7 +661,7 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
 
     Returns: action choice ('resume', 'path', 'copy') or None if cancelled
     """
-    session_id, _, _, _, project_name, _, project_path, git_branch = session_info
+    session_id, _, _, _, project_name, _, project_path, git_branch, _ = session_info
 
     print(f"\n=== Session: {session_id[:8]}... ===")
     print(f"Project: {project_name}")
@@ -816,7 +915,12 @@ To persist directory changes when resuming sessions:
         type=str,
         help="Path to Claude home directory (default: ~/.claude)"
     )
-    
+    parser.add_argument(
+        "--original",
+        action="store_true",
+        help="Show only original (non-trimmed) sessions"
+    )
+
     args = parser.parse_args()
     
     # Parse keywords
@@ -832,7 +936,7 @@ To persist directory changes when resuming sessions:
             sys.exit(1)
     
     # Find matching sessions
-    matching_sessions = find_sessions(keywords, global_search=getattr(args, 'global'), claude_home=args.claude_home)
+    matching_sessions = find_sessions(keywords, global_search=getattr(args, 'global'), claude_home=args.claude_home, original_only=args.original)
     
     if not matching_sessions:
         scope = "all projects" if getattr(args, 'global') else "current project"
@@ -862,8 +966,10 @@ To persist directory changes when resuming sessions:
                 # Prompt for suppress options
                 options = prompt_suppress_options()
                 if options:
-                    tools, threshold = options
-                    handle_suppress_resume_claude(session_id, project_path, tools, threshold, args.claude_home)
+                    tools, threshold, trim_assistant = options
+                    handle_suppress_resume_claude(
+                        session_id, project_path, tools, threshold, trim_assistant, args.claude_home
+                    )
             elif action == "path":
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
                 print(f"\nSession file path:")
@@ -894,7 +1000,7 @@ To persist directory changes when resuming sessions:
         if len(matching_sessions) == 1:
             if not args.shell:
                 print("\nOnly one match found. Resuming automatically...")
-            session_id, _, _, _, _, _, project_path, _ = matching_sessions[0]
+            session_id, _, _, _, _, _, project_path, _, _ = matching_sessions[0]
             resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
         else:
             try:
@@ -913,7 +1019,7 @@ To persist directory changes when resuming sessions:
                     
                 idx = int(choice) - 1
                 if 0 <= idx < min(args.num_matches, len(matching_sessions)):
-                    session_id, _, _, _, _, project_path, _ = matching_sessions[idx]
+                    session_id, _, _, _, _, _, project_path, _, _ = matching_sessions[idx]
                     resume_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
                 else:
                     print("Invalid choice", file=sys.stderr)
