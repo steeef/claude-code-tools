@@ -9,6 +9,7 @@ trims content to reduce file size while preserving conversation flow:
 """
 
 import argparse
+import os
 import sys
 import uuid
 from datetime import datetime
@@ -17,6 +18,56 @@ from typing import Optional, Set, Tuple
 
 from . import trim_session_claude as claude_processor
 from . import trim_session_codex as codex_processor
+
+
+def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = None) -> Path:
+    """
+    Resolve a session ID or path to a full file path.
+
+    Args:
+        session_id_or_path: Either a full path or a session UUID
+        claude_home: Optional custom Claude home directory (defaults to ~/.claude)
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        FileNotFoundError: If session cannot be found
+    """
+    path = Path(session_id_or_path)
+
+    # If it's already a valid path, use it
+    if path.exists():
+        return path
+
+    # Otherwise, treat it as a session ID and try to find it
+    session_id = session_id_or_path.strip()
+
+    # Try Claude Code path first
+    cwd = os.getcwd()
+    base_dir = Path(claude_home).expanduser() if claude_home else Path.home() / ".claude"
+    encoded_path = cwd.replace("/", "-")
+    claude_project_dir = base_dir / "projects" / encoded_path
+    claude_path = claude_project_dir / f"{session_id}.jsonl"
+
+    if claude_path.exists():
+        return claude_path
+
+    # Try Codex path - search through sessions directory
+    codex_home = Path.home() / ".codex"
+    sessions_dir = codex_home / "sessions"
+
+    if sessions_dir.exists():
+        # Search for files containing the session ID in the filename
+        for jsonl_file in sessions_dir.rglob("*.jsonl"):
+            if session_id in jsonl_file.name:
+                return jsonl_file
+
+    # Not found anywhere
+    raise FileNotFoundError(
+        f"Session '{session_id}' not found in Claude Code "
+        f"({claude_path}) or Codex ({sessions_dir}) directories"
+    )
 
 
 def is_trimmed_session(session_file: Path) -> bool:
@@ -362,7 +413,9 @@ Examples:
     )
 
     parser.add_argument(
-        "input_file", help="Input JSONL session file path"
+        "input_file",
+        nargs='?',
+        help="Session file path or session ID (optional - uses $CLAUDE_SESSION_ID if not provided)"
     )
     parser.add_argument(
         "--agent",
@@ -397,17 +450,43 @@ Examples:
         "-o",
         help="Output directory (default: same as input file)",
     )
+    parser.add_argument(
+        "--claude-home",
+        type=str,
+        help="Path to Claude home directory (default: ~/.claude)"
+    )
 
     args = parser.parse_args()
 
-    # Validate input file
-    input_path = Path(args.input_file)
-    if not input_path.exists():
-        print(
-            f"Error: Input file '{args.input_file}' not found.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # Handle input file resolution
+    if args.input_file is None:
+        # Try to get session ID from environment variable
+        session_id = os.environ.get('CLAUDE_SESSION_ID')
+        if not session_id:
+            print(f"Error: No session file provided and CLAUDE_SESSION_ID not set", file=sys.stderr)
+            print(f"Usage: trim-session <session-file-or-id> or run from within Claude Code with !trim-session", file=sys.stderr)
+            sys.exit(1)
+
+        # Reconstruct Claude Code session file path
+        cwd = os.getcwd()
+        base_dir = Path(args.claude_home).expanduser() if args.claude_home else Path.home() / ".claude"
+        encoded_path = cwd.replace("/", "-")
+        claude_project_dir = base_dir / "projects" / encoded_path
+        input_path = claude_project_dir / f"{session_id}.jsonl"
+
+        if not input_path.exists():
+            print(f"Error: Session file not found: {input_path}", file=sys.stderr)
+            print(f"(Reconstructed from CLAUDE_SESSION_ID={session_id})", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"📋 Using current Claude Code session: {session_id}")
+    else:
+        # Resolve session ID or path to full path
+        try:
+            input_path = resolve_session_path(args.input_file, claude_home=args.claude_home)
+        except FileNotFoundError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Auto-detect agent and warn if user specified wrong one
     detected_agent = detect_agent(input_path)
@@ -515,7 +594,6 @@ Examples:
             # Default to yes (empty input or "y"/"yes")
             print(f"\n🚀 Resuming session...\n")
             import subprocess
-            import os
 
             # Change to cwd if specified, then run the agent
             if cwd:

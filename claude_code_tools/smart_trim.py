@@ -4,13 +4,64 @@
 import argparse
 import datetime
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.trim_session import detect_agent
+
+
+def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = None) -> Path:
+    """
+    Resolve a session ID or path to a full file path.
+
+    Args:
+        session_id_or_path: Either a full path or a session UUID
+        claude_home: Optional custom Claude home directory (defaults to ~/.claude)
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        FileNotFoundError: If session cannot be found
+    """
+    path = Path(session_id_or_path)
+
+    # If it's already a valid path, use it
+    if path.exists():
+        return path
+
+    # Otherwise, treat it as a session ID and try to find it
+    session_id = session_id_or_path.strip()
+
+    # Try Claude Code path first
+    cwd = os.getcwd()
+    base_dir = Path(claude_home).expanduser() if claude_home else Path.home() / ".claude"
+    encoded_path = cwd.replace("/", "-")
+    claude_project_dir = base_dir / "projects" / encoded_path
+    claude_path = claude_project_dir / f"{session_id}.jsonl"
+
+    if claude_path.exists():
+        return claude_path
+
+    # Try Codex path - search through sessions directory
+    codex_home = Path.home() / ".codex"
+    sessions_dir = codex_home / "sessions"
+
+    if sessions_dir.exists():
+        # Search for files containing the session ID in the filename
+        for jsonl_file in sessions_dir.rglob("*.jsonl"):
+            if session_id in jsonl_file.name:
+                return jsonl_file
+
+    # Not found anywhere
+    raise FileNotFoundError(
+        f"Session '{session_id}' not found in Claude Code "
+        f"({claude_path}) or Codex ({sessions_dir}) directories"
+    )
 
 
 def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> dict:
@@ -58,8 +109,8 @@ def main():
     )
     parser.add_argument(
         "session_file",
-        type=Path,
-        help="Session JSONL file to analyze"
+        nargs='?',
+        help="Session file path or session ID (optional - uses $CLAUDE_SESSION_ID if not provided)"
     )
     parser.add_argument(
         "--exclude-types",
@@ -99,17 +150,48 @@ def main():
         default=200,
         help="Minimum characters for content extraction (default: 200)"
     )
+    parser.add_argument(
+        "--claude-home",
+        type=str,
+        help="Path to Claude home directory (default: ~/.claude)"
+    )
 
     args = parser.parse_args()
 
-    if not args.session_file.exists():
-        print(f"Error: File not found: {args.session_file}", file=sys.stderr)
-        sys.exit(1)
+    # Handle session file resolution
+    if args.session_file is None:
+        # Try to get session ID from environment variable
+        session_id = os.environ.get('CLAUDE_SESSION_ID')
+        if not session_id:
+            print(f"Error: No session file provided and CLAUDE_SESSION_ID not set", file=sys.stderr)
+            print(f"Usage: smart-trim <session-file-or-id> or run from within Claude Code with !smart-trim", file=sys.stderr)
+            sys.exit(1)
+
+        # Reconstruct Claude Code session file path
+        cwd = os.getcwd()
+        base_dir = Path(args.claude_home).expanduser() if args.claude_home else Path.home() / ".claude"
+        encoded_path = cwd.replace("/", "-")
+        claude_project_dir = base_dir / "projects" / encoded_path
+        session_file = claude_project_dir / f"{session_id}.jsonl"
+
+        if not session_file.exists():
+            print(f"Error: Session file not found: {session_file}", file=sys.stderr)
+            print(f"(Reconstructed from CLAUDE_SESSION_ID={session_id})", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"📋 Using current Claude Code session: {session_id}")
+    else:
+        # Resolve session ID or path to full path
+        try:
+            session_file = resolve_session_path(args.session_file, claude_home=args.claude_home)
+        except FileNotFoundError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Parse exclude types
     exclude_types = [t.strip() for t in args.exclude_types.split(",")]
 
-    print(f"🔍 Analyzing session: {args.session_file.name}")
+    print(f"🔍 Analyzing session: {session_file.name}")
     print(f"   Excluding types: {', '.join(exclude_types)}")
     print(f"   Preserving recent: {args.preserve_recent} messages")
     print(f"   Max lines per agent: {args.max_lines_per_agent}")
@@ -118,7 +200,7 @@ def main():
     # Identify trimmable lines
     try:
         trimmable = identify_trimmable_lines(
-            args.session_file,
+            session_file,
             exclude_types=exclude_types,
             preserve_recent=args.preserve_recent,
             max_lines_per_agent=args.max_lines_per_agent,
@@ -156,11 +238,11 @@ def main():
         line_indices = trimmable
 
     # Determine output file
-    output_dir = args.output_dir or args.session_file.parent
+    output_dir = args.output_dir or session_file.parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Detect agent type from filename
-    agent = detect_agent(args.session_file)
+    agent = detect_agent(session_file)
     if agent == "claude":
         # Generate new UUID for trimmed session
         new_uuid = str(uuid.uuid4())
@@ -172,7 +254,7 @@ def main():
         output_file = output_dir / f"smart-trim-{timestamp}-{new_uuid[:8]}.jsonl"
 
     # Perform trimming
-    stats = trim_lines(args.session_file, line_indices, output_file)
+    stats = trim_lines(session_file, line_indices, output_file)
 
     print(f"✅ Smart trim complete!")
     print(f"   Lines trimmed: {stats['num_lines_trimmed']}")
