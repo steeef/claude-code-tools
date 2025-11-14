@@ -13,6 +13,7 @@ and other CLI coding agents.
 - [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
 - [🗜️ trim-session — compress session files for context management](#trim-session)
+- [🤖 smart-trim (EXPERIMENTAL) — intelligent trimming using parallel Claude SDK agents](#smart-trim-experimental)
 - [📍 find-original-session — trace trimmed sessions to their source](#find-original-session)
 - [🌳 find-trimmed-sessions — find all trimmed versions of a session](#find-trimmed-sessions)
 - [🔐 vault — encrypted .env backup & sync](#vault)
@@ -75,6 +76,7 @@ This gives you:
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
 - `find-codex-session` - Search and resume Codex sessions by keywords
 - `trim-session` - Compress session files by trimming large tool results and assistant messages
+- `smart-trim` - (EXPERIMENTAL) Intelligent trimming using parallel Claude SDK agents
 - `find-original-session` - Trace trimmed sessions back to their original source
 - `find-trimmed-sessions` - Find all trimmed descendants of a session
 - `vault` - Encrypted backup for your .env files
@@ -246,7 +248,8 @@ fs -g --original
 - **Action menu** after session selection:
   - **For normal sessions**: Full menu with resume options
     - Resume as-is (default)
-    - Trim session and resume trimmed copy
+    - Trim session (heuristic) and resume trimmed copy
+    - Smart trim (EXPERIMENTAL - using Claude SDK agents) and resume
     - Show session file path
     - Copy session file
     - Clone and resume
@@ -352,7 +355,8 @@ fcs -g --original
 - **Action menu** after session selection:
   - **For normal sessions**: Full menu with resume options
     - Resume as-is (default)
-    - Trim session and resume trimmed copy
+    - Trim session (heuristic) and resume trimmed copy
+    - Smart trim (EXPERIMENTAL - using Claude SDK agents) and resume
     - Show session file path
     - Copy session file
     - Clone and resume
@@ -443,7 +447,8 @@ fcs-codex -g --original
   sessions
 - **Action menu** after session selection:
   - Resume as-is (default)
-  - Trim session and resume trimmed copy
+  - Trim session (heuristic) and resume trimmed copy
+  - Smart trim (EXPERIMENTAL - using sub-agents) and resume
   - Show session file path
   - Copy session file
   - Clone and resume
@@ -609,6 +614,100 @@ Common tools you can target with `--tools`:
 - `edit` - File edit results
 - `glob` - File search results
 - `grep` - Content search results
+
+<a id="smart-trim-experimental"></a>
+## 🤖 smart-trim (EXPERIMENTAL)
+
+**Intelligent session trimming using parallel Claude SDK agents.** Unlike `trim-session` which uses simple heuristics (length thresholds), `smart-trim` uses multiple Claude SDK agents running in parallel to analyze your session content and intelligently determine what can be safely trimmed.
+
+⚠️ **EXPERIMENTAL**: This tool is in active development. The parallel Claude SDK agents make independent trimming decisions for different chunks of your session, which means they cannot fully account for cross-chunk dependencies. Use with caution and review results before resuming trimmed sessions.
+
+### How it works
+
+1. **Parallel Analysis**: Splits your session into chunks and launches multiple Claude SDK agents in parallel
+2. **Intelligent Content Extraction**: Agents see only relevant content (text, tool results), not metadata or thinking blocks
+3. **Smart Decisions**: Each agent identifies verbose tool results, redundant explanations, and intermediate debugging output
+4. **Protected Content**: Automatically preserves user messages, recent messages, file-history-snapshots, thinking blocks, and critical context
+
+### Usage
+
+```bash
+# Analyze and trim a session (auto-detect agent type)
+smart-trim session.jsonl
+
+# Use verbose mode to see trimming rationales
+smart-trim session.jsonl --verbose
+
+# Configure chunk size for parallel agents (default: 100 lines)
+smart-trim session.jsonl --max-lines-per-agent 50
+
+# Adjust content threshold (default: 200 chars)
+smart-trim session.jsonl --content-threshold 300
+
+# Preserve more recent messages (default: 10)
+smart-trim session.jsonl --preserve-recent 20
+
+# Exclude additional message types
+smart-trim session.jsonl --exclude-types user,tool_result
+
+# Dry run - see what would be trimmed without doing it
+smart-trim session.jsonl --dry-run
+```
+
+### Key Features
+
+- **Multi-agent support**: Works with both Claude Code and Codex sessions (new and old formats)
+- **Parallel processing**: Launches multiple Claude SDK agents to analyze large sessions efficiently
+- **Context-aware**: Preserves thinking blocks, file-history-snapshots, and system messages that don't count toward context
+- **Content-focused**: Extracts only relevant text/code from nested JSON structures
+- **Verbose mode**: See detailed rationales for every trimmed line
+- **Configurable**: Tune chunk size, content threshold, and preservation parameters
+
+### Limitations
+
+⚠️ **Important**: Each Claude SDK agent analyzes its chunk independently and cannot see content from other chunks. This means:
+
+- Agents may trim content that is referenced in later parts of the session
+- Cross-chunk dependencies cannot be detected
+- For critical sessions, review the verbose output before resuming
+
+Future versions may implement multi-pass analysis or cross-agent communication to address these limitations.
+
+### Integration with find-session tools
+
+Smart-trim is integrated into `find-claude-session` and `find-codex-session`. When you select a session to resume, you'll see option 3:
+
+```
+Resume options:
+1. Default, just resume as is (default)
+2. Trim session (tool results + assistant messages) and resume
+3. Smart trim (EXPERIMENTAL - using Claude SDK agents) and resume
+```
+
+Choosing option 3 will:
+- Launch parallel Claude SDK agents to analyze your session
+- Create a new trimmed session with a fresh UUID
+- Automatically resume the trimmed session
+- Show token savings and trimming statistics
+
+### Example Output
+
+```
+🤖 Smart trimming session using parallel Claude SDK agents...
+   This may take a minute as agents analyze the session...
+   Found 88 lines to trim
+
+======================================================================
+✅ SMART TRIM COMPLETE
+======================================================================
+📁 New session file created:
+   ~/.claude/ai-chats/4e470f01-706e-496b-95d3-b1d93db8b5f8.jsonl
+🆔 New session UUID: 4e470f01-706e-496b-95d3-b1d93db8b5f8
+📊 Trimmed 88 lines, saved ~42,820 tokens
+
+🚀 Resuming smart-trimmed session: 4e470f01-706e...
+======================================================================
+```
 
 <a id="find-original-session"></a>
 ## 📍 find-original-session

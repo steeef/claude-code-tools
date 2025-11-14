@@ -5,9 +5,11 @@ description = "Collection of tools for working with Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "claude-agent-sdk>=0.1.6",
     "click>=8.0.0",
     "fire>=0.5.0",
     "mcp>=1.13.0",
+    "pytest>=9.0.1",
     "rich>=13.0.0",
 ]
 
@@ -24,6 +26,7 @@ vault = "claude_code_tools.dotenv_vault:main"
 tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"
 trim-session = "claude_code_tools.trim_session:main"
+smart-trim = "claude_code_tools.smart_trim:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -43,6 +46,11 @@ exclude = [
     "claude-code-router/",
     "reference/",
     "ghostty",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (require API calls)",
 ]
 
 [tool.commitizen]

@@ -29,6 +29,8 @@ from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
 )
+from claude_code_tools.smart_trim_core import identify_trimmable_lines
+from claude_code_tools.smart_trim import trim_lines
 
 try:
     from rich.console import Console
@@ -530,14 +532,17 @@ def show_resume_submenu() -> Optional[str]:
     print(f"\nResume options:")
     print("1. Default, just resume as is (default)")
     print("2. Trim session (tool results + assistant messages) and resume")
+    print("3. Smart trim (EXPERIMENTAL - using Claude SDK agents) and resume")
     print()
 
     try:
-        choice = input("Enter choice [1-2] (or Enter for 1): ").strip()
+        choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
         if not choice or choice == "1":
             return "resume"
         elif choice == "2":
             return "suppress_resume"
+        elif choice == "3":
+            return "smart_trim_resume"
         else:
             print("Invalid choice.")
             return None
@@ -658,6 +663,71 @@ def handle_suppress_resume_claude(
 
     # Resume the new session
     resume_session(new_session_id, project_path, claude_home=claude_home)
+
+
+def handle_smart_trim_resume_claude(
+    session_id: str,
+    project_path: str,
+    claude_home: Optional[str] = None,
+) -> None:
+    """
+    Smart trim session using parallel agents and resume Claude Code session.
+    """
+    import uuid
+
+    session_file = Path(get_session_file_path(session_id, project_path, claude_home))
+
+    print(f"\n🤖 Smart trimming session using parallel Claude SDK agents...")
+    print(f"   This may take a minute as agents analyze the session...")
+
+    try:
+        # Identify trimmable lines using parallel agents
+        trimmable = identify_trimmable_lines(
+            session_file,
+            exclude_types=["user"],
+            preserve_recent=10,
+        )
+
+        if not trimmable:
+            print(f"\n✨ No lines identified for trimming")
+            print(f"   Session is already well-optimized!")
+            print(f"\n🚀 Resuming original session...")
+            resume_session(session_id, project_path, claude_home=claude_home)
+            return
+
+        print(f"   Found {len(trimmable)} lines to trim")
+
+        # Generate new session ID
+        new_session_id = str(uuid.uuid4())
+
+        # Create output path
+        output_file = session_file.parent / f"{new_session_id}.jsonl"
+
+        # Perform trimming
+        stats = trim_lines(session_file, trimmable, output_file)
+
+        print(f"\n{'='*70}")
+        print(f"✅ SMART TRIM COMPLETE")
+        print(f"{'='*70}")
+        print(f"📁 New session file created:")
+        print(f"   {output_file}")
+        print(f"🆔 New session UUID: {new_session_id}")
+        print(
+            f"📊 Trimmed {stats['num_lines_trimmed']} lines, "
+            f"saved ~{stats['tokens_saved']:,} tokens"
+        )
+
+        print(f"\n🚀 Resuming smart-trimmed session: {new_session_id[:16]}...")
+        print(f"{'='*70}\n")
+
+        # Resume the new session
+        resume_session(new_session_id, project_path, claude_home=claude_home)
+
+    except Exception as e:
+        print(f"❌ Error during smart trim: {e}")
+        import traceback
+        traceback.print_exc()
+        return
 
 
 def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, Optional[str]]) -> Optional[str]:
@@ -999,6 +1069,11 @@ To persist directory changes when resuming sessions:
                     handle_suppress_resume_claude(
                         session_id, project_path, tools, threshold, trim_assistant, args.claude_home
                     )
+            elif action == "smart_trim_resume":
+                # Smart trim using parallel agents
+                handle_smart_trim_resume_claude(
+                    session_id, project_path, args.claude_home
+                )
             elif action == "path":
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
                 print(f"\nSession file path:")
