@@ -27,6 +27,7 @@ tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"
 trim-session = "claude_code_tools.trim_session:main"
 smart-trim = "claude_code_tools.smart_trim:main"
+export-claude-session = "claude_code_tools.export_claude_session:main"
 
 [build-system]
 requires = ["hatchling"]

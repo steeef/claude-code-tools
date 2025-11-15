@@ -748,10 +748,11 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
         print(f"\nWhat would you like to do?")
         print("1. Show session file path")
         print("2. Copy session file to file (*.jsonl) or directory")
+        print("3. Export to markdown")
         print()
 
         try:
-            choice = input("Enter choice [1-2] (or Enter to cancel): ").strip()
+            choice = input("Enter choice [1-3] (or Enter to cancel): ").strip()
             if not choice:
                 print("Cancelled.")
                 return None
@@ -759,6 +760,8 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
                 return "path"
             elif choice == "2":
                 return "copy"
+            elif choice == "3":
+                return "export"
             else:
                 print("Invalid choice.")
                 return None
@@ -771,10 +774,11 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
         print("2. Show session file path")
         print("3. Copy session file to file (*.jsonl) or directory")
         print("4. Clone session and resume clone")
+        print("5. Export to markdown")
         print()
 
         try:
-            choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
+            choice = input("Enter choice [1-5] (or Enter for 1): ").strip()
             if not choice or choice == "1":
                 # Show resume submenu
                 return show_resume_submenu()
@@ -784,6 +788,8 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
                 return "copy"
             elif choice == "4":
                 return "clone"
+            elif choice == "5":
+                return "export"
             else:
                 print("Invalid choice.")
                 return None
@@ -799,6 +805,48 @@ def get_session_file_path(session_id: str, project_path: str, claude_home: Optio
     encoded_path = project_path.replace("/", "-")
     claude_project_dir = base_dir / "projects" / encoded_path
     return str(claude_project_dir / f"{session_id}.jsonl")
+
+
+def handle_export_session(session_file_path: str) -> None:
+    """Export session to markdown format."""
+    from claude_code_tools.export_claude_session import export_session_to_markdown as do_export
+
+    try:
+        dest = input("\nEnter output markdown file path: ").strip()
+        if not dest:
+            print("Cancelled.")
+            return
+
+        dest_path = Path(dest).expanduser()
+
+        # Ensure .md extension
+        if not dest_path.suffix:
+            dest_path = dest_path.with_suffix(".md")
+        elif dest_path.suffix != ".md":
+            print(f"Warning: Expected .md extension, got {dest_path.suffix}")
+            confirm = input("Continue anyway? [y/N]: ").strip().lower()
+            if confirm != 'y':
+                print("Cancelled.")
+                return
+
+        # Create parent directory if needed
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Export to markdown
+        print(f"\n📄 Exporting session to markdown...")
+        with open(dest_path, 'w') as f:
+            stats = do_export(Path(session_file_path), f, verbose=False)
+
+        print(f"✅ Export complete!")
+        print(f"   User messages: {stats['user_messages']}")
+        print(f"   Assistant messages: {stats['assistant_messages']}")
+        print(f"   Tool calls: {stats['tool_calls']}")
+        print(f"   Tool results: {stats['tool_results']}")
+        print(f"   Skipped items: {stats['skipped']}")
+        print(f"\n📄 Output: {dest_path}")
+
+    except Exception as e:
+        print(f"\nError exporting session: {e}")
 
 
 def copy_session_file(session_file_path: str) -> None:
@@ -1083,6 +1131,9 @@ To persist directory changes when resuming sessions:
                 copy_session_file(session_file_path)
             elif action == "clone":
                 clone_session(session_id, project_path, shell_mode=args.shell, claude_home=args.claude_home)
+            elif action == "export":
+                session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
+                handle_export_session(session_file_path)
     else:
         # Fallback: print session IDs as before
         if not args.shell:

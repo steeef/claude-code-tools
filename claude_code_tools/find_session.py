@@ -28,6 +28,7 @@ from claude_code_tools.find_claude_session import (
     get_session_file_path as get_claude_session_file_path,
     copy_session_file as copy_claude_session_file,
     clone_session as clone_claude_session,
+    handle_export_session as handle_export_claude_session,
     is_sidechain_session,
 )
 from claude_code_tools.find_codex_session import (
@@ -595,20 +596,29 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
 
     is_sidechain = session.get("is_sidechain", False)
 
+    # Check if export is available (only for Claude sessions)
+    agent = session.get("agent", "")
+    can_export = (agent == "claude")
+
     if is_sidechain:
         print("\n[Note: This is a sub-agent session and cannot be resumed directly]", file=output)
         print(f"\nWhat would you like to do?", file=output)
         print("1. Show session file path", file=output)
         print("2. Copy session file to file (*.jsonl) or directory", file=output)
+        if can_export:
+            print("3. Export to markdown", file=output)
         print(file=output)
+
+        max_choice = 3 if can_export else 2
+        prompt_text = f"Enter choice [1-{max_choice}] (or Enter to cancel): "
 
         try:
             if stderr_mode:
-                sys.stderr.write("Enter choice [1-2] (or Enter to cancel): ")
+                sys.stderr.write(prompt_text)
                 sys.stderr.flush()
                 choice = sys.stdin.readline().strip()
             else:
-                choice = input("Enter choice [1-2] (or Enter to cancel): ").strip()
+                choice = input(prompt_text).strip()
 
             if not choice:
                 print("Cancelled.", file=output)
@@ -617,6 +627,8 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
                 return "path"
             elif choice == "2":
                 return "copy"
+            elif choice == "3" and can_export:
+                return "export"
             else:
                 print("Invalid choice.", file=output)
                 return None
@@ -629,16 +641,21 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
         print("2. Show session file path", file=output)
         print("3. Copy session file to file (*.jsonl) or directory", file=output)
         print("4. Clone session and resume clone", file=output)
+        if can_export:
+            print("5. Export to markdown", file=output)
         print(file=output)
+
+        max_choice = 5 if can_export else 4
+        prompt_text = f"Enter choice [1-{max_choice}] (or Enter for 1): "
 
         try:
             if stderr_mode:
                 # In stderr mode, prompt to stderr so it's visible
-                sys.stderr.write("Enter choice [1-4] (or Enter for 1): ")
+                sys.stderr.write(prompt_text)
                 sys.stderr.flush()
                 choice = sys.stdin.readline().strip()
             else:
-                choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
+                choice = input(prompt_text).strip()
 
             if not choice or choice == "1":
                 # Show resume submenu
@@ -649,6 +666,8 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
                 return "copy"
             elif choice == "4":
                 return "clone"
+            elif choice == "5" and can_export:
+                return "export"
             else:
                 print("Invalid choice.", file=output)
                 return None
@@ -722,6 +741,15 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
                 session["cwd"],
                 shell_mode=shell_mode,
             )
+
+    elif action == "export":
+        if agent == "claude":
+            file_path = get_claude_session_file_path(
+                session["session_id"],
+                session["cwd"],
+                claude_home=session.get("claude_home"),
+            )
+            handle_export_claude_session(file_path)
 
 
 def main():

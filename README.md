@@ -14,6 +14,7 @@ and other CLI coding agents.
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
 - [🗜️ trim-session — compress session files for context management](#trim-session)
 - [🤖 smart-trim (EXPERIMENTAL) — intelligent trimming using parallel Claude SDK agents](#smart-trim-experimental)
+- [📄 export-claude-session — export sessions to clean markdown format](#export-claude-session)
 - [📍 find-original-session — trace trimmed sessions to their source](#find-original-session)
 - [🌳 find-trimmed-sessions — find all trimmed versions of a session](#find-trimmed-sessions)
 - [🔐 vault — encrypted .env backup & sync](#vault)
@@ -77,6 +78,7 @@ This gives you:
 - `find-codex-session` - Search and resume Codex sessions by keywords
 - `trim-session` - Compress session files by trimming large tool results and assistant messages
 - `smart-trim` - (EXPERIMENTAL) Intelligent trimming using parallel Claude SDK agents
+- `export-claude-session` - Export Claude sessions to clean markdown format
 - `find-original-session` - Trace trimmed sessions back to their original source
 - `find-trimmed-sessions` - Find all trimmed descendants of a session
 - `vault` - Encrypted backup for your .env files
@@ -253,9 +255,11 @@ fs -g --original
     - Show session file path
     - Copy session file
     - Clone and resume
+    - Export to markdown (Claude sessions only)
   - **For sub-agent sessions**: Limited menu (resume not available)
     - Show session file path
     - Copy session file
+    - Export to markdown (Claude sessions only)
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - **Agent filtering**: Use `--agents claude codex` to search specific agents only
 - **Configurable**: Optional config file at `~/.config/find-session/config.json` for customizing agents
@@ -360,9 +364,11 @@ fcs -g --original
     - Show session file path
     - Copy session file
     - Clone and resume
+    - Export to markdown
   - **For sub-agent sessions**: Limited menu (resume not available)
     - Show session file path
     - Copy session file
+    - Export to markdown
 - Interactive session selection with previews
 - Cross-project search capabilities (local by default, `-g` for global)
 - Shows last user message preview (filtered, multi-line wrapping)
@@ -708,6 +714,132 @@ Choosing option 3 will:
 🚀 Resuming smart-trimmed session: 4e470f01-706e...
 ======================================================================
 ```
+
+<a id="export-claude-session"></a>
+## 📄 export-claude-session
+
+Export Claude Code sessions to clean, readable markdown format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
+
+### Usage
+
+```bash
+# Export a session by file path
+export-claude-session /path/to/session.jsonl --output summary.md
+
+# Export a session by ID (searches all Claude projects)
+export-claude-session abc123-def456-789 --output summary.md
+
+# Run from within Claude Code (uses current session)
+!export-claude-session --output notes/session-summary.md
+
+# Custom Claude home directory
+export-claude-session session-id --output summary.md --claude-home ~/my-claude
+
+# Verbose mode with progress
+export-claude-session session.jsonl --output summary.md --verbose
+```
+
+### What Gets Exported
+
+The tool extracts four types of content in clean markdown format:
+
+1. **User messages** - Your input and questions
+2. **Assistant messages** - Claude's text responses
+3. **Tool calls** - Commands and tools used (with formatted JSON input)
+4. **Tool results** - Output from executed tools
+
+**Filtered out:**
+- Thinking blocks
+- System messages
+- Reasoning blocks
+- File history snapshots
+- Session metadata
+- Queue operations
+
+### Output Format
+
+The exported markdown uses clear section headers:
+
+```markdown
+# USER
+
+Your question or input here...
+
+# ASSISTANT
+
+Claude's response here...
+
+# ASSISTANT - TOOL
+
+**Tool**: Bash
+
+```json
+{
+  "command": "ls -la",
+  "description": "List files"
+}
+```
+
+# USER - TOOL RESULT
+
+```
+total 48
+drwxr-xr-x  12 user  staff   384 Nov 14 15:30 .
+...
+```
+```
+
+### Features
+
+- **Multi-project search**: When given a session ID, searches across all Claude project directories
+- **Environment variable support**: Use `$CLAUDE_SESSION_ID` when run from within Claude Code
+- **Session ID resolution**: Accepts either full paths or just session UUIDs
+- **Auto-extension**: Automatically adds `.md` extension if missing
+- **Statistics**: Shows counts of each content type exported
+- **Progress display**: Optional `--verbose` mode for detailed progress
+
+### Integration with find-session Tools
+
+Export functionality is also available through the interactive session finder menus:
+
+**In find-claude-session:**
+```bash
+fcs "keywords"
+# Select a session
+# Choose option 5: "Export to markdown"
+# Enter output path
+```
+
+**In find-session (Claude sessions only):**
+```bash
+fs "keywords"
+# Select a Claude session
+# Choose option 5: "Export to markdown"
+# Enter output path
+```
+
+The export option appears in both normal and sub-agent session menus, making it easy to create readable summaries of any Claude Code conversation.
+
+### Example Output
+
+```
+✅ Export complete!
+   User messages: 32
+   Assistant messages: 28
+   Tool calls: 128
+   Tool results: 128
+   Skipped items: 190
+
+📄 Output: notes/session-summary.md
+```
+
+### Use Cases
+
+- **Documentation**: Create readable summaries of implementation sessions
+- **Learning**: Review conversation flow without metadata clutter
+- **Sharing**: Share session highlights with team members
+- **Analysis**: Analyze tool usage patterns and conversation structure
+- **Archival**: Create human-readable archives of important sessions
 
 <a id="find-original-session"></a>
 ## 📍 find-original-session
