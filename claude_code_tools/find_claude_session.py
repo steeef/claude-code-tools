@@ -748,7 +748,7 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
         print(f"\nWhat would you like to do?")
         print("1. Show session file path")
         print("2. Copy session file to file (*.jsonl) or directory")
-        print("3. Export to markdown")
+        print("3. Export to text file (.txt)")
         print()
 
         try:
@@ -774,7 +774,7 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
         print("2. Show session file path")
         print("3. Copy session file to file (*.jsonl) or directory")
         print("4. Clone session and resume clone")
-        print("5. Export to markdown")
+        print("5. Export to text file (.txt)")
         print()
 
         try:
@@ -808,32 +808,27 @@ def get_session_file_path(session_id: str, project_path: str, claude_home: Optio
 
 
 def handle_export_session(session_file_path: str) -> None:
-    """Export session to markdown format."""
+    """Export session to text file."""
     from claude_code_tools.export_claude_session import export_session_to_markdown as do_export
 
     try:
-        dest = input("\nEnter output markdown file path: ").strip()
+        dest = input("\nEnter output text file path (.txt): ").strip()
         if not dest:
             print("Cancelled.")
             return
 
         dest_path = Path(dest).expanduser()
 
-        # Ensure .md extension
-        if not dest_path.suffix:
-            dest_path = dest_path.with_suffix(".md")
-        elif dest_path.suffix != ".md":
-            print(f"Warning: Expected .md extension, got {dest_path.suffix}")
-            confirm = input("Continue anyway? [y/N]: ").strip().lower()
-            if confirm != 'y':
-                print("Cancelled.")
-                return
+        # Force .txt extension
+        if dest_path.suffix != ".txt":
+            # Strip any existing extension and add .txt
+            dest_path = dest_path.with_suffix(".txt")
 
         # Create parent directory if needed
         dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Export to markdown
-        print(f"\n📄 Exporting session to markdown...")
+        # Export to text file
+        print(f"\n📄 Exporting session...")
         with open(dest_path, 'w') as f:
             stats = do_export(Path(session_file_path), f, verbose=False)
 
@@ -843,7 +838,7 @@ def handle_export_session(session_file_path: str) -> None:
         print(f"   Tool calls: {stats['tool_calls']}")
         print(f"   Tool results: {stats['tool_results']}")
         print(f"   Skipped items: {stats['skipped']}")
-        print(f"\n📄 Output: {dest_path}")
+        print(f"\n📄 Exported to: {dest_path}")
 
     except Exception as e:
         print(f"\nError exporting session: {e}")

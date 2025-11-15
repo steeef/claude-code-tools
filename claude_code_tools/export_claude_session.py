@@ -344,7 +344,7 @@ def main():
         "-o",
         required=True,
         type=Path,
-        help="Output markdown file path"
+        help="Output text file path (.txt)"
     )
     parser.add_argument(
         "--claude-home",

@@ -257,11 +257,11 @@ fs -g --original
     - Show session file path
     - Copy session file
     - Clone and resume
-    - Export to markdown (Claude and Codex sessions)
+    - Export to text file (.txt) (Claude and Codex sessions)
   - **For sub-agent sessions**: Limited menu (resume not available)
     - Show session file path
     - Copy session file
-    - Export to markdown (Claude sessions only - Codex has no sub-agents)
+    - Export to text file (.txt) (Claude sessions only - Codex has no sub-agents)
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - **Agent filtering**: Use `--agents claude codex` to search specific agents only
 - **Configurable**: Optional config file at `~/.config/find-session/config.json` for customizing agents
@@ -366,11 +366,11 @@ fcs -g --original
     - Show session file path
     - Copy session file
     - Clone and resume
-    - Export to markdown
+    - Export to text file (.txt)
   - **For sub-agent sessions**: Limited menu (resume not available)
     - Show session file path
     - Copy session file
-    - Export to markdown
+    - Export to text file (.txt)
 - Interactive session selection with previews
 - Cross-project search capabilities (local by default, `-g` for global)
 - Shows last user message preview (filtered, multi-line wrapping)
@@ -460,7 +460,7 @@ fcs-codex -g --original
   - Show session file path
   - Copy session file
   - Clone and resume
-  - Export to markdown
+  - Export to text file (.txt)
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - Case-insensitive AND keyword search across all session content
 - Interactive session selection with Rich table display
@@ -727,24 +727,24 @@ Export Claude Code sessions using Claude Code's built-in export format. This too
 
 ```bash
 # Export a session by file path
-export-claude-session /path/to/session.jsonl --output summary.md
+export-claude-session /path/to/session.jsonl --output summary.txt
 
 # Export a session by ID (searches all Claude projects)
-export-claude-session abc123-def456-789 --output summary.md
+export-claude-session abc123-def456-789 --output summary.txt
 
 # Run from within Claude Code (uses current session)
-!export-claude-session --output notes/session-summary.md
+!export-claude-session --output notes/session-summary.txt
 
 # Custom Claude home directory
-export-claude-session session-id --output summary.md --claude-home ~/my-claude
+export-claude-session session-id --output summary.txt --claude-home ~/my-claude
 
 # Verbose mode with progress
-export-claude-session session.jsonl --output summary.md --verbose
+export-claude-session session.jsonl --output summary.txt --verbose
 ```
 
 ### What Gets Exported
 
-The tool extracts four types of content in clean markdown format:
+The tool extracts four types of content:
 
 1. **User messages** - Your input and questions
 2. **Assistant messages** - Claude's text responses
@@ -785,7 +785,7 @@ The export uses Claude Code's built-in format with simple prefixes:
 - **Multi-project search**: When given a session ID, searches across all Claude project directories
 - **Environment variable support**: Use `$CLAUDE_SESSION_ID` when run from within Claude Code
 - **Session ID resolution**: Accepts either full paths or just session UUIDs
-- **Auto-extension**: Automatically adds `.md` extension if missing
+- **File extension**: Forces `.txt` extension (strips other extensions)
 - **Statistics**: Shows counts of each content type exported
 - **Progress display**: Optional `--verbose` mode for detailed progress
 
@@ -797,7 +797,7 @@ Export functionality is also available through the interactive session finder me
 ```bash
 fcs "keywords"
 # Select a session
-# Choose option 5: "Export to markdown"
+# Choose option 5: "Export to text file (.txt)"
 # Enter output path
 ```
 
@@ -805,7 +805,7 @@ fcs "keywords"
 ```bash
 fs "keywords"
 # Select a Claude session
-# Choose option 5: "Export to markdown"
+# Choose option 5: "Export to text file (.txt)"
 # Enter output path
 ```
 
@@ -821,7 +821,7 @@ The export option appears in both normal and sub-agent session menus, making it 
    Tool results: 128
    Skipped items: 190
 
-📄 Output: notes/session-summary.md
+📄 Exported to: notes/session-summary.txt
 ```
 
 ### Use Cases
@@ -841,21 +841,21 @@ Export Codex sessions using Claude Code's built-in export format. This tool extr
 
 ```bash
 # Export a session by file path
-export-codex-session /path/to/session.jsonl --output summary.md
+export-codex-session /path/to/session.jsonl --output summary.txt
 
 # Export a session by ID (searches Codex sessions directory)
-export-codex-session 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.md
+export-codex-session 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.txt
 
 # Custom Codex home directory
-export-codex-session session-id --output summary.md --codex-home ~/my-codex
+export-codex-session session-id --output summary.txt --codex-home ~/my-codex
 
 # Verbose mode with progress
-export-codex-session session.jsonl --output summary.md --verbose
+export-codex-session session.jsonl --output summary.txt --verbose
 ```
 
 ### What Gets Exported
 
-The tool extracts four types of content in clean markdown format:
+The tool extracts four types of content:
 
 1. **User messages** - Your input and questions (from `input_text` blocks)
 2. **Assistant messages** - Codex's text responses (from `output_text` blocks)
@@ -895,7 +895,7 @@ The export uses Claude Code's built-in format with simple prefixes:
 
 - **Session ID resolution**: Accepts either full paths or session UUIDs
 - **Codex directory search**: Searches through `~/.codex/sessions/YYYY/MM/DD/` structure
-- **Auto-extension**: Automatically adds `.md` extension if missing
+- **File extension**: Forces `.txt` extension (strips other extensions)
 - **Statistics**: Shows counts of each content type exported
 - **Progress display**: Optional `--verbose` mode for detailed progress
 - **JSON parsing**: Handles JSON-encoded arguments and outputs
@@ -908,7 +908,7 @@ Export functionality is also available through the interactive session finder me
 ```bash
 find-codex-session "keywords"
 # Select a session
-# Choose option 5: "Export to markdown"
+# Choose option 5: "Export to text file (.txt)"
 # Enter output path
 ```
 
@@ -916,7 +916,7 @@ find-codex-session "keywords"
 ```bash
 fs "keywords"
 # Select a Codex session
-# Choose option 5: "Export to markdown"
+# Choose option 5: "Export to text file (.txt)"
 # Enter output path
 ```
 
@@ -932,7 +932,7 @@ The export option appears in the session action menus, making it easy to create 
    Tool results: 85
    Skipped items: 342
 
-📄 Output: notes/codex-session-summary.md
+📄 Exported to: notes/codex-session-summary.txt
 ```
 
 ### Use Cases

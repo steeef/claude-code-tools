@@ -665,24 +665,25 @@ def handle_smart_trim_resume_codex(
 
 
 def handle_export_session(session_file_path: str) -> None:
-    """Export Codex session to markdown format."""
+    """Export Codex session to text file."""
     from claude_code_tools.export_codex_session import export_session_to_markdown as do_export
 
-    dest = input("\nEnter output markdown file path: ").strip()
+    dest = input("\nEnter output text file path (.txt): ").strip()
     if not dest:
         print("Cancelled.")
         return
 
     dest_path = Path(dest).expanduser()
 
-    # Ensure .md extension
-    if not dest_path.suffix:
-        dest_path = dest_path.with_suffix(".md")
+    # Force .txt extension
+    if dest_path.suffix != ".txt":
+        # Strip any existing extension and add .txt
+        dest_path = dest_path.with_suffix(".txt")
 
     # Create parent directories if needed
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Export to markdown
+    # Export to text file
     try:
         with open(dest_path, 'w') as f:
             stats = do_export(Path(session_file_path), f, verbose=False)
@@ -693,7 +694,7 @@ def handle_export_session(session_file_path: str) -> None:
         print(f"   Tool calls: {stats['tool_calls']}")
         print(f"   Tool results: {stats['tool_results']}")
         print(f"   Skipped items: {stats['skipped']}")
-        print(f"\n📄 Output: {dest_path}")
+        print(f"\n📄 Exported to: {dest_path}")
     except Exception as e:
         print(f"\n❌ Error exporting session: {e}")
 
@@ -712,7 +713,7 @@ def show_action_menu(match: dict) -> Optional[str]:
     print("2. Show session file path")
     print("3. Copy session file to file (*.jsonl) or directory")
     print("4. Clone session and resume clone")
-    print("5. Export to markdown")
+    print("5. Export to text file (.txt)")
     print()
 
     try:

@@ -607,7 +607,7 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
         print("1. Show session file path", file=output)
         print("2. Copy session file to file (*.jsonl) or directory", file=output)
         if can_export:
-            print("3. Export to markdown", file=output)
+            print("3. Export to text file (.txt)", file=output)
         print(file=output)
 
         max_choice = 3 if can_export else 2
@@ -643,7 +643,7 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
         print("3. Copy session file to file (*.jsonl) or directory", file=output)
         print("4. Clone session and resume clone", file=output)
         if can_export:
-            print("5. Export to markdown", file=output)
+            print("5. Export to text file (.txt)", file=output)
         print(file=output)
 
         max_choice = 5 if can_export else 4
