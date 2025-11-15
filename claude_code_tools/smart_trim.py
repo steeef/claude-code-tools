@@ -66,11 +66,15 @@ def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = N
 
 def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> dict:
     """
-    Replace specified lines with placeholders.
+    Replace content within specified lines with placeholders.
+
+    IMPORTANT: Never delete or replace entire message lines - this breaks the
+    conversation structure that the Anthropic API requires. Instead, replace
+    CONTENT fields (text, tool results, etc.) within messages.
 
     Args:
         input_file: Input session file
-        line_indices: Line numbers to trim
+        line_indices: Line numbers to trim (0-indexed)
         output_file: Output file path
 
     Returns:
@@ -82,14 +86,100 @@ def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> 
     chars_saved = 0
     trimmed_count = 0
 
-    # Replace lines with placeholders
+    # Process each line that should be trimmed
     for idx in sorted(line_indices):
         if 0 <= idx < len(lines):
-            original_len = len(lines[idx])
-            placeholder = f'{{"trimmed_line": true, "original_length": {original_len}, "line_number": {idx}}}\n'
-            chars_saved += original_len - len(placeholder)
-            lines[idx] = placeholder
-            trimmed_count += 1
+            try:
+                data = json.loads(lines[idx])
+                original_len = len(lines[idx])
+
+                # Determine message type and replace content appropriately
+                msg_type = data.get("type", "")
+                trimmed = False
+
+                # Claude Code format
+                if msg_type == "assistant":
+                    # Replace text content in assistant messages
+                    message = data.get("message", {})
+                    content = message.get("content", [])
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text = item.get("text", "")
+                                if text:
+                                    item["text"] = f"[Content trimmed by smart-trim - {len(text):,} chars]"
+                                    trimmed = True
+
+                elif msg_type == "user":
+                    # Replace tool result content
+                    message = data.get("message", {})
+                    content = message.get("content", [])
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "tool_result":
+                                result_content = item.get("content", "")
+                                if isinstance(result_content, str) and result_content:
+                                    content_len = len(result_content)
+                                    item["content"] = f"[Tool result trimmed by smart-trim - {content_len:,} chars]"
+                                    trimmed = True
+                                elif isinstance(result_content, list):
+                                    # Handle list format
+                                    total_len = sum(len(str(c)) for c in result_content)
+                                    item["content"] = f"[Tool result trimmed by smart-trim - {total_len:,} chars]"
+                                    trimmed = True
+
+                # Codex format (response_item with payload)
+                elif msg_type == "response_item":
+                    payload = data.get("payload", {})
+                    payload_type = payload.get("type", "")
+
+                    if payload_type == "message":
+                        # Replace message text content
+                        content = payload.get("content", [])
+                        if isinstance(content, list):
+                            for item in content:
+                                if isinstance(item, dict):
+                                    text = item.get("text", "")
+                                    if text:
+                                        item["text"] = f"[Content trimmed by smart-trim - {len(text):,} chars]"
+                                        trimmed = True
+
+                    elif payload_type == "function_call_output":
+                        # Replace function output
+                        output = payload.get("output", "")
+                        if output:
+                            output_len = len(str(output))
+                            payload["output"] = f"[Function output trimmed by smart-trim - {output_len:,} chars]"
+                            trimmed = True
+
+                # Codex old format
+                elif msg_type == "message":
+                    content = data.get("content", [])
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict):
+                                text = item.get("text", "")
+                                if text:
+                                    item["text"] = f"[Content trimmed by smart-trim - {len(text):,} chars]"
+                                    trimmed = True
+
+                elif msg_type == "function_call_output":
+                    output = data.get("output", "")
+                    if output:
+                        output_len = len(str(output))
+                        data["output"] = f"[Function output trimmed by smart-trim - {output_len:,} chars]"
+                        trimmed = True
+
+                if trimmed:
+                    # Write modified line
+                    new_line = json.dumps(data) + "\n"
+                    chars_saved += original_len - len(new_line)
+                    lines[idx] = new_line
+                    trimmed_count += 1
+
+            except json.JSONDecodeError:
+                # Skip malformed lines - don't modify them
+                pass
 
     # Write output
     with open(output_file, 'w') as f:
