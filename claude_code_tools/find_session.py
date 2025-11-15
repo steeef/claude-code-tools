@@ -37,6 +37,7 @@ from claude_code_tools.find_codex_session import (
     get_codex_home,
     copy_session_file as copy_codex_session_file,
     clone_session as clone_codex_session,
+    handle_export_session as handle_export_codex_session,
 )
 from claude_code_tools.trim_session import (
     trim_and_create_session,
@@ -596,9 +597,9 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
 
     is_sidechain = session.get("is_sidechain", False)
 
-    # Check if export is available (only for Claude sessions)
+    # Check if export is available (Claude and Codex sessions)
     agent = session.get("agent", "")
-    can_export = (agent == "claude")
+    can_export = (agent in ["claude", "codex"])
 
     if is_sidechain:
         print("\n[Note: This is a sub-agent session and cannot be resumed directly]", file=output)
@@ -750,6 +751,8 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
                 claude_home=session.get("claude_home"),
             )
             handle_export_claude_session(file_path)
+        elif agent == "codex":
+            handle_export_codex_session(session.get("file_path", ""))
 
 
 def main():

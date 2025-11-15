@@ -664,11 +664,45 @@ def handle_smart_trim_resume_codex(
         return
 
 
+def handle_export_session(session_file_path: str) -> None:
+    """Export Codex session to markdown format."""
+    from claude_code_tools.export_codex_session import export_session_to_markdown as do_export
+
+    dest = input("\nEnter output markdown file path: ").strip()
+    if not dest:
+        print("Cancelled.")
+        return
+
+    dest_path = Path(dest).expanduser()
+
+    # Ensure .md extension
+    if not dest_path.suffix:
+        dest_path = dest_path.with_suffix(".md")
+
+    # Create parent directories if needed
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Export to markdown
+    try:
+        with open(dest_path, 'w') as f:
+            stats = do_export(Path(session_file_path), f, verbose=False)
+
+        print(f"\n✅ Export complete!")
+        print(f"   User messages: {stats['user_messages']}")
+        print(f"   Assistant messages: {stats['assistant_messages']}")
+        print(f"   Tool calls: {stats['tool_calls']}")
+        print(f"   Tool results: {stats['tool_results']}")
+        print(f"   Skipped items: {stats['skipped']}")
+        print(f"\n📄 Output: {dest_path}")
+    except Exception as e:
+        print(f"\n❌ Error exporting session: {e}")
+
+
 def show_action_menu(match: dict) -> Optional[str]:
     """
     Show action menu for selected session.
 
-    Returns: action choice ('resume', 'path', 'copy', 'clone') or None if cancelled
+    Returns: action choice ('resume', 'path', 'copy', 'clone', 'export') or None if cancelled
     """
     print(f"\n=== Session: {match['session_id'][:16]}... ===")
     print(f"Project: {match['project']}")
@@ -678,10 +712,11 @@ def show_action_menu(match: dict) -> Optional[str]:
     print("2. Show session file path")
     print("3. Copy session file to file (*.jsonl) or directory")
     print("4. Clone session and resume clone")
+    print("5. Export to markdown")
     print()
 
     try:
-        choice = input("Enter choice [1-4] (or Enter for 1): ").strip()
+        choice = input("Enter choice [1-5] (or Enter for 1): ").strip()
         if not choice or choice == "1":
             # Show resume submenu
             return show_resume_submenu()
@@ -691,6 +726,8 @@ def show_action_menu(match: dict) -> Optional[str]:
             return "copy"
         elif choice == "4":
             return "clone"
+        elif choice == "5":
+            return "export"
         else:
             print("Invalid choice.")
             return None
@@ -945,6 +982,8 @@ Examples:
             selected_match["cwd"],
             shell_mode=args.shell
         )
+    elif action == "export":
+        handle_export_session(selected_match["file_path"])
 
 
 if __name__ == "__main__":

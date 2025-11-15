@@ -14,7 +14,8 @@ and other CLI coding agents.
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
 - [🗜️ trim-session — compress session files for context management](#trim-session)
 - [🤖 smart-trim (EXPERIMENTAL) — intelligent trimming using parallel Claude SDK agents](#smart-trim-experimental)
-- [📄 export-claude-session — export sessions to clean markdown format](#export-claude-session)
+- [📄 export-claude-session — export Claude sessions to clean markdown format](#export-claude-session)
+- [📄 export-codex-session — export Codex sessions to clean markdown format](#export-codex-session)
 - [📍 find-original-session — trace trimmed sessions to their source](#find-original-session)
 - [🌳 find-trimmed-sessions — find all trimmed versions of a session](#find-trimmed-sessions)
 - [🔐 vault — encrypted .env backup & sync](#vault)
@@ -79,6 +80,7 @@ This gives you:
 - `trim-session` - Compress session files by trimming large tool results and assistant messages
 - `smart-trim` - (EXPERIMENTAL) Intelligent trimming using parallel Claude SDK agents
 - `export-claude-session` - Export Claude sessions to clean markdown format
+- `export-codex-session` - Export Codex sessions to clean markdown format
 - `find-original-session` - Trace trimmed sessions back to their original source
 - `find-trimmed-sessions` - Find all trimmed descendants of a session
 - `vault` - Encrypted backup for your .env files
@@ -255,11 +257,11 @@ fs -g --original
     - Show session file path
     - Copy session file
     - Clone and resume
-    - Export to markdown (Claude sessions only)
+    - Export to markdown (Claude and Codex sessions)
   - **For sub-agent sessions**: Limited menu (resume not available)
     - Show session file path
     - Copy session file
-    - Export to markdown (Claude sessions only)
+    - Export to markdown (Claude sessions only - Codex has no sub-agents)
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - **Agent filtering**: Use `--agents claude codex` to search specific agents only
 - **Configurable**: Optional config file at `~/.config/find-session/config.json` for customizing agents
@@ -458,6 +460,7 @@ fcs-codex -g --original
   - Show session file path
   - Copy session file
   - Clone and resume
+  - Export to markdown
 - **Project filtering**: Search current project only (default) or all projects with `-g`
 - Case-insensitive AND keyword search across all session content
 - Interactive session selection with Rich table display
@@ -836,6 +839,128 @@ The export option appears in both normal and sub-agent session menus, making it 
 ### Use Cases
 
 - **Documentation**: Create readable summaries of implementation sessions
+- **Learning**: Review conversation flow without metadata clutter
+- **Sharing**: Share session highlights with team members
+- **Analysis**: Analyze tool usage patterns and conversation structure
+- **Archival**: Create human-readable archives of important sessions
+
+<a id="export-codex-session"></a>
+## 📄 export-codex-session
+
+Export Codex sessions to clean, readable markdown format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
+
+### Usage
+
+```bash
+# Export a session by file path
+export-codex-session /path/to/session.jsonl --output summary.md
+
+# Export a session by ID (searches Codex sessions directory)
+export-codex-session 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.md
+
+# Custom Codex home directory
+export-codex-session session-id --output summary.md --codex-home ~/my-codex
+
+# Verbose mode with progress
+export-codex-session session.jsonl --output summary.md --verbose
+```
+
+### What Gets Exported
+
+The tool extracts four types of content in clean markdown format:
+
+1. **User messages** - Your input and questions (from `input_text` blocks)
+2. **Assistant messages** - Codex's text responses (from `output_text` blocks)
+3. **Tool calls** - Function calls and custom tool calls (with formatted JSON arguments)
+4. **Tool results** - Output from function call results
+
+**Filtered out:**
+- Reasoning blocks (thinking/summary text)
+- Event messages
+- Session metadata
+- Turn context
+- Compacted data
+- System messages
+
+### Output Format
+
+The exported markdown uses clear section headers:
+
+```markdown
+# USER
+
+Your question or input here...
+
+# ASSISTANT
+
+Codex's response here...
+
+# ASSISTANT - TOOL
+
+**Tool**: bash
+
+```json
+{
+  "command": "ls -la"
+}
+```
+
+# USER - TOOL RESULT
+
+```
+total 48
+drwxr-xr-x  12 user  staff   384 Nov 14 15:30 .
+...
+```
+```
+
+### Features
+
+- **Session ID resolution**: Accepts either full paths or session UUIDs
+- **Codex directory search**: Searches through `~/.codex/sessions/YYYY/MM/DD/` structure
+- **Auto-extension**: Automatically adds `.md` extension if missing
+- **Statistics**: Shows counts of each content type exported
+- **Progress display**: Optional `--verbose` mode for detailed progress
+- **JSON parsing**: Handles JSON-encoded arguments and outputs
+
+### Integration with find-session Tools
+
+Export functionality is also available through the interactive session finder menus:
+
+**In find-codex-session:**
+```bash
+find-codex-session "keywords"
+# Select a session
+# Choose option 5: "Export to markdown"
+# Enter output path
+```
+
+**In find-session (Claude and Codex sessions):**
+```bash
+fs "keywords"
+# Select a Codex session
+# Choose option 5: "Export to markdown"
+# Enter output path
+```
+
+The export option appears in the session action menus, making it easy to create readable summaries of any Codex conversation.
+
+### Example Output
+
+```
+✅ Export complete!
+   User messages: 18
+   Assistant messages: 24
+   Tool calls: 85
+   Tool results: 85
+   Skipped items: 342
+
+📄 Output: notes/codex-session-summary.md
+```
+
+### Use Cases
+
+- **Documentation**: Create readable summaries of Codex implementation sessions
 - **Learning**: Review conversation flow without metadata clutter
 - **Sharing**: Share session highlights with team members
 - **Analysis**: Analyze tool usage patterns and conversation structure
