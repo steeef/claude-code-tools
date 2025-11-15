@@ -57,54 +57,119 @@ def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = N
     )
 
 
+def simplify_tool_args(tool_input: dict) -> str:
+    """
+    Simplify tool arguments for compact display.
+
+    Args:
+        tool_input: Tool input dictionary
+
+    Returns:
+        Simplified string representation of arguments
+    """
+    if not tool_input:
+        return ""
+
+    # Common single-argument tools - just show the value
+    if len(tool_input) == 1:
+        key, value = list(tool_input.items())[0]
+        # For common args like 'command', 'file_path', 'pattern', etc., just show the value
+        if key in ['command', 'file_path', 'pattern', 'path', 'query', 'url', 'prompt']:
+            if isinstance(value, str) and len(value) < 100:
+                return value
+
+    # For multiple arguments or complex cases, show key=value pairs
+    parts = []
+    for key, value in tool_input.items():
+        if isinstance(value, str):
+            # Quote if contains spaces or special chars
+            if ' ' in value or any(c in value for c in [',', '(', ')']):
+                parts.append(f'{key}="{value}"')
+            else:
+                parts.append(f'{key}={value}')
+        elif isinstance(value, bool):
+            parts.append(f'{key}={str(value).lower()}')
+        elif isinstance(value, (int, float)):
+            parts.append(f'{key}={value}')
+        else:
+            # For complex types, use compact JSON
+            parts.append(f'{key}={json.dumps(value)}')
+
+    return ', '.join(parts)
+
+
 def format_tool_use(content_block: dict) -> str:
     """
-    Format a tool use content block.
+    Format a tool use in Claude Code's built-in format.
 
     Args:
         content_block: Tool use content block
 
     Returns:
-        Formatted string showing tool name and input
+        Formatted string: ⏺ ToolName(args)
     """
     tool_name = content_block.get("name", "Unknown")
     tool_input = content_block.get("input", {})
 
-    # Format the input nicely
-    if isinstance(tool_input, dict):
-        input_str = json.dumps(tool_input, indent=2)
+    args_str = simplify_tool_args(tool_input)
+    if args_str:
+        return f"⏺ {tool_name}({args_str})"
     else:
-        input_str = str(tool_input)
+        return f"⏺ {tool_name}()"
 
-    return f"**Tool**: {tool_name}\n\n```json\n{input_str}\n```"
+
+def indent_continuation(text: str, indent: str = "   ") -> str:
+    """
+    Indent continuation lines in multi-line text.
+
+    Args:
+        text: Text to process
+        indent: Indent string for continuation lines
+
+    Returns:
+        Text with continuation lines indented
+    """
+    lines = text.split('\n')
+    if len(lines) <= 1:
+        return text
+
+    # First line stays as-is, rest get indented
+    result = [lines[0]]
+    result.extend(indent + line for line in lines[1:])
+    return '\n'.join(result)
 
 
 def format_tool_result(content_block: dict) -> str:
     """
-    Format a tool result content block.
+    Format a tool result in Claude Code's built-in format.
 
     Args:
         content_block: Tool result content block
 
     Returns:
-        Formatted string showing tool output
+        Formatted string: "  ⎿  output" with indented continuation lines
     """
     content = content_block.get("content", "")
 
-    # If content is a string, use it directly
+    # Extract text from content
     if isinstance(content, str):
-        return f"```\n{content}\n```"
-
-    # If content is a list, extract text
-    if isinstance(content, list):
+        text = content
+    elif isinstance(content, list):
         parts = []
         for item in content:
             if isinstance(item, dict) and item.get("type") == "text":
                 parts.append(item.get("text", ""))
-        return f"```\n{''.join(parts)}\n```"
+        text = ''.join(parts)
+    else:
+        text = str(content)
 
-    # Fallback
-    return f"```\n{content}\n```"
+    # Format with hooked arrow prefix and indent continuation lines
+    if not text:
+        return "  ⎿  (No content)"
+
+    # Indent continuation lines to align with first line of output
+    indented = indent_continuation(text, indent="     ")
+    return f"  ⎿  {indented}"
 
 
 def export_session_to_markdown(
@@ -113,7 +178,13 @@ def export_session_to_markdown(
     verbose: bool = False
 ) -> dict:
     """
-    Export Claude Code session to markdown format.
+    Export Claude Code session using Claude Code's built-in export format.
+
+    Format:
+        User messages: "> " prefix on first line, plain text continuation
+        Assistant messages: "⏺ " prefix on first line, plain text continuation
+        Tool calls: "⏺ ToolName(args)"
+        Tool results: "  ⎿  output" with indented continuation lines
 
     Args:
         session_file: Path to session JSONL file
@@ -162,13 +233,24 @@ def export_session_to_markdown(
 
             # Handle string content (older format or simple messages)
             if isinstance(content, str):
+                text = content.strip()
                 if role == "user":
-                    output_file.write("# USER\n\n")
-                    output_file.write(f"{content.strip()}\n\n")
+                    # Format: "> " prefix on first line only, rest are plain text
+                    lines = text.split('\n')
+                    if lines:
+                        output_file.write(f"> {lines[0]}\n")
+                        for line in lines[1:]:
+                            output_file.write(f"{line}\n")
+                        output_file.write("\n")
                     stats["user_messages"] += 1
                 elif role == "assistant":
-                    output_file.write("# ASSISTANT\n\n")
-                    output_file.write(f"{content.strip()}\n\n")
+                    # Format: "⏺ " prefix on first line only, rest are plain text
+                    lines = text.split('\n')
+                    if lines:
+                        output_file.write(f"⏺ {lines[0]}\n")
+                        for line in lines[1:]:
+                            output_file.write(f"{line}\n")
+                        output_file.write("\n")
                     stats["assistant_messages"] += 1
                 continue
 
@@ -181,13 +263,22 @@ def export_session_to_markdown(
             for content_block in content:
                 if isinstance(content_block, str):
                     # String content block
+                    text = content_block.strip()
                     if role == "user":
-                        output_file.write("# USER\n\n")
-                        output_file.write(f"{content_block.strip()}\n\n")
+                        lines = text.split('\n')
+                        if lines:
+                            output_file.write(f"> {lines[0]}\n")
+                            for line in lines[1:]:
+                                output_file.write(f"{line}\n")
+                            output_file.write("\n")
                         stats["user_messages"] += 1
                     elif role == "assistant":
-                        output_file.write("# ASSISTANT\n\n")
-                        output_file.write(f"{content_block.strip()}\n\n")
+                        lines = text.split('\n')
+                        if lines:
+                            output_file.write(f"⏺ {lines[0]}\n")
+                            for line in lines[1:]:
+                                output_file.write(f"{line}\n")
+                            output_file.write("\n")
                         stats["assistant_messages"] += 1
                     continue
 
@@ -201,28 +292,32 @@ def export_session_to_markdown(
                 if role == "user" and block_type == "text":
                     text = content_block.get("text", "").strip()
                     if text:
-                        output_file.write("# USER\n\n")
-                        output_file.write(f"{text}\n\n")
+                        lines = text.split('\n')
+                        output_file.write(f"> {lines[0]}\n")
+                        for line in lines[1:]:
+                            output_file.write(f"{line}\n")
+                        output_file.write("\n")
                         stats["user_messages"] += 1
 
                 # ASSISTANT TEXT MESSAGE
                 elif role == "assistant" and block_type == "text":
                     text = content_block.get("text", "").strip()
                     if text:
-                        output_file.write("# ASSISTANT\n\n")
-                        output_file.write(f"{text}\n\n")
+                        lines = text.split('\n')
+                        output_file.write(f"⏺ {lines[0]}\n")
+                        for line in lines[1:]:
+                            output_file.write(f"{line}\n")
+                        output_file.write("\n")
                         stats["assistant_messages"] += 1
 
                 # TOOL CALL
                 elif role == "assistant" and block_type == "tool_use":
-                    output_file.write("# ASSISTANT - TOOL\n\n")
                     output_file.write(format_tool_use(content_block))
                     output_file.write("\n\n")
                     stats["tool_calls"] += 1
 
                 # TOOL RESULT
                 elif role == "user" and block_type == "tool_result":
-                    output_file.write("# USER - TOOL RESULT\n\n")
                     output_file.write(format_tool_result(content_block))
                     output_file.write("\n\n")
                     stats["tool_results"] += 1
@@ -237,7 +332,7 @@ def export_session_to_markdown(
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Export Claude Code session to clean markdown format"
+        description="Export Claude Code session using Claude Code's built-in format"
     )
     parser.add_argument(
         "session_file",

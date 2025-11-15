@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export Codex session to clean markdown format."""
+"""Export Codex session using Claude Code's built-in export format."""
 
 import argparse
 import json
@@ -46,54 +46,66 @@ def resolve_session_path(session_id_or_path: str, codex_home: Optional[str] = No
     )
 
 
-def format_tool_use(content_block: dict) -> str:
+def simplify_tool_args(tool_input: dict) -> str:
     """
-    Format a tool use content block.
+    Simplify tool arguments for compact display.
 
     Args:
-        content_block: Tool use content block
+        tool_input: Tool input dictionary
 
     Returns:
-        Formatted string showing tool name and input
+        Simplified string representation of arguments
     """
-    tool_name = content_block.get("name", "Unknown")
-    tool_input = content_block.get("input", {})
+    if not tool_input:
+        return ""
 
-    # Format the input nicely
-    if isinstance(tool_input, dict):
-        input_str = json.dumps(tool_input, indent=2)
-    else:
-        input_str = str(tool_input)
+    # Common single-argument tools - just show the value
+    if len(tool_input) == 1:
+        key, value = list(tool_input.items())[0]
+        # For common args like 'command', 'file_path', 'pattern', etc., just show the value
+        if key in ['command', 'file_path', 'pattern', 'path', 'query', 'url', 'prompt']:
+            if isinstance(value, str) and len(value) < 100:
+                return value
 
-    return f"**Tool**: {tool_name}\n\n```json\n{input_str}\n```"
+    # For multiple arguments or complex cases, show key=value pairs
+    parts = []
+    for key, value in tool_input.items():
+        if isinstance(value, str):
+            # Quote if contains spaces or special chars
+            if ' ' in value or any(c in value for c in [',', '(', ')']):
+                parts.append(f'{key}="{value}"')
+            else:
+                parts.append(f'{key}={value}')
+        elif isinstance(value, bool):
+            parts.append(f'{key}={str(value).lower()}')
+        elif isinstance(value, (int, float)):
+            parts.append(f'{key}={value}')
+        else:
+            # For complex types, use compact JSON
+            parts.append(f'{key}={json.dumps(value)}')
+
+    return ', '.join(parts)
 
 
-def format_tool_result(content_block: dict) -> str:
+def indent_continuation(text: str, indent: str = "   ") -> str:
     """
-    Format a tool result content block.
+    Indent continuation lines in multi-line text.
 
     Args:
-        content_block: Tool result content block
+        text: Text to process
+        indent: Indent string for continuation lines
 
     Returns:
-        Formatted string showing tool output
+        Text with continuation lines indented
     """
-    content = content_block.get("content", "")
+    lines = text.split('\n')
+    if len(lines) <= 1:
+        return text
 
-    # If content is a string, use it directly
-    if isinstance(content, str):
-        return f"```\n{content}\n```"
-
-    # If content is a list, extract text
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                parts.append(item.get("text", ""))
-        return f"```\n{''.join(parts)}\n```"
-
-    # Fallback
-    return f"```\n{content}\n```"
+    # First line stays as-is, rest get indented
+    result = [lines[0]]
+    result.extend(indent + line for line in lines[1:])
+    return '\n'.join(result)
 
 
 def export_session_to_markdown(
@@ -102,7 +114,13 @@ def export_session_to_markdown(
     verbose: bool = False
 ) -> dict:
     """
-    Export Codex session to markdown format.
+    Export Codex session using Claude Code's built-in export format.
+
+    Format:
+        User messages: "> " prefix on first line, plain text continuation
+        Assistant messages: "⏺ " prefix on first line, plain text continuation
+        Tool calls: "⏺ ToolName(args)"
+        Tool results: "  ⎿  output" with indented continuation lines
 
     Args:
         session_file: Path to session JSONL file
@@ -162,14 +180,20 @@ def export_session_to_markdown(
 
                     # USER TEXT MESSAGE (input_text)
                     if role == "user" and block_type == "input_text" and text:
-                        output_file.write("# USER\n\n")
-                        output_file.write(f"{text}\n\n")
+                        lines = text.split('\n')
+                        output_file.write(f"> {lines[0]}\n")
+                        for line in lines[1:]:
+                            output_file.write(f"{line}\n")
+                        output_file.write("\n")
                         stats["user_messages"] += 1
 
                     # ASSISTANT TEXT MESSAGE (output_text)
                     elif role == "assistant" and block_type == "output_text" and text:
-                        output_file.write("# ASSISTANT\n\n")
-                        output_file.write(f"{text}\n\n")
+                        lines = text.split('\n')
+                        output_file.write(f"⏺ {lines[0]}\n")
+                        for line in lines[1:]:
+                            output_file.write(f"{line}\n")
+                        output_file.write("\n")
                         stats["assistant_messages"] += 1
 
             # Process FUNCTION_CALL type
@@ -180,12 +204,15 @@ def export_session_to_markdown(
                 # Parse arguments if it's a JSON string
                 try:
                     args_dict = json.loads(arguments) if isinstance(arguments, str) else arguments
-                    args_str = json.dumps(args_dict, indent=2)
                 except:
-                    args_str = str(arguments)
+                    args_dict = {}
 
-                output_file.write("# ASSISTANT - TOOL\n\n")
-                output_file.write(f"**Tool**: {tool_name}\n\n```json\n{args_str}\n```\n\n")
+                # Format in Claude Code style
+                args_str = simplify_tool_args(args_dict)
+                if args_str:
+                    output_file.write(f"⏺ {tool_name}({args_str})\n\n")
+                else:
+                    output_file.write(f"⏺ {tool_name}()\n\n")
                 stats["tool_calls"] += 1
 
             # Process CUSTOM_TOOL_CALL type
@@ -193,8 +220,20 @@ def export_session_to_markdown(
                 tool_name = payload.get("name", "Unknown")
                 tool_input = payload.get("input", "")
 
-                output_file.write("# ASSISTANT - TOOL\n\n")
-                output_file.write(f"**Tool**: {tool_name}\n\n```\n{tool_input}\n```\n\n")
+                # Parse input if it's JSON
+                try:
+                    if isinstance(tool_input, str):
+                        args_dict = json.loads(tool_input)
+                    else:
+                        args_dict = tool_input if isinstance(tool_input, dict) else {}
+                except:
+                    args_dict = {}
+
+                args_str = simplify_tool_args(args_dict)
+                if args_str:
+                    output_file.write(f"⏺ {tool_name}({args_str})\n\n")
+                else:
+                    output_file.write(f"⏺ {tool_name}()\n\n")
                 stats["tool_calls"] += 1
 
             # Process FUNCTION_CALL_OUTPUT type
@@ -211,8 +250,13 @@ def export_session_to_markdown(
                 except:
                     actual_output = output
 
-                output_file.write("# USER - TOOL RESULT\n\n")
-                output_file.write(f"```\n{actual_output}\n```\n\n")
+                # Format with hooked arrow and indented continuation
+                if not actual_output:
+                    output_file.write("  ⎿  (No content)\n\n")
+                else:
+                    text = str(actual_output)
+                    indented = indent_continuation(text, indent="     ")
+                    output_file.write(f"  ⎿  {indented}\n\n")
                 stats["tool_results"] += 1
 
             # Process CUSTOM_TOOL_CALL_OUTPUT type
@@ -229,8 +273,13 @@ def export_session_to_markdown(
                 except:
                     actual_output = output
 
-                output_file.write("# USER - TOOL RESULT\n\n")
-                output_file.write(f"```\n{actual_output}\n```\n\n")
+                # Format with hooked arrow and indented continuation
+                if not actual_output:
+                    output_file.write("  ⎿  (No content)\n\n")
+                else:
+                    text = str(actual_output)
+                    indented = indent_continuation(text, indent="     ")
+                    output_file.write(f"  ⎿  {indented}\n\n")
                 stats["tool_results"] += 1
 
             # Skip other types (reasoning, event_msg, session_meta, turn_context, etc.)
@@ -243,7 +292,7 @@ def export_session_to_markdown(
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Export Codex session to clean markdown format"
+        description="Export Codex session using Claude Code's built-in format"
     )
     parser.add_argument(
         "session_file",

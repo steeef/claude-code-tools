@@ -14,8 +14,8 @@ and other CLI coding agents.
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
 - [🗜️ trim-session — compress session files for context management](#trim-session)
 - [🤖 smart-trim (EXPERIMENTAL) — intelligent trimming using parallel Claude SDK agents](#smart-trim-experimental)
-- [📄 export-claude-session — export Claude sessions to clean markdown format](#export-claude-session)
-- [📄 export-codex-session — export Codex sessions to clean markdown format](#export-codex-session)
+- [📄 export-claude-session — export Claude sessions using built-in format](#export-claude-session)
+- [📄 export-codex-session — export Codex sessions using built-in format](#export-codex-session)
 - [📍 find-original-session — trace trimmed sessions to their source](#find-original-session)
 - [🌳 find-trimmed-sessions — find all trimmed versions of a session](#find-trimmed-sessions)
 - [🔐 vault — encrypted .env backup & sync](#vault)
@@ -79,8 +79,8 @@ This gives you:
 - `find-codex-session` - Search and resume Codex sessions by keywords
 - `trim-session` - Compress session files by trimming large tool results and assistant messages
 - `smart-trim` - (EXPERIMENTAL) Intelligent trimming using parallel Claude SDK agents
-- `export-claude-session` - Export Claude sessions to clean markdown format
-- `export-codex-session` - Export Codex sessions to clean markdown format
+- `export-claude-session` - Export Claude sessions using Claude Code's built-in format
+- `export-codex-session` - Export Codex sessions using Claude Code's built-in format
 - `find-original-session` - Trace trimmed sessions back to their original source
 - `find-trimmed-sessions` - Find all trimmed descendants of a session
 - `vault` - Encrypted backup for your .env files
@@ -721,7 +721,7 @@ Choosing option 3 will:
 <a id="export-claude-session"></a>
 ## 📄 export-claude-session
 
-Export Claude Code sessions to clean, readable markdown format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
+Export Claude Code sessions using Claude Code's built-in export format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
 
 ### Usage
 
@@ -761,36 +761,24 @@ The tool extracts four types of content in clean markdown format:
 
 ### Output Format
 
-The exported markdown uses clear section headers:
-
-```markdown
-# USER
-
-Your question or input here...
-
-# ASSISTANT
-
-Claude's response here...
-
-# ASSISTANT - TOOL
-
-**Tool**: Bash
-
-```json
-{
-  "command": "ls -la",
-  "description": "List files"
-}
-```
-
-# USER - TOOL RESULT
+The export uses Claude Code's built-in format with simple prefixes:
 
 ```
-total 48
-drwxr-xr-x  12 user  staff   384 Nov 14 15:30 .
-...
+> Your question or input here...
+
+⏺ Claude's response here...
+
+⏺ Bash(ls -la)
+  ⎿  total 48
+     drwxr-xr-x  12 user  staff   384 Nov 14 15:30 .
+     ...
 ```
-```
+
+**Format details:**
+- User messages: `> ` prefix on first line, plain text continuation
+- Assistant messages: `⏺ ` prefix on first line, plain text continuation
+- Tool calls: `⏺ ToolName(simplified args)`
+- Tool results: `  ⎿  ` prefix with indented continuation lines
 
 ### Features
 
@@ -847,7 +835,7 @@ The export option appears in both normal and sub-agent session menus, making it 
 <a id="export-codex-session"></a>
 ## 📄 export-codex-session
 
-Export Codex sessions to clean, readable markdown format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
+Export Codex sessions using Claude Code's built-in export format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
 
 ### Usage
 
@@ -884,35 +872,24 @@ The tool extracts four types of content in clean markdown format:
 
 ### Output Format
 
-The exported markdown uses clear section headers:
-
-```markdown
-# USER
-
-Your question or input here...
-
-# ASSISTANT
-
-Codex's response here...
-
-# ASSISTANT - TOOL
-
-**Tool**: bash
-
-```json
-{
-  "command": "ls -la"
-}
-```
-
-# USER - TOOL RESULT
+The export uses Claude Code's built-in format with simple prefixes:
 
 ```
-total 48
-drwxr-xr-x  12 user  staff   384 Nov 14 15:30 .
-...
+> Your question or input here...
+
+⏺ Codex's response here...
+
+⏺ bash(ls -la)
+  ⎿  total 48
+     drwxr-xr-x  12 user  staff   384 Nov 14 15:30 .
+     ...
 ```
-```
+
+**Format details:**
+- User messages: `> ` prefix on first line, plain text continuation
+- Assistant messages: `⏺ ` prefix on first line, plain text continuation
+- Tool calls: `⏺ ToolName(simplified args)`
+- Tool results: `  ⎿  ` prefix with indented continuation lines
 
 ### Features
 
