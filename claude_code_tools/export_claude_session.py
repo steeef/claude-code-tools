@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Optional, TextIO
 
+from claude_code_tools.session_utils import get_claude_home
+
 
 def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = None) -> Path:
     """
@@ -31,7 +33,7 @@ def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = N
 
     # Otherwise, treat it as a session ID and try to find it
     session_id = session_id_or_path.strip()
-    base_dir = Path(claude_home).expanduser() if claude_home else Path.home() / ".claude"
+    base_dir = get_claude_home(claude_home)
 
     # First try current project directory
     cwd = os.getcwd()
@@ -371,7 +373,7 @@ def main():
 
         # Reconstruct Claude Code session file path
         cwd = os.getcwd()
-        base_dir = Path(args.claude_home).expanduser() if args.claude_home else Path.home() / ".claude"
+        base_dir = get_claude_home(args.claude_home)
         encoded_path = cwd.replace("/", "-")
         claude_project_dir = base_dir / "projects" / encoded_path
         session_file = claude_project_dir / f"{session_id}.jsonl"

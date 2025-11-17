@@ -18,6 +18,7 @@ from typing import Optional, Set, Tuple
 
 from . import trim_session_claude as claude_processor
 from . import trim_session_codex as codex_processor
+from .session_utils import get_claude_home
 
 
 def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = None) -> Path:
@@ -45,7 +46,7 @@ def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = N
 
     # Try Claude Code path first
     cwd = os.getcwd()
-    base_dir = Path(claude_home).expanduser() if claude_home else Path.home() / ".claude"
+    base_dir = get_claude_home(claude_home)
     encoded_path = cwd.replace("/", "-")
     claude_project_dir = base_dir / "projects" / encoded_path
     claude_path = claude_project_dir / f"{session_id}.jsonl"
@@ -469,7 +470,7 @@ Examples:
 
         # Reconstruct Claude Code session file path
         cwd = os.getcwd()
-        base_dir = Path(args.claude_home).expanduser() if args.claude_home else Path.home() / ".claude"
+        base_dir = get_claude_home(args.claude_home)
         encoded_path = cwd.replace("/", "-")
         claude_project_dir = base_dir / "projects" / encoded_path
         input_path = claude_project_dir / f"{session_id}.jsonl"

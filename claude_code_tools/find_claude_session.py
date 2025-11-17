@@ -31,6 +31,7 @@ from claude_code_tools.trim_session import (
 )
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
+from claude_code_tools.session_utils import get_claude_home
 
 try:
     from rich.console import Console
@@ -48,12 +49,9 @@ console = Console() if RICH_AVAILABLE else None
 def get_claude_project_dir(claude_home: Optional[str] = None) -> Path:
     """Convert current working directory to Claude project directory path."""
     cwd = os.getcwd()
-    
-    # Use provided claude_home or default to ~/.claude
-    if claude_home:
-        base_dir = Path(claude_home).expanduser()
-    else:
-        base_dir = Path.home() / ".claude"
+
+    # Use provided claude_home, CLAUDE_CONFIG_DIR env var, or default to ~/.claude
+    base_dir = get_claude_home(claude_home)
 
     # Replace / with - to match Claude's directory naming convention
     project_path = cwd.replace("/", "-")
@@ -63,12 +61,9 @@ def get_claude_project_dir(claude_home: Optional[str] = None) -> Path:
 
 def get_all_claude_projects(claude_home: Optional[str] = None) -> List[Tuple[Path, str]]:
     """Get all Claude project directories with their original paths."""
-    # Use provided claude_home or default to ~/.claude
-    if claude_home:
-        base_dir = Path(claude_home).expanduser()
-    else:
-        base_dir = Path.home() / ".claude"
-    
+    # Use provided claude_home, CLAUDE_CONFIG_DIR env var, or default to ~/.claude
+    base_dir = get_claude_home(claude_home)
+
     projects_dir = base_dir / "projects"
     
     if not projects_dir.exists():
@@ -801,7 +796,7 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
 def get_session_file_path(session_id: str, project_path: str, claude_home: Optional[str] = None) -> str:
     """Get the full file path for a session."""
     # Convert project path to Claude directory format
-    base_dir = Path(claude_home).expanduser() if claude_home else Path.home() / ".claude"
+    base_dir = get_claude_home(claude_home)
     encoded_path = project_path.replace("/", "-")
     claude_project_dir = base_dir / "projects" / encoded_path
     return str(claude_project_dir / f"{session_id}.jsonl")
@@ -941,8 +936,9 @@ def resume_session(session_id: str, project_path: str, shell_mode: bool = False,
         if project_path != current_dir:
             print(f'cd {shlex.quote(project_path)}')
         # Set CLAUDE_CONFIG_DIR environment variable if custom path specified
-        if claude_home:
-            expanded_home = str(Path(claude_home).expanduser().absolute())
+        # (either via CLI arg or already set via env var)
+        if claude_home or os.environ.get('CLAUDE_CONFIG_DIR'):
+            expanded_home = str(get_claude_home(claude_home).absolute())
             print(f'CLAUDE_CONFIG_DIR={shlex.quote(expanded_home)} claude -r {shlex.quote(session_id)}')
         else:
             print(f'claude -r {shlex.quote(session_id)}')
@@ -990,9 +986,10 @@ def resume_session(session_id: str, project_path: str, shell_mode: bool = False,
             os.chdir(project_path)
 
         # Set CLAUDE_CONFIG_DIR environment variable if custom path specified
-        if claude_home:
-            # Expand ~ and make absolute
-            expanded_home = str(Path(claude_home).expanduser().absolute())
+        # (either via CLI arg or already set via env var)
+        if claude_home or os.environ.get('CLAUDE_CONFIG_DIR'):
+            # Get the resolved home directory (respects precedence)
+            expanded_home = str(get_claude_home(claude_home).absolute())
             os.environ['CLAUDE_CONFIG_DIR'] = expanded_home
 
         # Execute claude

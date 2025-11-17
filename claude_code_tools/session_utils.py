@@ -1,0 +1,103 @@
+"""Utility functions for working with Claude Code and Codex sessions."""
+
+import os
+from pathlib import Path
+from typing import Optional
+
+
+def get_claude_home(cli_arg: Optional[str] = None) -> Path:
+    """
+    Get Claude home directory with proper precedence.
+
+    Precedence order:
+    1. CLI argument (if provided)
+    2. CLAUDE_CONFIG_DIR environment variable (if set)
+    3. Default ~/.claude
+
+    Args:
+        cli_arg: Optional CLI argument value for --claude-home
+
+    Returns:
+        Path to Claude home directory
+    """
+    # CLI argument has highest priority
+    if cli_arg:
+        return Path(cli_arg).expanduser()
+
+    # Check environment variable
+    env_var = os.environ.get('CLAUDE_CONFIG_DIR')
+    if env_var:
+        return Path(env_var).expanduser()
+
+    # Default fallback
+    return Path.home() / ".claude"
+
+
+def get_current_session_id(claude_home: Optional[str] = None) -> Optional[str]:
+    """
+    Get the session ID of the currently active Claude Code or Codex session.
+
+    This finds the most recently modified session file in the current
+    project's session directory.
+
+    Args:
+        claude_home: Optional custom Claude home directory (default: ~/.claude)
+
+    Returns:
+        Session ID (UUID or timestamped name) if found, None otherwise
+    """
+    # Get current working directory
+    cwd = os.getcwd()
+
+    # Try Claude Code first
+    claude_session = _get_claude_session_id(cwd, claude_home)
+    if claude_session:
+        return claude_session
+
+    # Try Codex
+    codex_session = _get_codex_session_id(cwd)
+    if codex_session:
+        return codex_session
+
+    return None
+
+
+def _get_claude_session_id(
+    cwd: str, claude_home: Optional[str] = None
+) -> Optional[str]:
+    """Get Claude Code session ID for current directory."""
+    # Convert path to Claude directory format
+    base_dir = get_claude_home(claude_home)
+    encoded_path = cwd.replace("/", "-")
+    claude_project_dir = base_dir / "projects" / encoded_path
+
+    if not claude_project_dir.exists():
+        return None
+
+    # Find most recently modified .jsonl file
+    session_files = list(claude_project_dir.glob("*.jsonl"))
+    if not session_files:
+        return None
+
+    most_recent = max(session_files, key=lambda p: p.stat().st_mtime)
+    return most_recent.stem  # Filename without .jsonl extension
+
+
+def _get_codex_session_id(cwd: str) -> Optional[str]:
+    """Get Codex session ID for current directory."""
+    codex_dir = Path.home() / ".codex" / "sessions"
+
+    if not codex_dir.exists():
+        return None
+
+    # Find most recently modified .jsonl file
+    # Codex sessions are organized by date: 2025/11/14/rollout-...jsonl
+    session_files = list(codex_dir.rglob("*.jsonl"))
+    if not session_files:
+        return None
+
+    # Filter to sessions in current directory
+    # Codex sessions don't have directory-specific organization,
+    # so we just return the most recent one
+    most_recent = max(session_files, key=lambda p: p.stat().st_mtime)
+    return most_recent.stem  # Filename without .jsonl extension

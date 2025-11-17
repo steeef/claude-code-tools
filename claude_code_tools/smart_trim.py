@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.trim_session import detect_agent
+from claude_code_tools.session_utils import get_claude_home
 
 
 def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = None) -> Path:
@@ -39,7 +40,7 @@ def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = N
 
     # Try Claude Code path first
     cwd = os.getcwd()
-    base_dir = Path(claude_home).expanduser() if claude_home else Path.home() / ".claude"
+    base_dir = get_claude_home(claude_home)
     encoded_path = cwd.replace("/", "-")
     claude_project_dir = base_dir / "projects" / encoded_path
     claude_path = claude_project_dir / f"{session_id}.jsonl"
@@ -211,7 +212,19 @@ def main():
         "--preserve-recent",
         type=int,
         default=10,
-        help="Always preserve last N messages (default: 10)"
+        help="Always preserve last N messages (default: 10, deprecated - use --preserve-tail)"
+    )
+    parser.add_argument(
+        "--preserve-head",
+        type=int,
+        default=0,
+        help="Always preserve first N messages (default: 0)"
+    )
+    parser.add_argument(
+        "--preserve-tail",
+        type=int,
+        default=None,
+        help="Always preserve last N messages (default: None, uses --preserve-recent)"
     )
     parser.add_argument(
         "--max-lines-per-agent",
@@ -259,7 +272,7 @@ def main():
 
         # Reconstruct Claude Code session file path
         cwd = os.getcwd()
-        base_dir = Path(args.claude_home).expanduser() if args.claude_home else Path.home() / ".claude"
+        base_dir = get_claude_home(args.claude_home)
         encoded_path = cwd.replace("/", "-")
         claude_project_dir = base_dir / "projects" / encoded_path
         session_file = claude_project_dir / f"{session_id}.jsonl"
@@ -283,7 +296,12 @@ def main():
 
     print(f"🔍 Analyzing session: {session_file.name}")
     print(f"   Excluding types: {', '.join(exclude_types)}")
-    print(f"   Preserving recent: {args.preserve_recent} messages")
+    if args.preserve_head > 0:
+        print(f"   Preserving head: {args.preserve_head} messages")
+    if args.preserve_tail is not None:
+        print(f"   Preserving tail: {args.preserve_tail} messages")
+    else:
+        print(f"   Preserving recent: {args.preserve_recent} messages")
     print(f"   Max lines per agent: {args.max_lines_per_agent}")
     print()
 
@@ -295,7 +313,9 @@ def main():
             preserve_recent=args.preserve_recent,
             max_lines_per_agent=args.max_lines_per_agent,
             verbose=args.verbose,
-            content_threshold=args.content_threshold
+            content_threshold=args.content_threshold,
+            preserve_head=args.preserve_head,
+            preserve_tail=args.preserve_tail
         )
     except Exception as e:
         print(f"❌ Error analyzing session: {e}", file=sys.stderr)
@@ -345,6 +365,55 @@ def main():
 
     # Perform trimming
     stats = trim_lines(session_file, line_indices, output_file)
+
+    # Add trim metadata to first line of output file
+    import json
+    from datetime import timezone
+
+    # Build trim params dict
+    trim_params = {
+        "method": "smart-trim",
+        "exclude_types": exclude_types,
+        "content_threshold": args.content_threshold,
+    }
+
+    # Add preserve parameters that were used
+    if args.preserve_head > 0:
+        trim_params["preserve_head"] = args.preserve_head
+    if args.preserve_tail is not None:
+        trim_params["preserve_tail"] = args.preserve_tail
+    else:
+        trim_params["preserve_recent"] = args.preserve_recent
+
+    metadata_fields = {
+        "trim_metadata": {
+            "parent_file": str(session_file.absolute()),
+            "trimmed_at": datetime.datetime.now(timezone.utc).isoformat(),
+            "trim_params": trim_params,
+            "stats": {
+                "num_lines_trimmed": stats['num_lines_trimmed'],
+                "tokens_saved": stats['tokens_saved'],
+            },
+        }
+    }
+
+    # Read the file and modify first line
+    with open(output_file, "r") as f:
+        lines = f.readlines()
+
+    if lines:
+        try:
+            # Parse first line and add metadata fields
+            first_line_data = json.loads(lines[0])
+            first_line_data.update(metadata_fields)
+            lines[0] = json.dumps(first_line_data) + "\n"
+
+            # Write back the modified file
+            with open(output_file, "w") as f:
+                f.writelines(lines)
+        except json.JSONDecodeError:
+            # If first line is malformed, just skip adding metadata
+            pass
 
     print(f"✅ Smart trim complete!")
     print(f"   Lines trimmed: {stats['num_lines_trimmed']}")

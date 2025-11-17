@@ -253,6 +253,8 @@ async def _analyze_session_async(
     max_lines_per_agent: int = 100,
     verbose: bool = False,
     content_threshold: int = 200,
+    preserve_head: int = 0,
+    preserve_tail: Optional[int] = None,
 ):
     """
     Use Claude Agent SDK to identify trimmable lines using parallel agents.
@@ -260,15 +262,23 @@ async def _analyze_session_async(
     Args:
         session_lines: List of JSONL lines from session
         exclude_types: Message types to never trim (e.g., ["user"])
-        preserve_recent: Number of recent messages to always preserve
+        preserve_recent: Number of recent messages to always preserve (deprecated,
+            use preserve_tail instead)
         max_lines_per_agent: Maximum lines per agent chunk (default: 100)
         verbose: If True, return (line_idx, rationale) tuples
         content_threshold: Min chars for content extraction (default: 200)
+        preserve_head: Number of messages at beginning to always preserve
+            (default: 0)
+        preserve_tail: Number of messages at end to always preserve (default:
+            None, uses preserve_recent)
 
     Returns:
         If verbose=False: List of line indices to trim
         If verbose=True: List of (line_idx, rationale) tuples
     """
+    # Use preserve_tail if specified, otherwise fall back to preserve_recent
+    if preserve_tail is None:
+        preserve_tail = preserve_recent
     # Build session content and identify protected indices
     session_data = []
     protected_indices = set()
@@ -345,8 +355,11 @@ async def _analyze_session_async(
                         protected_indices.add(idx)
                         continue
 
-            # Mark protected indices based on exclude_types or preserve_recent
-            if msg_type in exclude_types or idx >= len(session_lines) - preserve_recent:
+            # Mark protected indices based on exclude_types, preserve_head, or
+            # preserve_tail
+            if (msg_type in exclude_types or
+                idx < preserve_head or
+                idx >= len(session_lines) - preserve_tail):
                 protected_indices.add(idx)
                 continue
 
@@ -423,6 +436,8 @@ def identify_trimmable_lines(
     max_lines_per_agent: int = 100,
     verbose: bool = False,
     content_threshold: int = 200,
+    preserve_head: int = 0,
+    preserve_tail: Optional[int] = None,
 ):
     """
     Identify session lines that can be safely trimmed using parallel agents.
@@ -430,10 +445,14 @@ def identify_trimmable_lines(
     Args:
         session_file: Path to session JSONL file
         exclude_types: Message types to never trim (default: ["user"])
-        preserve_recent: Always preserve last N messages (default: 10)
+        preserve_recent: Always preserve last N messages (default: 10,
+            deprecated - use preserve_tail instead)
         max_lines_per_agent: Max lines per agent chunk (default: 100)
         verbose: If True, return (line_idx, rationale) tuples (default: False)
         content_threshold: Min chars to extract from JSON (default: 200)
+        preserve_head: Always preserve first N messages (default: 0)
+        preserve_tail: Always preserve last N messages (default: None, uses
+            preserve_recent)
 
     Returns:
         If verbose=False: List of 0-indexed line numbers to trim
@@ -453,5 +472,7 @@ def identify_trimmable_lines(
         preserve_recent,
         max_lines_per_agent,
         verbose,
-        content_threshold
+        content_threshold,
+        preserve_head,
+        preserve_tail
     ))

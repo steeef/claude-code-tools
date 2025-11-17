@@ -636,7 +636,7 @@ Common tools you can target with `--tools`:
 1. **Parallel Analysis**: Splits your session into chunks and launches multiple Claude SDK agents in parallel
 2. **Intelligent Content Extraction**: Agents see only relevant content (text, tool results), not metadata or thinking blocks
 3. **Smart Decisions**: Each agent identifies verbose tool results, redundant explanations, and intermediate debugging output
-4. **Protected Content**: Automatically preserves user messages, recent messages, file-history-snapshots, thinking blocks, and critical context
+4. **Protected Content**: Automatically preserves user messages, head/tail messages (configurable), file-history-snapshots, thinking blocks, and critical context
 
 ### Usage
 
@@ -653,7 +653,16 @@ smart-trim session.jsonl --max-lines-per-agent 50
 # Adjust content threshold (default: 200 chars)
 smart-trim session.jsonl --content-threshold 300
 
-# Preserve more recent messages (default: 10)
+# Preserve messages at the beginning of the session
+smart-trim session.jsonl --preserve-head 10
+
+# Preserve messages at the end of the session
+smart-trim session.jsonl --preserve-tail 20
+
+# Combine: preserve both head and tail
+smart-trim session.jsonl --preserve-head 5 --preserve-tail 15
+
+# Legacy option: preserve recent messages (deprecated, use --preserve-tail)
 smart-trim session.jsonl --preserve-recent 20
 
 # Exclude additional message types
@@ -671,6 +680,8 @@ smart-trim session.jsonl --dry-run
 - **Content-focused**: Extracts only relevant text/code from nested JSON structures
 - **Verbose mode**: See detailed rationales for every trimmed line
 - **Configurable**: Tune chunk size, content threshold, and preservation parameters
+- **Flexible preservation**: Protect first N messages (`--preserve-head`) and/or last N messages (`--preserve-tail`) from trimming
+- **Trim metadata tracking**: Adds metadata to track parent session, trim parameters, and statistics for session lineage
 
 ### Limitations
 
