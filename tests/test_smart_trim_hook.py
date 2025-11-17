@@ -15,7 +15,7 @@ def test_smart_trim_hook():
         "cwd": "/tmp",
         "permission_mode": "default",
         "hook_event_name": "UserPromptSubmit",
-        "prompt": "Please /smart-trim the session"
+        "prompt": "smart-trim the session"
     }
 
     # Run the hook script with JSON input via stdin
