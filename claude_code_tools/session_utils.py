@@ -1,8 +1,9 @@
 """Utility functions for working with Claude Code and Codex sessions."""
 
 import os
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 
 def get_claude_home(cli_arg: Optional[str] = None) -> Path:
@@ -31,6 +32,96 @@ def get_claude_home(cli_arg: Optional[str] = None) -> Path:
 
     # Default fallback
     return Path.home() / ".claude"
+
+
+def resolve_session_path(
+    session_id_or_path: str, claude_home: Optional[str] = None
+) -> Path:
+    """
+    Resolve a session ID or path to a full file path.
+
+    Supports partial session ID matching. If multiple sessions match a partial
+    ID, shows an error message with all matches.
+
+    Args:
+        session_id_or_path: Either a full path, full session ID, or partial
+            session ID
+        claude_home: Optional custom Claude home directory (defaults to
+            ~/.claude or $CLAUDE_CONFIG_DIR)
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        FileNotFoundError: If session cannot be found
+        ValueError: If partial ID matches multiple sessions
+        SystemExit: If multiple matches found (exits with error message)
+    """
+    path = Path(session_id_or_path)
+
+    # If it's already a valid path, use it
+    if path.exists():
+        return path
+
+    # Otherwise, treat it as a session ID (full or partial) and try to find it
+    session_id = session_id_or_path.strip()
+
+    # Try Claude Code path first
+    cwd = os.getcwd()
+    base_dir = get_claude_home(claude_home)
+    encoded_path = cwd.replace("/", "-")
+    claude_project_dir = base_dir / "projects" / encoded_path
+
+    claude_matches: List[Path] = []
+    if claude_project_dir.exists():
+        # Look for exact match first
+        exact_path = claude_project_dir / f"{session_id}.jsonl"
+        if exact_path.exists():
+            return exact_path
+
+        # Look for partial matches
+        for jsonl_file in claude_project_dir.glob("*.jsonl"):
+            if session_id in jsonl_file.stem:
+                claude_matches.append(jsonl_file)
+
+    # Try Codex path - search through sessions directory
+    codex_home = Path.home() / ".codex"
+    sessions_dir = codex_home / "sessions"
+
+    codex_matches: List[Path] = []
+    if sessions_dir.exists():
+        for jsonl_file in sessions_dir.rglob("*.jsonl"):
+            # Extract session ID from Codex filename (format: rollout-...-UUID.jsonl)
+            if session_id in jsonl_file.stem:
+                codex_matches.append(jsonl_file)
+
+    # Combine all matches
+    all_matches = claude_matches + codex_matches
+
+    if len(all_matches) == 0:
+        # Not found anywhere
+        raise FileNotFoundError(
+            f"Session '{session_id}' not found in Claude Code "
+            f"({claude_project_dir}) or Codex ({sessions_dir}) directories"
+        )
+    elif len(all_matches) == 1:
+        # Single match - perfect!
+        return all_matches[0]
+    else:
+        # Multiple matches - show user the options
+        print(
+            f"Error: Multiple sessions match '{session_id}':",
+            file=sys.stderr
+        )
+        print(file=sys.stderr)
+        for i, match in enumerate(all_matches, 1):
+            print(f"  {i}. {match.stem}", file=sys.stderr)
+        print(file=sys.stderr)
+        print(
+            "Please use a more specific session ID to uniquely identify the session.",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
 
 def get_current_session_id(claude_home: Optional[str] = None) -> Optional[str]:

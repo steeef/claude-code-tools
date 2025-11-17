@@ -8,55 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional, TextIO
 
-from claude_code_tools.session_utils import get_claude_home
-
-
-def resolve_session_path(session_id_or_path: str, claude_home: Optional[str] = None) -> Path:
-    """
-    Resolve a session ID or path to a full file path.
-
-    Args:
-        session_id_or_path: Either a full path or a session UUID
-        claude_home: Optional custom Claude home directory (defaults to ~/.claude)
-
-    Returns:
-        Resolved Path object
-
-    Raises:
-        FileNotFoundError: If session cannot be found
-    """
-    path = Path(session_id_or_path)
-
-    # If it's already a valid path, use it
-    if path.exists():
-        return path
-
-    # Otherwise, treat it as a session ID and try to find it
-    session_id = session_id_or_path.strip()
-    base_dir = get_claude_home(claude_home)
-
-    # First try current project directory
-    cwd = os.getcwd()
-    encoded_path = cwd.replace("/", "-")
-    claude_project_dir = base_dir / "projects" / encoded_path
-    claude_path = claude_project_dir / f"{session_id}.jsonl"
-
-    if claude_path.exists():
-        return claude_path
-
-    # Search all project directories
-    projects_dir = base_dir / "projects"
-    if projects_dir.exists():
-        for project_dir in projects_dir.iterdir():
-            if project_dir.is_dir():
-                session_path = project_dir / f"{session_id}.jsonl"
-                if session_path.exists():
-                    return session_path
-
-    # Not found
-    raise FileNotFoundError(
-        f"Session '{session_id}' not found in any Claude project directory under {projects_dir}"
-    )
+from claude_code_tools.session_utils import get_claude_home, resolve_session_path
 
 
 def simplify_tool_args(tool_input: dict) -> str:
