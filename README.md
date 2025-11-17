@@ -83,6 +83,7 @@ This gives you:
 - `export-codex-session` - Export Codex sessions using Claude Code's built-in format
 - `find-original-session` - Trace trimmed sessions back to their original source
 - `find-trimmed-sessions` - Find all trimmed descendants of a session
+- `delete-session` - Safely delete session files with confirmation
 - `vault` - Encrypted backup for your .env files
 - `env-safe` - Safely inspect .env files without exposing values
 
@@ -1077,6 +1078,70 @@ Trimmed descendants:
 
 Total: 2 trimmed sessions found
 ```
+
+<a id="delete-session"></a>
+## 🗑️ delete-session
+
+Safely delete Claude Code or Codex session files with confirmation. Before deletion, the tool displays session metadata (line count, date range, last user message) to help you verify you're deleting the correct session.
+
+### Usage
+
+```bash
+# Delete a session by ID (supports partial matching)
+delete-session abc123-def456-789
+delete-session abc123  # Partial ID works if unique
+
+# Delete a session by file path
+delete-session /path/to/session.jsonl
+
+# Custom Claude home directory
+delete-session abc123 --claude-home ~/my-claude
+
+# Force deletion without confirmation (use with caution!)
+delete-session abc123 --force
+```
+
+**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
+
+### Features
+
+- **Safety confirmation**: Shows session details before deletion
+- **Session metadata**: Displays total lines, date range, and last user message
+- **Partial ID matching**: No need to type full UUIDs
+- **Multi-agent support**: Works with both Claude Code and Codex sessions
+- **CLAUDE_CONFIG_DIR support**: Respects environment variable and --claude-home
+
+### Example
+
+```bash
+$ delete-session abc123
+
+======================================================================
+SESSION DELETION CONFIRMATION
+======================================================================
+
+File: /Users/you/.claude/projects/-Users-you-myproject/abc123-def456.jsonl
+Session ID: abc123-def456
+
+Total lines: 1247
+Date range: 2024-11-15 09:23:45 → 2024-11-15 14:52:31
+
+Last user message:
+  Thanks! Let's commit these changes.
+
+======================================================================
+
+Are you sure you want to DELETE this session? (yes/no): yes
+
+✅ Session deleted: abc123-def456
+```
+
+### Safety Features
+
+- **Confirmation required**: User must type "yes" to confirm deletion (not just "y")
+- **Session preview**: Shows enough info to identify the session
+- **Force flag**: `--force` skips confirmation for scripting (use with caution)
+- **Error handling**: Clear error messages if session not found
 
 <a id="vault"></a>
 ## 🔐 vault
