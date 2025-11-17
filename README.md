@@ -756,8 +756,12 @@ export-claude-session /path/to/session.jsonl --output summary.txt
 export-claude-session abc123-def456-789 --output summary.txt
 export-claude-session abc123 --output summary.txt  # Partial ID works if unique
 
+# Export with auto-generated filename (creates exported-sessions/YYYYMMDD-claude-session-<id>.txt)
+export-claude-session abc123
+
 # Run from within Claude Code (uses current session)
 !export-claude-session --output notes/session-summary.txt
+!export-claude-session  # Auto-generates filename
 
 # Custom Claude home directory
 export-claude-session session-id --output summary.txt --claude-home ~/my-claude
@@ -766,7 +770,9 @@ export-claude-session session-id --output summary.txt --claude-home ~/my-claude
 export-claude-session session.jsonl --output summary.txt --verbose
 ```
 
-**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
+**Notes**:
+- Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
+- `--output` is optional. If not provided, creates file in `exported-sessions/` directory with pattern: `YYYYMMDD-claude-session-<session-id>.txt`
 
 ### What Gets Exported
 
@@ -873,6 +879,9 @@ export-codex-session /path/to/session.jsonl --output summary.txt
 export-codex-session 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.txt
 export-codex-session 019a4a64 --output summary.txt  # Partial ID works if unique
 
+# Export with auto-generated filename (creates exported-sessions/YYYYMMDD-codex-session-<id>.txt)
+export-codex-session 019a4a64
+
 # Custom Codex home directory
 export-codex-session session-id --output summary.txt --codex-home ~/my-codex
 
@@ -880,7 +889,9 @@ export-codex-session session-id --output summary.txt --codex-home ~/my-codex
 export-codex-session session.jsonl --output summary.txt --verbose
 ```
 
-**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
+**Notes**:
+- Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
+- `--output` is optional. If not provided, creates file in `exported-sessions/` directory with pattern: `YYYYMMDD-codex-session-<session-id>.txt`
 
 ### What Gets Exported
 

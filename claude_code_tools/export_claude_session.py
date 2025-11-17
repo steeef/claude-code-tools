@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, TextIO
 
@@ -296,9 +297,8 @@ def main():
     parser.add_argument(
         "--output",
         "-o",
-        required=True,
         type=Path,
-        help="Output text file path (.txt)"
+        help="Output text file path (.txt) - defaults to exported-sessions/YYYYMMDD-claude-session-<id>.txt"
     )
     parser.add_argument(
         "--claude-home",
@@ -344,6 +344,14 @@ def main():
         except FileNotFoundError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
+
+    # Generate default output path if not provided
+    if args.output is None:
+        today = datetime.now().strftime("%Y%m%d")
+        session_id = session_file.stem  # Get filename without extension
+        output_dir = Path.cwd() / "exported-sessions"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        args.output = output_dir / f"{today}-claude-session-{session_id}.txt"
 
     # Ensure output directory exists
     args.output.parent.mkdir(parents=True, exist_ok=True)
