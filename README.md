@@ -509,6 +509,10 @@ messages, you can:
 # Trim all tool results over 500 characters (default, auto-detect agent)
 trim-session session.jsonl
 
+# Use session ID instead of full path (supports partial matching)
+trim-session abc123-def456-789
+trim-session abc123  # Partial ID works if unique
+
 # Specify agent type explicitly (Claude Code or Codex)
 trim-session session.jsonl --agent claude
 trim-session session.jsonl --agent codex
@@ -534,6 +538,8 @@ trim-session session.jsonl --len 1000 --trim-assistant-messages 10
 # Custom output directory
 trim-session session.jsonl --output-dir ~/compressed-sessions
 ```
+
+**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
 ### How it works
 
@@ -644,6 +650,10 @@ Common tools you can target with `--tools`:
 # Analyze and trim a session (auto-detect agent type)
 smart-trim session.jsonl
 
+# Use session ID instead of full path (supports partial matching)
+smart-trim abc123-def456-789
+smart-trim abc123  # Partial ID works if unique
+
 # Use verbose mode to see trimming rationales
 smart-trim session.jsonl --verbose
 
@@ -671,6 +681,8 @@ smart-trim session.jsonl --exclude-types user,tool_result
 # Dry run - see what would be trimmed without doing it
 smart-trim session.jsonl --dry-run
 ```
+
+**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
 ### Key Features
 
@@ -740,8 +752,9 @@ Export Claude Code sessions using Claude Code's built-in export format. This too
 # Export a session by file path
 export-claude-session /path/to/session.jsonl --output summary.txt
 
-# Export a session by ID (searches all Claude projects)
+# Export a session by ID (supports partial matching)
 export-claude-session abc123-def456-789 --output summary.txt
+export-claude-session abc123 --output summary.txt  # Partial ID works if unique
 
 # Run from within Claude Code (uses current session)
 !export-claude-session --output notes/session-summary.txt
@@ -752,6 +765,8 @@ export-claude-session session-id --output summary.txt --claude-home ~/my-claude
 # Verbose mode with progress
 export-claude-session session.jsonl --output summary.txt --verbose
 ```
+
+**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
 ### What Gets Exported
 
@@ -854,8 +869,9 @@ Export Codex sessions using Claude Code's built-in export format. This tool extr
 # Export a session by file path
 export-codex-session /path/to/session.jsonl --output summary.txt
 
-# Export a session by ID (searches Codex sessions directory)
+# Export a session by ID (supports partial matching)
 export-codex-session 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.txt
+export-codex-session 019a4a64 --output summary.txt  # Partial ID works if unique
 
 # Custom Codex home directory
 export-codex-session session-id --output summary.txt --codex-home ~/my-codex
@@ -863,6 +879,8 @@ export-codex-session session-id --output summary.txt --codex-home ~/my-codex
 # Verbose mode with progress
 export-codex-session session.jsonl --output summary.txt --verbose
 ```
+
+**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
 ### What Gets Exported
 
@@ -964,13 +982,22 @@ this tool follows the parent file chain.
 ### Usage
 
 ```bash
-# Find the original session for a trimmed session
+# Find the original session for a trimmed session (by file path)
 find-original-session trimmed-session.jsonl
+
+# Find by session ID (supports partial matching)
+find-original-session abc123-def456-789
+find-original-session abc123  # Partial ID works if unique
 
 # Works with both Claude Code and Codex sessions
 find-original-session ~/.claude/ai-chats/abc123.jsonl
 find-original-session ~/.codex/sessions/2024/11/14/rollout-*.jsonl
+
+# Verbose mode shows the parent chain
+find-original-session abc123 --verbose
 ```
+
+**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
 ### Features
 
@@ -997,8 +1024,12 @@ have the specified session as their parent.
 ### Usage
 
 ```bash
-# Find all trimmed descendants of a session
+# Find all trimmed descendants of a session (by file path)
 find-trimmed-sessions original-session.jsonl
+
+# Find by session ID (supports partial matching)
+find-trimmed-sessions abc123-def456-789
+find-trimmed-sessions abc123  # Partial ID works if unique
 
 # Show results in tree format
 find-trimmed-sessions original-session.jsonl --tree
@@ -1009,6 +1040,8 @@ find-trimmed-sessions original-session.jsonl --stats
 # Combine tree view with statistics
 find-trimmed-sessions original-session.jsonl --tree --stats
 ```
+
+**Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
 ### Features
 
