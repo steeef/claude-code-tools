@@ -33,6 +33,7 @@ from claude_code_tools.session_menu import (
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
+    get_session_derivation_type,
 )
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
