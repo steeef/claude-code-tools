@@ -5,6 +5,8 @@ and other CLI coding agents.
 
 ## Table of Contents
 
+<!--CLAUDE - We should organize this table of contents by category. So the TMX CLI things and the session management command should be basically in a section and all of the session related commands should be nested under there. Yeah. Also, instead of the flat command names, we should use the aichat command names. -->
+
 - [🎮 tmux-cli: Bridging Claude Code and Interactive CLIs — "playwright for the terminal"](#tmux-cli-bridging-claude-code-and-interactive-clis)
 - [🚀 Quick Start](#quick-start)
 - [🎮 tmux-cli Deep Dive](#tmux-cli-deep-dive)
@@ -74,21 +76,48 @@ uv tool install claude-code-tools
 uv tool install git+https://github.com/pchalasani/claude-code-tools
 ```
 
-This gives you:
-- `tmux-cli` - The interactive CLI controller we just covered
-- `claude-continue` - Transfer context to new session when running out of context
-- `find-session` - Unified search across Claude Code and Codex sessions
-- `find-claude-session` - Search and resume Claude Code sessions by keywords
-- `find-codex-session` - Search and resume Codex sessions by keywords
-- `trim-session` - Compress session files by trimming large tool results and assistant messages
-- `smart-trim` - (EXPERIMENTAL) Intelligent trimming using parallel Claude SDK agents
-- `export-claude-session` - Export Claude sessions using Claude Code's built-in format
-- `export-codex-session` - Export Codex sessions using Claude Code's built-in format
-- `find-original-session` - Trace derived sessions (trimmed or continued) back to their original source
-- `find-derived-sessions` - Find all derived descendants (trimmed or continued) of a session
-- `delete-session` - Safely delete session files with confirmation
-- `vault` - Encrypted backup for your .env files
-- `env-safe` - Safely inspect .env files without exposing values
+### What You Get
+
+Installation provides both a **unified `aichat` command** (recommended) and individual flat commands for backward compatibility.
+
+**🎯 Recommended: Use `aichat` for session management**
+
+<!--CLAUDE - Showing only these specific command examples risks misunderstanding that these are the only ones available. So it's not clear why we are only showing these. And anyway, we are describing all the commands down below. So do we still need this?
+
+Or if we if we want to keep this, why don't we just call it as examples? -->
+
+```bash
+aichat --help                 # See all subcommands
+aichat find "keywords"        # Find sessions across all agents
+aichat find-claude "bug"      # Find Claude sessions
+aichat menu abc123            # Access session options by ID
+aichat trim session.jsonl     # Compress sessions
+```
+
+**Available Tools:**
+
+Session Management (use `aichat` subcommands - recommended):
+- `aichat find` - Unified search across Claude Code and Codex sessions
+- `aichat find-claude` - Search and resume Claude Code sessions
+- `aichat find-codex` - Search and resume Codex sessions
+- `aichat menu` - Direct access to session options by ID/path
+- `aichat trim` - Compress sessions by trimming content
+- `aichat smart-trim` - (EXPERIMENTAL) Intelligent AI-powered trimming
+- `aichat export-claude` - Export Claude sessions to text
+- `aichat export-codex` - Export Codex sessions to text
+- `aichat find-original` - Trace derived sessions to source
+- `aichat find-derived` - Find all derived versions
+- `aichat delete` - Safely delete sessions
+- `aichat continue` - Transfer context when running out
+
+Other Utilities (standalone commands):
+- `tmux-cli` - Interactive CLI controller ("Playwright for terminals")
+- `vault` - Encrypted .env backup and sync
+- `env-safe` - Safe .env inspection without exposing values
+
+**Legacy flat commands** (backward compatible):
+All session tools are also available as flat commands (`find-claude-session`,
+`find-codex-session`, etc.) for backward compatibility with existing scripts.
 
 <a id="tmux-cli-deep-dive"></a>
 ## 🎮 tmux-cli Deep Dive
@@ -148,10 +177,16 @@ For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-ins
 All of this assumes you're familiar and comfortable with tmux, and (like me) run
 all CLI coding sessions inside tmux sessions.
 
-## 🔄 claude-continue — seamlessly continue sessions running out of context
+<!--CLAUDE - this is a second-level section , whereas the previous "tmux-cli" is a top-level
+section -- so we should set it up correctly.
+Maybe have ALL of the session-management commands under a single "aichat" section,
+right here. I.e., move the "lmsh" to after the aichat commands.
+-->
+
+## 🔄 aichat continue — seamlessly continue sessions running out of context
 
 When your Claude Code session is running out of context, instead of manually
-compacting (which loses valuable session details) or resuming a trimmed session, use the `claude-continue` CLI command to transfer context to a fresh session.
+compacting (which loses valuable session details) or resuming a trimmed session, use `aichat continue` to transfer context to a fresh session.
 
 **How it works**: Exports your old session to a text file, creates a new Claude
 Code session, uses parallel sub-agents to analyze the old session and understand
@@ -161,13 +196,15 @@ the task, then hands off to interactive mode so you can continue where you left 
 to display the session ID. Exit the session, then run:
 
 ```bash
-claude-continue <session-id>  # or partial session ID works if match is unique
+aichat continue <session-id>  # or partial session ID works if match is unique
 
 # Use --cli to specify custom Claude command (supports shell functions)
-claude-continue <session-id> --cli ccrja  # for custom profiles, aliases, or shell functions
+aichat continue <session-id> --cli ccrja  # for custom profiles, aliases, or shell functions
 ```
 
 That's it. Claude will analyze the old session and resume the work in a new session.
+
+**Note**: The legacy `claude-continue` command is still available for backward compatibility.
 
 <a id="lmsh-experimental"></a>
 ## 🚀 lmsh (Experimental)
@@ -207,9 +244,13 @@ cp target/release/lmsh ~/.cargo/bin/
 See [docs/lmsh.md](docs/lmsh.md) for details.
 
 <a id="find-session"></a>
-## 🔍 find-session
+## 🔍 aichat find
 
 **Unified session finder** - Search across both Claude Code and Codex sessions simultaneously.
+<!--CLAUDE - let's remove the fs(), fcs() suggestions from everywhere, and remove ALL
+mentions of these things everywhere, it's too confusing. Let's stick to the core
+tool itself, and not suggest these wrapper bash functions at all.
+-->
 
 ### Setup (Recommended)
 
@@ -219,11 +260,11 @@ Add this function to your shell config (.bashrc/.zshrc) for persistent directory
 fs() {
     # Check if user is asking for help
     if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-        find-session --help
+        aichat find --help
         return
     fi
-    # Run find-session in shell mode and evaluate the output
-    eval "$(find-session --shell "$@" | sed '/^$/d')"
+    # Run aichat find in shell mode and evaluate the output
+    eval "$(aichat find --shell "$@" | sed '/^$/d')"
 }
 ```
 
@@ -296,7 +337,7 @@ fs -g --original
 - Reverse chronological ordering (most recent first)
 - Press Enter to cancel (no need for Ctrl+C)
 
-Note: You can also use `find-session` directly, but directory changes won't persist after exiting sessions.
+**Note**: You can also use `aichat find` directly (or the legacy `find-session` command), but directory changes won't persist after exiting sessions.
 
 ### Configuration (Optional)
 
@@ -328,7 +369,7 @@ This allows you to:
 - Prepare for future agent additions
 
 <a id="find-claude-session"></a>
-## 🔍 find-claude-session
+## 🔍 aichat find-claude
 
 Search and resume Claude Code sessions by keywords with an interactive UI.
 
@@ -341,11 +382,11 @@ changes:
 fcs() {
     # Check if user is asking for help
     if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-        find-claude-session --help
+        aichat find-claude --help
         return
     fi
-    # Run find-claude-session in shell mode and evaluate the output
-    eval "$(find-claude-session --shell "$@" | sed '/^$/d')"
+    # Run aichat find-claude in shell mode and evaluate the output
+    eval "$(aichat find-claude --shell "$@" | sed '/^$/d')"
 }
 ```
 
@@ -405,7 +446,7 @@ fcs -g --original
 - Persistent directory changes when resuming cross-project sessions
 - Press Enter to cancel (no need for Ctrl+C)
 
-Note: You can also use `find-claude-session` directly, but directory changes
+**Note**: You can also use `aichat find-claude` directly (or the legacy `find-claude-session` command), but directory changes
 won't persist after exiting Claude Code.
 
 For detailed documentation, see [docs/find-claude-session.md](docs/find-claude-session.md).
@@ -415,9 +456,9 @@ Looks like this --
 ![find-claude-session.png](demos/find-claude-session.png)
 
 <a id="find-codex-session"></a>
-## 🔍 find-codex-session
+## 🔍 aichat find-codex
 
-Search and resume Codex sessions by keywords. Usage is similar to `find-claude-session` above, but works with Codex session files instead.
+Search and resume Codex sessions by keywords. Usage is similar to `aichat find-claude` above, but works with Codex session files instead.
 
 ### Key Differences from find-claude-session
 
@@ -433,11 +474,11 @@ Add this function to your shell config (.bashrc/.zshrc) for persistent directory
 fcs-codex() {
     # Check if user is asking for help
     if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-        find-codex-session --help
+        aichat find-codex --help
         return
     fi
-    # Run find-codex-session in shell mode and evaluate the output
-    eval "$(find-codex-session --shell "$@" | sed '/^$/d')"
+    # Run aichat find-codex in shell mode and evaluate the output
+    eval "$(aichat find-codex --shell "$@" | sed '/^$/d')"
 }
 ```
 
@@ -501,14 +542,14 @@ fcs-codex -g --original
 - Multi-line preview wrapping for better readability
 - Press Enter to cancel (no need for Ctrl+C)
 
-Note: You can also use `find-codex-session` directly, but directory changes won't persist after exiting Codex.
+**Note**: You can also use `aichat find-codex` directly (or the legacy `find-codex-session` command), but directory changes won't persist after exiting Codex.
 
 Looks like this --
 
 ![find-codex-session.png](demos/find-codex-session.png)
 
 <a id="session-menu"></a>
-## 🎯 session-menu
+## 🎯 aichat menu
 
 Access session management options directly by session ID or file path, without searching. Auto-detects whether it's a Claude or Codex session.
 
@@ -516,17 +557,17 @@ Access session management options directly by session ID or file path, without s
 
 ```bash
 # By partial session ID (searches both Claude and Codex)
-session-menu 40a9-436f
+aichat menu 40a9-436f
 
 # By full file path
-session-menu ~/.claude/projects/my-project/abc123.jsonl
+aichat menu ~/.claude/projects/my-project/abc123.jsonl
 
 # With custom Claude home
-session-menu abc123 --claude-home ~/.claude-custom
+aichat menu abc123 --claude-home ~/.claude-custom
 
 # Respects CLAUDE_CONFIG_DIR environment variable
 export CLAUDE_CONFIG_DIR=~/.claude-rja
-session-menu abc123
+aichat menu abc123
 ```
 
 ### Features
@@ -537,8 +578,10 @@ session-menu abc123
 - **Environment aware**: Respects `CLAUDE_CONFIG_DIR` environment variable
 - **Quick access**: Skip the search step when you already know the session ID
 
+**Note**: The legacy `session-menu` command is still available for backward compatibility.
+
 <a id="trim-session"></a>
-## 🗜️ trim-session
+## 🗜️ aichat trim
 
 Compress Claude Code and Codex session files by trimming large tool results
 and assistant messages. This is especially useful for managing sessions that are
@@ -567,37 +610,39 @@ messages, you can:
 
 ```bash
 # Trim all tool results over 500 characters (default, auto-detect agent)
-trim-session session.jsonl
+aichat trim session.jsonl
 
 # Use session ID instead of full path (supports partial matching)
-trim-session abc123-def456-789
-trim-session abc123  # Partial ID works if unique
+aichat trim abc123-def456-789
+aichat trim abc123  # Partial ID works if unique
 
 # Specify agent type explicitly (Claude Code or Codex)
-trim-session session.jsonl --agent claude
-trim-session session.jsonl --agent codex
+aichat trim session.jsonl --agent claude
+aichat trim session.jsonl --agent codex
 
 # Trim only specific tools (e.g., file operations)
-trim-session session.jsonl --tools read,edit,bash
+aichat trim session.jsonl --tools read,edit,bash
 
 # Use custom length threshold (e.g., 1000 characters)
-trim-session session.jsonl --len 1000
+aichat trim session.jsonl --len 1000
 
 # Trim Task tool results over 1000 chars
-trim-session session.jsonl --tools task --len 1000
+aichat trim session.jsonl --tools task --len 1000
 
 # Trim first 5 assistant messages (keep tool results)
-trim-session session.jsonl --trim-assistant-messages 5
+aichat trim session.jsonl --trim-assistant-messages 5
 
 # Trim all assistant messages except last 3 (negative number)
-trim-session session.jsonl --trim-assistant-messages -3
+aichat trim session.jsonl --trim-assistant-messages -3
 
 # Combine: trim tools AND first 10 assistant messages
-trim-session session.jsonl --len 1000 --trim-assistant-messages 10
+aichat trim session.jsonl --len 1000 --trim-assistant-messages 10
 
 # Custom output directory
-trim-session session.jsonl --output-dir ~/compressed-sessions
+aichat trim session.jsonl --output-dir ~/compressed-sessions
 ```
+
+**Note**: The legacy `trim-session` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -691,9 +736,9 @@ Common tools you can target with `--tools`:
 - `grep` - Content search results
 
 <a id="smart-trim-experimental"></a>
-## 🤖 smart-trim (EXPERIMENTAL)
+## 🤖 aichat smart-trim (EXPERIMENTAL)
 
-**Intelligent session trimming using parallel Claude SDK agents.** Unlike `trim-session` which uses simple heuristics (length thresholds), `smart-trim` uses multiple Claude SDK agents running in parallel to analyze your session content and intelligently determine what can be safely trimmed.
+**Intelligent session trimming using parallel Claude SDK agents.** Unlike `aichat trim` which uses simple heuristics (length thresholds), `aichat smart-trim` uses multiple Claude SDK agents running in parallel to analyze your session content and intelligently determine what can be safely trimmed.
 
 ⚠️ **EXPERIMENTAL**: This tool is in active development. The parallel Claude SDK agents make independent trimming decisions for different chunks of your session, which means they cannot fully account for cross-chunk dependencies. Use with caution and review results before resuming trimmed sessions.
 
@@ -708,39 +753,41 @@ Common tools you can target with `--tools`:
 
 ```bash
 # Analyze and trim a session (auto-detect agent type)
-smart-trim session.jsonl
+aichat smart-trim session.jsonl
 
 # Use session ID instead of full path (supports partial matching)
-smart-trim abc123-def456-789
-smart-trim abc123  # Partial ID works if unique
+aichat smart-trim abc123-def456-789
+aichat smart-trim abc123  # Partial ID works if unique
 
 # Use verbose mode to see trimming rationales
-smart-trim session.jsonl --verbose
+aichat smart-trim session.jsonl --verbose
 
 # Configure chunk size for parallel agents (default: 100 lines)
-smart-trim session.jsonl --max-lines-per-agent 50
+aichat smart-trim session.jsonl --max-lines-per-agent 50
 
 # Adjust content threshold (default: 200 chars)
-smart-trim session.jsonl --content-threshold 300
+aichat smart-trim session.jsonl --content-threshold 300
 
 # Preserve messages at the beginning of the session
-smart-trim session.jsonl --preserve-head 10
+aichat smart-trim session.jsonl --preserve-head 10
 
 # Preserve messages at the end of the session
-smart-trim session.jsonl --preserve-tail 20
+aichat smart-trim session.jsonl --preserve-tail 20
 
 # Combine: preserve both head and tail
-smart-trim session.jsonl --preserve-head 5 --preserve-tail 15
+aichat smart-trim session.jsonl --preserve-head 5 --preserve-tail 15
 
 # Legacy option: preserve recent messages (deprecated, use --preserve-tail)
-smart-trim session.jsonl --preserve-recent 20
+aichat smart-trim session.jsonl --preserve-recent 20
 
 # Exclude additional message types
-smart-trim session.jsonl --exclude-types user,tool_result
+aichat smart-trim session.jsonl --exclude-types user,tool_result
 
 # Dry run - see what would be trimmed without doing it
-smart-trim session.jsonl --dry-run
+aichat smart-trim session.jsonl --dry-run
 ```
+
+**Note**: The legacy `smart-trim` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -767,7 +814,7 @@ Future versions may implement multi-pass analysis or cross-agent communication t
 
 ### Integration with find-session tools
 
-Smart-trim is integrated into `find-claude-session` and `find-codex-session`. When you select a session to resume, you'll see option 3:
+Smart-trim is integrated into `aichat find-claude` and `aichat find-codex`. When you select a session to resume, you'll see option 3:
 
 ```
 Resume options:
@@ -802,7 +849,7 @@ Choosing option 3 will:
 ```
 
 <a id="export-claude-session"></a>
-## 📄 export-claude-session
+## 📄 aichat export-claude
 
 Export Claude Code sessions using Claude Code's built-in export format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
 
@@ -810,25 +857,27 @@ Export Claude Code sessions using Claude Code's built-in export format. This too
 
 ```bash
 # Export a session by file path
-export-claude-session /path/to/session.jsonl --output summary.txt
+aichat export-claude /path/to/session.jsonl --output summary.txt
 
 # Export a session by ID (supports partial matching)
-export-claude-session abc123-def456-789 --output summary.txt
-export-claude-session abc123 --output summary.txt  # Partial ID works if unique
+aichat export-claude abc123-def456-789 --output summary.txt
+aichat export-claude abc123 --output summary.txt  # Partial ID works if unique
 
 # Export with auto-generated filename (creates exported-sessions/YYYYMMDD-claude-session-<id>.txt)
-export-claude-session abc123
+aichat export-claude abc123
 
 # Run from within Claude Code (uses current session)
-!export-claude-session --output notes/session-summary.txt
-!export-claude-session  # Auto-generates filename
+!aichat export-claude --output notes/session-summary.txt
+!aichat export-claude  # Auto-generates filename
 
 # Custom Claude home directory
-export-claude-session session-id --output summary.txt --claude-home ~/my-claude
+aichat export-claude session-id --output summary.txt --claude-home ~/my-claude
 
 # Verbose mode with progress
-export-claude-session session.jsonl --output summary.txt --verbose
+aichat export-claude session.jsonl --output summary.txt --verbose
 ```
+
+**Note**: The legacy `export-claude-session` command is still available for backward compatibility.
 
 **Notes**:
 - Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
@@ -885,7 +934,7 @@ The export uses Claude Code's built-in format with simple prefixes:
 
 Export functionality is also available through the interactive session finder menus:
 
-**In find-claude-session:**
+**In aichat find-claude:**
 ```bash
 fcs "keywords"
 # Select a session
@@ -893,7 +942,7 @@ fcs "keywords"
 # Enter output path
 ```
 
-**In find-session (Claude sessions only):**
+**In aichat find (Claude sessions only):**
 ```bash
 fs "keywords"
 # Select a Claude session
@@ -925,7 +974,7 @@ The export option appears in both normal and sub-agent session menus, making it 
 - **Archival**: Create human-readable archives of important sessions
 
 <a id="export-codex-session"></a>
-## 📄 export-codex-session
+## 📄 aichat export-codex
 
 Export Codex sessions using Claude Code's built-in export format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
 
@@ -933,21 +982,23 @@ Export Codex sessions using Claude Code's built-in export format. This tool extr
 
 ```bash
 # Export a session by file path
-export-codex-session /path/to/session.jsonl --output summary.txt
+aichat export-codex /path/to/session.jsonl --output summary.txt
 
 # Export a session by ID (supports partial matching)
-export-codex-session 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.txt
-export-codex-session 019a4a64 --output summary.txt  # Partial ID works if unique
+aichat export-codex 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.txt
+aichat export-codex 019a4a64 --output summary.txt  # Partial ID works if unique
 
 # Export with auto-generated filename (creates exported-sessions/YYYYMMDD-codex-session-<id>.txt)
-export-codex-session 019a4a64
+aichat export-codex 019a4a64
 
 # Custom Codex home directory
-export-codex-session session-id --output summary.txt --codex-home ~/my-codex
+aichat export-codex session-id --output summary.txt --codex-home ~/my-codex
 
 # Verbose mode with progress
-export-codex-session session.jsonl --output summary.txt --verbose
+aichat export-codex session.jsonl --output summary.txt --verbose
 ```
+
+**Note**: The legacy `export-codex-session` command is still available for backward compatibility.
 
 **Notes**:
 - Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
@@ -1004,17 +1055,17 @@ The export uses Claude Code's built-in format with simple prefixes:
 
 Export functionality is also available through the interactive session finder menus:
 
-**In find-codex-session:**
+**In aichat find-codex:**
 ```bash
-find-codex-session "keywords"
+aichat find-codex "keywords"
 # Select a session
 # Choose option 5: "Export to text file (.txt)"
 # Enter output path
 ```
 
-**In find-session (Claude and Codex sessions):**
+**In aichat find (Claude and Codex sessions):**
 ```bash
-fs "keywords"
+aichat find "keywords"
 # Select a Codex session
 # Choose option 5: "Export to text file (.txt)"
 # Enter output path
@@ -1044,7 +1095,7 @@ The export option appears in the session action menus, making it easy to create 
 - **Archival**: Create human-readable archives of important sessions
 
 <a id="find-original-session"></a>
-## 📍 find-original-session
+## 📍 aichat find-original
 
 Trace a derived session (trimmed or continued) back to its original source file.
 When you have a derived session and want to find the original session it was
@@ -1054,19 +1105,21 @@ created from, this tool follows the parent file chain.
 
 ```bash
 # Find the original session for a derived session (by file path)
-find-original-session derived-session.jsonl
+aichat find-original derived-session.jsonl
 
 # Find by session ID (supports partial matching)
-find-original-session abc123-def456-789
-find-original-session abc123  # Partial ID works if unique
+aichat find-original abc123-def456-789
+aichat find-original abc123  # Partial ID works if unique
 
 # Works with both Claude Code and Codex sessions
-find-original-session ~/.claude/ai-chats/abc123.jsonl
-find-original-session ~/.codex/sessions/2024/11/14/rollout-*.jsonl
+aichat find-original ~/.claude/ai-chats/abc123.jsonl
+aichat find-original ~/.codex/sessions/2024/11/14/rollout-*.jsonl
 
 # Verbose mode shows the parent chain with derivation types
-find-original-session abc123 --verbose
+aichat find-original abc123 --verbose
 ```
+
+**Note**: The legacy `find-original-session` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -1082,7 +1135,7 @@ find-original-session abc123 --verbose
 ### Example
 
 ```bash
-$ find-original-session ~/.claude/ai-chats/abc123.jsonl --verbose
+$ aichat find-original ~/.claude/ai-chats/abc123.jsonl --verbose
 Following parent links...
 
 Parent chain:
@@ -1095,31 +1148,33 @@ Parent chain:
 ```
 
 <a id="find-derived-sessions"></a>
-## 🌳 find-derived-sessions
+## 🌳 aichat find-derived
 
 Find all derived sessions (trimmed or continued) from an original session. This is
-the inverse of `find-original-session` - it searches for all sessions that have
+the inverse of `aichat find-original` - it searches for all sessions that have
 the specified session as their parent.
 
 ### Usage
 
 ```bash
 # Find all derived descendants of a session (tree view by default)
-find-derived-sessions original-session.jsonl
+aichat find-derived original-session.jsonl
 
 # Find by session ID (supports partial matching)
-find-derived-sessions abc123-def456-789
-find-derived-sessions abc123  # Partial ID works if unique
+aichat find-derived abc123-def456-789
+aichat find-derived abc123  # Partial ID works if unique
 
 # Show results in flat list instead of tree
-find-derived-sessions original-session.jsonl --flat
+aichat find-derived original-session.jsonl --flat
 
 # Show statistics about each derived session
-find-derived-sessions original-session.jsonl --stats
+aichat find-derived original-session.jsonl --stats
 
 # Combine tree view with statistics
-find-derived-sessions original-session.jsonl --stats
+aichat find-derived original-session.jsonl --stats
 ```
+
+**Note**: The legacy `find-derived-sessions` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -1136,14 +1191,14 @@ find-derived-sessions original-session.jsonl --stats
 ### Example
 
 ```bash
-$ find-derived-sessions ~/.claude/ai-chats/original.jsonl
+$ aichat find-derived ~/.claude/ai-chats/original.jsonl
 /Users/user/.claude/ai-chats/original.jsonl
 ├─ /Users/user/.claude/ai-chats/def456.jsonl (trimmed)
 │  └─ /Users/user/.claude/ai-chats/ghi789.jsonl (continued)
 │     → exported-sessions/20251117-claude-session-ghi789.txt
 └─ /Users/user/.claude/ai-chats/jkl012.jsonl (trimmed)
 
-$ find-derived-sessions abc123 --stats
+$ aichat find-derived abc123 --stats
 /Users/user/.claude/ai-chats/original.jsonl
 ├─ /Users/user/.claude/ai-chats/def456.jsonl (trimmed)
 │
@@ -1162,7 +1217,7 @@ $ find-derived-sessions abc123 --stats
 ```
 
 <a id="delete-session"></a>
-## 🗑️ delete-session
+## 🗑️ aichat delete
 
 Safely delete Claude Code or Codex session files with confirmation. Before deletion, the tool displays session metadata (line count, date range, last user message) to help you verify you're deleting the correct session.
 
@@ -1170,18 +1225,20 @@ Safely delete Claude Code or Codex session files with confirmation. Before delet
 
 ```bash
 # Delete a session by ID (supports partial matching)
-delete-session abc123-def456-789
-delete-session abc123  # Partial ID works if unique
+aichat delete abc123-def456-789
+aichat delete abc123  # Partial ID works if unique
 
 # Delete a session by file path
-delete-session /path/to/session.jsonl
+aichat delete /path/to/session.jsonl
 
 # Custom Claude home directory
-delete-session abc123 --claude-home ~/my-claude
+aichat delete abc123 --claude-home ~/my-claude
 
 # Force deletion without confirmation (use with caution!)
-delete-session abc123 --force
+aichat delete abc123 --force
 ```
+
+**Note**: The legacy `delete-session` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -1196,7 +1253,7 @@ delete-session abc123 --force
 ### Example
 
 ```bash
-$ delete-session abc123
+$ aichat delete abc123
 
 ======================================================================
 SESSION DELETION CONFIRMATION

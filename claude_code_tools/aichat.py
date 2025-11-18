@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""
+aichat - Unified CLI for AI chat session management tools.
+
+This provides a grouped command interface for managing Claude Code and
+Codex sessions, following the pattern of tools like git, docker, etc.
+
+All session-related tools are accessible as subcommands:
+    aichat find            - Find sessions across all agents
+    aichat find-claude     - Find Claude sessions
+    aichat find-codex      - Find Codex sessions
+    aichat menu            - Interactive session menu
+    aichat trim            - Trim session content
+    ... and more
+
+For backward compatibility, all flat commands (find-claude-session,
+etc.) are still available.
+"""
+
+import click
+
+
+@click.group()
+@click.version_option()
+def main():
+    """
+    Session management tools for Claude Code and Codex.
+
+    This is the recommended interface for managing AI chat sessions.
+    Each subcommand provides specialized functionality for finding,
+    managing, and manipulating session files.
+
+    For help on any subcommand, use:
+
+    \b
+        aichat COMMAND --help
+
+    Examples:
+
+    \b
+        aichat find "langroid"
+        aichat find-claude "bug fix"
+        aichat menu abc123-def456
+        aichat trim session-id.jsonl
+    """
+    pass
+
+
+@main.command("find", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def find(ctx):
+    """Find sessions across all agents (Claude Code, Codex, etc.)."""
+    import sys
+    # Replace 'find' with 'find-session' in argv for the actual command
+    sys.argv = [sys.argv[0].replace('aichat', 'find-session')] + ctx.args
+    from claude_code_tools.find_session import main as find_main
+    find_main()
+
+
+@main.command("find-claude", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def find_claude(ctx):
+    """Find Claude Code sessions by keywords."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'find-claude-session')] + ctx.args
+    from claude_code_tools.find_claude_session import main as find_claude_main
+    find_claude_main()
+
+
+@main.command("find-codex", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def find_codex(ctx):
+    """Find Codex sessions by keywords."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'find-codex-session')] + ctx.args
+    from claude_code_tools.find_codex_session import main as find_codex_main
+    find_codex_main()
+
+
+@main.command("find-original", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def find_original(ctx):
+    """Find the original session from a trimmed/continued session."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'find-original-session')] + ctx.args
+    from claude_code_tools.find_original_session import (
+        main as find_original_main,
+    )
+    find_original_main()
+
+
+@main.command("find-derived", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def find_derived(ctx):
+    """Find derived sessions (trimmed/continued) from an original."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'find-derived-sessions')] + ctx.args
+    from claude_code_tools.find_derived_sessions import (
+        main as find_derived_main,
+    )
+    find_derived_main()
+
+
+@main.command("menu", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def menu(ctx):
+    """Interactive menu for a specific session (by ID or path)."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'session-menu')] + ctx.args
+    from claude_code_tools.session_menu_cli import main as menu_main
+    menu_main()
+
+
+@main.command("trim", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def trim(ctx):
+    """Trim tool results and/or assistant messages from a session."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'trim-session')] + ctx.args
+    from claude_code_tools.trim_session import main as trim_main
+    trim_main()
+
+
+@main.command("smart-trim", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def smart_trim(ctx):
+    """Smart trim using Claude SDK agents (EXPERIMENTAL)."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'smart-trim')] + ctx.args
+    from claude_code_tools.smart_trim import main as smart_trim_main
+    smart_trim_main()
+
+
+@main.command("export-claude", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def export_claude(ctx):
+    """Export Claude Code session to text/markdown format."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'export-claude-session')] + ctx.args
+    from claude_code_tools.export_claude_session import (
+        main as export_claude_main,
+    )
+    export_claude_main()
+
+
+@main.command("export-codex", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def export_codex(ctx):
+    """Export Codex session to text/markdown format."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'export-codex-session')] + ctx.args
+    from claude_code_tools.export_codex_session import (
+        main as export_codex_main,
+    )
+    export_codex_main()
+
+
+@main.command("delete", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def delete(ctx):
+    """Delete a session file with safety confirmation."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'delete-session')] + ctx.args
+    from claude_code_tools.delete_session import main as delete_main
+    delete_main()
+
+
+@main.command("continue", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.pass_context
+def continue_session(ctx):
+    """Continue from an exported session (when running out of context)."""
+    import sys
+    sys.argv = [sys.argv[0].replace('aichat', 'claude-continue')] + ctx.args
+    from claude_code_tools.claude_continue import main as continue_main
+    continue_main()
+
+
+if __name__ == "__main__":
+    main()
