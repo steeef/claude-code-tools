@@ -718,19 +718,26 @@ def get_session_file_path(session_id: str, project_path: str, claude_home: Optio
 def handle_export_session(session_file_path: str) -> None:
     """Export session to text file."""
     from claude_code_tools.export_claude_session import export_session_to_markdown as do_export
+    from datetime import datetime
 
     try:
-        dest = input("\nEnter output text file path (.txt): ").strip()
+        # Generate default export path
+        session_id = Path(session_file_path).stem
+        today = datetime.now().strftime("%Y%m%d")
+        output_dir = Path.cwd() / "exported-sessions"
+        default_path = output_dir / f"{today}-claude-session-{session_id}.txt"
+
+        print(f"\nDefault export path: {default_path}")
+        dest = input("Path (or Enter for default): ").strip()
         if not dest:
-            print("Cancelled.")
-            return
+            dest_path = default_path
+        else:
+            dest_path = Path(dest).expanduser()
 
-        dest_path = Path(dest).expanduser()
-
-        # Force .txt extension
-        if dest_path.suffix != ".txt":
-            # Strip any existing extension and add .txt
-            dest_path = dest_path.with_suffix(".txt")
+            # Force .txt extension
+            if dest_path.suffix != ".txt":
+                # Strip any existing extension and add .txt
+                dest_path = dest_path.with_suffix(".txt")
 
         # Create parent directory if needed
         dest_path.parent.mkdir(parents=True, exist_ok=True)
