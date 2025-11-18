@@ -133,11 +133,12 @@ When done exploring, state your understanding of the most recent task to me."""
     print("=" * 70)
     print()
 
-    # Replace current process with interactive Claude Code via shell
-    # (this handles both executables and shell functions)
+    # Launch interactive Claude Code session
+    # Run through interactive shell to handle shell functions, os.system handles TTY properly
     shell = os.environ.get('SHELL', '/bin/sh')
     cmd = f"{claude_cli} --resume {shlex.quote(new_session_id)}"
-    os.execl(shell, shell, "-i", "-c", cmd)
+    exit_code = os.system(f"{shell} -i -c {shlex.quote(cmd)}")
+    sys.exit(exit_code >> 8)  # Exit with claude's exit code
 
 
 def main():
