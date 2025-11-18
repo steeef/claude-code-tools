@@ -220,6 +220,9 @@ def find_sessions(
     num_matches: int = 10,
     global_search: bool = False,
     original_only: bool = False,
+    no_sub: bool = False,
+    no_trim: bool = False,
+    no_cont: bool = False,
 ) -> list[dict]:
     """
     Find Codex sessions matching keywords.
@@ -229,7 +232,10 @@ def find_sessions(
         keywords: List of keywords to search for
         num_matches: Maximum number of results to return
         global_search: If False, filter to current directory only
-        original_only: If True, show only original (non-trimmed) sessions
+        original_only: If True, show only original sessions (excludes trimmed and continued)
+        no_sub: If True, exclude sub-agent sessions (Note: Codex doesn't have sub-agents)
+        no_trim: If True, exclude trimmed sessions
+        no_cont: If True, exclude continued sessions
 
     Returns list of dicts with: session_id, project, branch, date,
                                  lines, preview, cwd, file_path, is_trimmed
@@ -290,12 +296,22 @@ def find_sessions(
                     if current_cwd and metadata["cwd"] != current_cwd:
                         continue
 
-                    # Check if session is trimmed
+                    # Check if session is trimmed/continued
                     is_trimmed = is_trimmed_session(session_file)
+                    derivation_type = get_session_derivation_type(session_file) if is_trimmed else None
 
-                    # Skip if original_only and session is trimmed
-                    if original_only and is_trimmed:
-                        continue
+                    # Apply filters (original_only overrides individual filters)
+                    # Note: Codex doesn't have sub-agent sessions, so no_sub has no effect
+                    if original_only:
+                        # Original only: exclude trimmed and continued
+                        if is_trimmed:
+                            continue
+                    else:
+                        # Individual filters
+                        if no_trim and derivation_type == "trimmed":
+                            continue
+                        if no_cont and derivation_type == "continued":
+                            continue
 
                     # Get file stats for timestamps
                     stat = session_file.stat()
@@ -865,7 +881,22 @@ Examples:
     parser.add_argument(
         "--original",
         action="store_true",
-        help="Show only original (non-trimmed) sessions",
+        help="Show only original sessions (excludes trimmed and continued sessions)",
+    )
+    parser.add_argument(
+        "--no-sub",
+        action="store_true",
+        help="Exclude sub-agent sessions (Note: Codex doesn't have sub-agents)",
+    )
+    parser.add_argument(
+        "--no-trim",
+        action="store_true",
+        help="Exclude trimmed sessions from results",
+    )
+    parser.add_argument(
+        "--no-cont",
+        action="store_true",
+        help="Exclude continued sessions from results",
     )
 
     args = parser.parse_args()
@@ -879,9 +910,35 @@ Examples:
         print(f"Error: Codex home not found: {codex_home}", file=sys.stderr)
         sys.exit(1)
 
+    # Display informational message about what session types are being shown
+    if args.original:
+        print("Showing: Original sessions only (excluding trimmed and continued sessions)", file=sys.stderr)
+    else:
+        # Build list of excluded types (note: Codex doesn't have sub-agents)
+        excluded_types = []
+        if args.no_trim:
+            excluded_types.append("trimmed")
+        if args.no_cont:
+            excluded_types.append("continued")
+
+        if excluded_types:
+            excluded_str = ", ".join(excluded_types)
+            print(f"Showing: All sessions except {excluded_str}", file=sys.stderr)
+        else:
+            print("Showing: All session types (original, trimmed, and continued)", file=sys.stderr)
+            print("Tip: Use --no-trim or --no-cont to exclude specific types", file=sys.stderr)
+    print(file=sys.stderr)  # Blank line for readability
+
     # Find matching sessions
     matches = find_sessions(
-        codex_home, keywords, args.num_matches, args.global_search, args.original
+        codex_home,
+        keywords,
+        args.num_matches,
+        args.global_search,
+        args.original,
+        args.no_sub,
+        args.no_trim,
+        args.no_cont,
     )
 
     # Display and get selection

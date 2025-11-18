@@ -281,7 +281,15 @@ def get_session_preview(filepath: Path) -> str:
     return last_user_message if last_user_message else "No preview available"
 
 
-def find_sessions(keywords: List[str], global_search: bool = False, claude_home: Optional[str] = None, original_only: bool = False) -> List[Tuple[str, float, float, int, str, str, str, Optional[str], bool]]:
+def find_sessions(
+    keywords: List[str],
+    global_search: bool = False,
+    claude_home: Optional[str] = None,
+    original_only: bool = False,
+    no_sub: bool = False,
+    no_trim: bool = False,
+    no_cont: bool = False,
+) -> List[Tuple[str, float, float, int, str, str, str, Optional[str], bool]]:
     """
     Find all Claude Code sessions containing the specified keywords.
 
@@ -289,7 +297,10 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
         keywords: List of keywords to search for
         global_search: If True, search all projects; if False, search current project only
         claude_home: Optional custom Claude home directory (defaults to ~/.claude)
-        original_only: If True, show only original (non-trimmed) sessions
+        original_only: If True, show only original sessions (excludes trimmed, continued, and sub-agent sessions)
+        no_sub: If True, exclude sub-agent sessions
+        no_trim: If True, exclude trimmed sessions
+        no_cont: If True, exclude continued sessions
 
     Returns:
         List of tuples (session_id, modification_time, creation_time, line_count, project_name, preview, project_path, git_branch, is_trimmed) sorted by modification time
@@ -317,15 +328,26 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                     for jsonl_file in project_dir.glob("*.jsonl"):
                         matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                         if matches:
-                            # Check if session is trimmed
+                            # Check if session is trimmed/continued
                             is_trimmed = is_trimmed_session(jsonl_file)
-
-                            # Skip if original_only and session is trimmed
-                            if original_only and is_trimmed:
-                                continue
+                            derivation_type = get_session_derivation_type(jsonl_file) if is_trimmed else None
 
                             # Check if session is sidechain (sub-agent)
                             is_sidechain = is_sidechain_session(jsonl_file)
+
+                            # Apply filters (original_only overrides individual filters)
+                            if original_only:
+                                # Original only: exclude trimmed, continued, and sub-agents
+                                if is_trimmed or is_sidechain:
+                                    continue
+                            else:
+                                # Individual filters
+                                if no_sub and is_sidechain:
+                                    continue
+                                if no_trim and derivation_type == "trimmed":
+                                    continue
+                                if no_cont and derivation_type == "continued":
+                                    continue
 
                             session_id = jsonl_file.stem
                             stat = jsonl_file.stat()
@@ -344,15 +366,26 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
                 for jsonl_file in project_dir.glob("*.jsonl"):
                     matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                     if matches:
-                        # Check if session is trimmed
+                        # Check if session is trimmed/continued
                         is_trimmed = is_trimmed_session(jsonl_file)
-
-                        # Skip if original_only and session is trimmed
-                        if original_only and is_trimmed:
-                            continue
+                        derivation_type = get_session_derivation_type(jsonl_file) if is_trimmed else None
 
                         # Check if session is sidechain (sub-agent)
                         is_sidechain = is_sidechain_session(jsonl_file)
+
+                        # Apply filters (original_only overrides individual filters)
+                        if original_only:
+                            # Original only: exclude trimmed, continued, and sub-agents
+                            if is_trimmed or is_sidechain:
+                                continue
+                        else:
+                            # Individual filters
+                            if no_sub and is_sidechain:
+                                continue
+                            if no_trim and derivation_type == "trimmed":
+                                continue
+                            if no_cont and derivation_type == "continued":
+                                continue
 
                         session_id = jsonl_file.stem
                         stat = jsonl_file.stat()
@@ -374,15 +407,26 @@ def find_sessions(keywords: List[str], global_search: bool = False, claude_home:
         for jsonl_file in claude_dir.glob("*.jsonl"):
             matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
             if matches:
-                # Check if session is trimmed
+                # Check if session is trimmed/continued
                 is_trimmed = is_trimmed_session(jsonl_file)
-
-                # Skip if original_only and session is trimmed
-                if original_only and is_trimmed:
-                    continue
+                derivation_type = get_session_derivation_type(jsonl_file) if is_trimmed else None
 
                 # Check if session is sidechain (sub-agent)
                 is_sidechain = is_sidechain_session(jsonl_file)
+
+                # Apply filters (original_only overrides individual filters)
+                if original_only:
+                    # Original only: exclude trimmed, continued, and sub-agents
+                    if is_trimmed or is_sidechain:
+                        continue
+                else:
+                    # Individual filters
+                    if no_sub and is_sidechain:
+                        continue
+                    if no_trim and derivation_type == "trimmed":
+                        continue
+                    if no_cont and derivation_type == "continued":
+                        continue
 
                 session_id = jsonl_file.stem
                 stat = jsonl_file.stat()
@@ -977,25 +1021,69 @@ To persist directory changes when resuming sessions:
     parser.add_argument(
         "--original",
         action="store_true",
-        help="Show only original (non-trimmed) sessions"
+        help="Show only original sessions (excludes trimmed, continued, and sub-agent sessions)"
+    )
+    parser.add_argument(
+        "--no-sub",
+        action="store_true",
+        help="Exclude sub-agent sessions from results"
+    )
+    parser.add_argument(
+        "--no-trim",
+        action="store_true",
+        help="Exclude trimmed sessions from results"
+    )
+    parser.add_argument(
+        "--no-cont",
+        action="store_true",
+        help="Exclude continued sessions from results"
     )
 
     args = parser.parse_args()
     
     # Parse keywords
     keywords = [k.strip() for k in args.keywords.split(",") if k.strip()] if args.keywords else []
-    
+
+    # Display informational message about what session types are being shown
+    if args.original:
+        print("Showing: Original sessions only (excluding trimmed, continued, and sub-agent sessions)", file=sys.stderr)
+    else:
+        # Build list of included/excluded types
+        excluded_types = []
+        if args.no_sub:
+            excluded_types.append("sub-agent")
+        if args.no_trim:
+            excluded_types.append("trimmed")
+        if args.no_cont:
+            excluded_types.append("continued")
+
+        if excluded_types:
+            excluded_str = ", ".join(excluded_types)
+            print(f"Showing: All sessions except {excluded_str}", file=sys.stderr)
+        else:
+            print("Showing: All session types (original, trimmed, continued, and sub-agent)", file=sys.stderr)
+            print("Tip: Use --no-sub, --no-trim, or --no-cont to exclude specific types", file=sys.stderr)
+    print(file=sys.stderr)  # Blank line for readability
+
     # Check if searching current project only
     if not getattr(args, 'global'):
         claude_dir = get_claude_project_dir(args.claude_home)
-        
+
         if not claude_dir.exists():
             print(f"No Claude project directory found for: {os.getcwd()}", file=sys.stderr)
             print(f"Expected directory: {claude_dir}", file=sys.stderr)
             sys.exit(1)
-    
+
     # Find matching sessions
-    matching_sessions = find_sessions(keywords, global_search=getattr(args, 'global'), claude_home=args.claude_home, original_only=args.original)
+    matching_sessions = find_sessions(
+        keywords,
+        global_search=getattr(args, 'global'),
+        claude_home=args.claude_home,
+        original_only=args.original,
+        no_sub=args.no_sub,
+        no_trim=args.no_trim,
+        no_cont=args.no_cont,
+    )
     
     if not matching_sessions:
         scope = "all projects" if getattr(args, 'global') else "current project"

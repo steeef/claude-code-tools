@@ -114,6 +114,9 @@ def search_all_agents(
     claude_home: Optional[str] = None,
     codex_home: Optional[str] = None,
     original_only: bool = False,
+    no_sub: bool = False,
+    no_trim: bool = False,
+    no_cont: bool = False,
 ) -> List[dict]:
     """
     Search sessions across all enabled agents.
@@ -125,7 +128,10 @@ def search_all_agents(
         agents: List of agent names to search
         claude_home: Claude home directory
         codex_home: Codex home directory
-        original_only: Only return original (non-trimmed) sessions
+        original_only: Only return original sessions (excludes trimmed, continued, and sub-agent)
+        no_sub: Exclude sub-agent sessions
+        no_trim: Exclude trimmed sessions
+        no_cont: Exclude continued sessions
 
     Returns list of dicts with agent metadata added.
     """
@@ -145,7 +151,13 @@ def search_all_agents(
             # Search Claude sessions
             home = claude_home or agent_config.home_dir
             sessions = find_claude_sessions(
-                keywords, global_search=global_search, claude_home=home
+                keywords,
+                global_search=global_search,
+                claude_home=home,
+                original_only=original_only,
+                no_sub=no_sub,
+                no_trim=no_trim,
+                no_cont=no_cont,
             )
 
             # Add agent metadata to each session
@@ -196,6 +208,10 @@ def search_all_agents(
                     keywords,
                     num_matches=num_matches * 2,  # Get more for merging
                     global_search=global_search,
+                    original_only=original_only,
+                    no_sub=no_sub,
+                    no_trim=no_trim,
+                    no_cont=no_cont,
                 )
 
                 # Add agent metadata to each session
@@ -692,7 +708,22 @@ Examples:
     parser.add_argument(
         "--original",
         action="store_true",
-        help="Show only original (non-trimmed) sessions",
+        help="Show only original sessions (excludes trimmed, continued, and sub-agent sessions)",
+    )
+    parser.add_argument(
+        "--no-sub",
+        action="store_true",
+        help="Exclude sub-agent sessions from results",
+    )
+    parser.add_argument(
+        "--no-trim",
+        action="store_true",
+        help="Exclude trimmed sessions from results",
+    )
+    parser.add_argument(
+        "--no-cont",
+        action="store_true",
+        help="Exclude continued sessions from results",
     )
 
     args = parser.parse_args()
@@ -704,6 +735,27 @@ Examples:
         else []
     )
 
+    # Display informational message about what session types are being shown
+    if args.original:
+        print("Showing: Original sessions only (excluding trimmed, continued, and sub-agent sessions)", file=sys.stderr)
+    else:
+        # Build list of excluded types
+        excluded_types = []
+        if args.no_sub:
+            excluded_types.append("sub-agent")
+        if args.no_trim:
+            excluded_types.append("trimmed")
+        if args.no_cont:
+            excluded_types.append("continued")
+
+        if excluded_types:
+            excluded_str = ", ".join(excluded_types)
+            print(f"Showing: All sessions except {excluded_str}", file=sys.stderr)
+        else:
+            print("Showing: All session types (original, trimmed, continued, and sub-agent)", file=sys.stderr)
+            print("Tip: Use --no-sub, --no-trim, or --no-cont to exclude specific types", file=sys.stderr)
+    print(file=sys.stderr)  # Blank line for readability
+
     # Search all agents
     matching_sessions = search_all_agents(
         keywords,
@@ -713,6 +765,9 @@ Examples:
         claude_home=args.claude_home,
         codex_home=args.codex_home,
         original_only=args.original,
+        no_sub=args.no_sub,
+        no_trim=args.no_trim,
+        no_cont=args.no_cont,
     )
 
     if not matching_sessions:
