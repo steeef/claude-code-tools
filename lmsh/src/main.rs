@@ -215,7 +215,7 @@ fn main() {
 
 // --- Agent integration ---
 fn generate_command(nl_prompt: &str, history: &[(String, String)], agent: Agent) -> Result<String, String> {
-    // Build the user prompt with history
+    // Build the user prompt with history and explicit instructions
     let user_prompt = build_user_prompt_with_history(history, nl_prompt);
 
     // System prompt with instructions
@@ -328,7 +328,7 @@ fn build_user_prompt_with_history(history: &[(String, String)], nl_prompt: &str)
         buf.push_str("\n");
     }
 
-    buf.push_str("User: ");
+    buf.push_str("Create a shell command for the following request and return ONLY the command wrapped in <COMMAND></COMMAND> tags:\n\n");
     buf.push_str(nl_prompt);
 
     buf
