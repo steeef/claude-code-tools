@@ -42,6 +42,7 @@ from claude_code_tools.find_codex_session import (
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
+    get_session_derivation_type,
 )
 
 try:
@@ -152,6 +153,7 @@ def search_all_agents(
                     get_claude_session_file_path(session_id, cwd, claude_home=home)
                 )
                 is_trimmed = is_trimmed_session(file_path)
+                derivation_type = get_session_derivation_type(file_path)
 
                 # Skip if original_only and session is trimmed
                 if original_only and is_trimmed:
@@ -173,6 +175,7 @@ def search_all_agents(
                     "branch": session[7] if len(session) > 7 else "",
                     "claude_home": home,
                     "is_trimmed": is_trimmed,
+                    "derivation_type": derivation_type,
                     "is_sidechain": is_sidechain,
                 }
                 all_sessions.append(session_dict)
@@ -194,6 +197,7 @@ def search_all_agents(
                 for session in sessions:
                     file_path = Path(session.get("file_path", ""))
                     is_trimmed = is_trimmed_session(file_path)
+                    derivation_type = get_session_derivation_type(file_path)
 
                     # Skip if original_only and session is trimmed
                     if original_only and is_trimmed:
@@ -212,6 +216,7 @@ def search_all_agents(
                         "branch": session.get("branch", ""),
                         "file_path": session.get("file_path", ""),
                         "is_trimmed": is_trimmed,
+                        "derivation_type": derivation_type,
                         "is_sidechain": False,  # Codex doesn't have sidechain sessions
                     }
                     all_sessions.append(session_dict)
@@ -248,7 +253,7 @@ def display_interactive_ui(
 
     table.add_column("#", style="bold yellow", width=3)
     table.add_column("Agent", style="magenta", width=6)
-    table.add_column("Session ID", style="dim", width=10)
+    table.add_column("Session ID", style="dim", width=18)
     table.add_column("Project", style="green")
     table.add_column("Branch", style="cyan")
     table.add_column("Date", style="blue")
@@ -264,10 +269,13 @@ def display_interactive_ui(
 
         branch_display = session.get("branch", "") or "N/A"
 
-        # Add indicators for trimmed and sidechain sessions
+        # Add indicators for derived and sidechain sessions
         session_id_display = session["session_id"][:8] + "..."
-        if session.get("is_trimmed", False):
-            session_id_display += " *"
+        derivation_type = session.get("derivation_type")
+        if derivation_type == "trimmed":
+            session_id_display += " (t)"
+        elif derivation_type == "continued":
+            session_id_display += " (c)"
         if session.get("is_sidechain", False):
             session_id_display += " (sub)"
 
@@ -284,13 +292,16 @@ def display_interactive_ui(
 
     ui_console.print(table)
 
-    # Show footnotes if any sessions are trimmed or sidechain
-    has_trimmed = any(s.get("is_trimmed", False) for s in display_sessions)
+    # Show footnotes if any sessions are derived or sidechain
+    has_trimmed = any(s.get("derivation_type") == "trimmed" for s in display_sessions)
+    has_continued = any(s.get("derivation_type") == "continued" for s in display_sessions)
     has_sidechain = any(s.get("is_sidechain", False) for s in display_sessions)
-    if has_trimmed or has_sidechain:
+    if has_trimmed or has_continued or has_sidechain:
         footnotes = []
         if has_trimmed:
-            footnotes.append("* = Trimmed session (reduced from original)")
+            footnotes.append("(t) = Trimmed session")
+        if has_continued:
+            footnotes.append("(c) = Continued session")
         if has_sidechain:
             footnotes.append("(sub) = Sub-agent session (not directly resumable)")
         ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")

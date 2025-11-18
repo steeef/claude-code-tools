@@ -11,17 +11,19 @@ the context limit. It:
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
 import shlex
 import subprocess
 import sys
+from datetime import timezone
 from pathlib import Path
 from typing import Optional
 
 from claude_code_tools.export_claude_session import export_session_programmatic
-from claude_code_tools.session_utils import resolve_session_path
+from claude_code_tools.session_utils import get_claude_home, resolve_session_path
 
 
 def strip_ansi_codes(text: str) -> str:
@@ -47,6 +49,13 @@ def claude_continue(
     """
     print("🔄 Claude Continue - Transferring context to new session")
     print()
+
+    # Resolve old session file path (needed for metadata)
+    try:
+        old_session_file = resolve_session_path(session_id_or_path, claude_home=claude_home)
+    except FileNotFoundError as e:
+        print(f"❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # Step 1: Export the old session to text file
     print("Step 1: Exporting old session to text file...")
@@ -124,6 +133,60 @@ When done exploring, state your understanding of the most recent task to me."""
         if e.stderr:
             print(f"   {e.stderr}", file=sys.stderr)
         sys.exit(1)
+
+    # Inject continue_metadata into new session file
+    try:
+        # Construct new session file path
+        home_dir = get_claude_home(claude_home)
+        cwd = Path.cwd()
+        encoded_path = str(cwd).replace("/", "-")
+        new_session_file = home_dir / "projects" / encoded_path / f"{new_session_id}.jsonl"
+
+        # Determine path format for exported chat log (relative if in cwd, absolute otherwise)
+        try:
+            chat_log_relative = chat_log.relative_to(cwd)
+            chat_log_path = str(chat_log_relative)
+        except ValueError:
+            # Not in current directory, use absolute path
+            chat_log_path = str(chat_log.absolute())
+
+        # Create metadata
+        metadata_fields = {
+            "continue_metadata": {
+                "parent_session_id": old_session_file.stem,
+                "parent_session_file": str(old_session_file.absolute()),
+                "exported_chat_log": chat_log_path,
+                "continued_at": datetime.datetime.now(timezone.utc).isoformat(),
+            }
+        }
+
+        # Read the new session file and modify first line
+        if new_session_file.exists():
+            with open(new_session_file, "r") as f:
+                lines = f.readlines()
+
+            if lines:
+                try:
+                    # Parse first line and add metadata fields
+                    first_line_data = json.loads(lines[0])
+                    first_line_data.update(metadata_fields)
+                    lines[0] = json.dumps(first_line_data) + "\n"
+
+                    # Write back the modified file
+                    with open(new_session_file, "w") as f:
+                        f.writelines(lines)
+
+                    if verbose:
+                        print(f"✅ Added continue_metadata to new session")
+                        print()
+                except json.JSONDecodeError:
+                    # If first line is malformed, skip adding metadata
+                    if verbose:
+                        print(f"⚠️  Could not add metadata (first line malformed)", file=sys.stderr)
+    except Exception as e:
+        # Don't fail the whole operation if metadata injection fails
+        if verbose:
+            print(f"⚠️  Could not add continue_metadata: {e}", file=sys.stderr)
 
     # Step 4: Resume in interactive mode - hand off to Claude
     print("🚀 Launching interactive Claude Code session...")

@@ -23,13 +23,13 @@ from .session_utils import get_claude_home, resolve_session_path
 
 def is_trimmed_session(session_file: Path) -> bool:
     """
-    Check if a session file is a trimmed session.
+    Check if a session file is a derived session (trimmed or continued).
 
     Args:
         session_file: Path to session JSONL file.
 
     Returns:
-        True if session has trim_metadata, False otherwise.
+        True if session has trim_metadata or continue_metadata, False otherwise.
     """
     import json
 
@@ -43,9 +43,40 @@ def is_trimmed_session(session_file: Path) -> bool:
                 return False
 
             data = json.loads(first_line)
-            return "trim_metadata" in data
+            return "trim_metadata" in data or "continue_metadata" in data
     except (json.JSONDecodeError, IOError):
         return False
+
+
+def get_session_derivation_type(session_file: Path) -> Optional[str]:
+    """
+    Get the derivation type of a session file.
+
+    Args:
+        session_file: Path to session JSONL file.
+
+    Returns:
+        "trimmed", "continued", or None if not a derived session.
+    """
+    import json
+
+    if not session_file.exists():
+        return None
+
+    try:
+        with open(session_file, "r") as f:
+            first_line = f.readline().strip()
+            if not first_line:
+                return None
+
+            data = json.loads(first_line)
+            if "trim_metadata" in data:
+                return "trimmed"
+            elif "continue_metadata" in data:
+                return "continued"
+            return None
+    except (json.JSONDecodeError, IOError):
+        return None
 
 
 def extract_session_info(input_file: Path, agent: str) -> dict:

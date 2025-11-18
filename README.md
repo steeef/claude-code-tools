@@ -17,8 +17,8 @@ and other CLI coding agents.
 - [🤖 smart-trim (EXPERIMENTAL) — intelligent trimming using parallel Claude SDK agents](#smart-trim-experimental)
 - [📄 export-claude-session — export Claude sessions using built-in format](#export-claude-session)
 - [📄 export-codex-session — export Codex sessions using built-in format](#export-codex-session)
-- [📍 find-original-session — trace trimmed sessions to their source](#find-original-session)
-- [🌳 find-trimmed-sessions — find all trimmed versions of a session](#find-trimmed-sessions)
+- [📍 find-original-session — trace derived sessions to their source](#find-original-session)
+- [🌳 find-derived-sessions — find all derived versions of a session](#find-derived-sessions)
 - [🔐 vault — encrypted .env backup & sync](#vault)
 - [🔍 env-safe — inspect .env safely without values](#env-safe)
 - [🛡️ Claude Code Safety Hooks — guardrails for bash, git, env, files](#claude-code-safety-hooks)
@@ -83,8 +83,8 @@ This gives you:
 - `smart-trim` - (EXPERIMENTAL) Intelligent trimming using parallel Claude SDK agents
 - `export-claude-session` - Export Claude sessions using Claude Code's built-in format
 - `export-codex-session` - Export Codex sessions using Claude Code's built-in format
-- `find-original-session` - Trace trimmed sessions back to their original source
-- `find-trimmed-sessions` - Find all trimmed descendants of a session
+- `find-original-session` - Trace derived sessions (trimmed or continued) back to their original source
+- `find-derived-sessions` - Find all derived descendants (trimmed or continued) of a session
 - `delete-session` - Safely delete session files with confirmation
 - `vault` - Encrypted backup for your .env files
 - `env-safe` - Safely inspect .env files without exposing values
@@ -265,11 +265,12 @@ fs -g --original
 - **Multi-agent search**: Searches both Claude Code and Codex sessions simultaneously
 - **Unified display**: Single table showing sessions from all agents with agent column
 - **Session indicators**:
-  - Star (*) next to trimmed sessions
-  - "(sub)" next to sub-agent sessions (created by Task tool, not directly resumable)
-  - Explanatory footnotes for both indicators
-- **Original session filtering**: Use `--original` flag to show only non-trimmed
-  sessions
+  - (t) for trimmed sessions
+  - (c) for continued sessions
+  - (sub) for sub-agent sessions (created by Task tool, not directly resumable)
+  - Explanatory footnotes for all indicators
+- **Original session filtering**: Use `--original` flag to show only non-derived
+  sessions (excludes trimmed and continued sessions)
 - **Smart resume**: Automatically uses correct CLI tool (`claude` or `codex`) based on selected session
 - **Persistent directory changes**: Using the `fs` wrapper ensures you stay in the session's directory after exit
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
@@ -377,11 +378,12 @@ fcs -g --original
 
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
 - **Session indicators**:
-  - Star (*) next to trimmed sessions
-  - "(sub)" next to sub-agent sessions (created by Task tool, not directly resumable)
-  - Explanatory footnotes for both indicators
-- **Original session filtering**: Use `--original` flag to show only non-trimmed
-  sessions
+  - (t) for trimmed sessions
+  - (c) for continued sessions
+  - (sub) for sub-agent sessions (created by Task tool, not directly resumable)
+  - Explanatory footnotes for all indicators
+- **Original session filtering**: Use `--original` flag to show only non-derived
+  sessions (excludes trimmed and continued sessions)
 - **Action menu** after session selection:
   - **For normal sessions**: Full menu with resume options
     - Resume as-is (default)
@@ -473,10 +475,13 @@ fcs-codex -g --original
 ### Features
 
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
-- **Trimmed session indicator**: Star (*) next to trimmed sessions with explanatory
-  footnote (Note: Codex doesn't have sub-agent sessions like Claude Code)
-- **Original session filtering**: Use `--original` flag to show only non-trimmed
-  sessions
+- **Derived session indicators**:
+  - (t) for trimmed sessions
+  - (c) for continued sessions
+  - Explanatory footnotes for all indicators
+  - Note: Codex doesn't have sub-agent sessions like Claude Code
+- **Original session filtering**: Use `--original` flag to show only non-derived
+  sessions (excludes trimmed and continued sessions)
 - **Action menu** after session selection:
   - Resume as-is (default)
   - Trim session (heuristic) and resume trimmed copy
@@ -1010,15 +1015,15 @@ The export option appears in the session action menus, making it easy to create 
 <a id="find-original-session"></a>
 ## 📍 find-original-session
 
-Trace a trimmed session back to its original source file. When you have a
-trimmed session and want to find the original session it was created from,
-this tool follows the parent file chain.
+Trace a derived session (trimmed or continued) back to its original source file.
+When you have a derived session and want to find the original session it was
+created from, this tool follows the parent file chain.
 
 ### Usage
 
 ```bash
-# Find the original session for a trimmed session (by file path)
-find-original-session trimmed-session.jsonl
+# Find the original session for a derived session (by file path)
+find-original-session derived-session.jsonl
 
 # Find by session ID (supports partial matching)
 find-original-session abc123-def456-789
@@ -1028,7 +1033,7 @@ find-original-session abc123  # Partial ID works if unique
 find-original-session ~/.claude/ai-chats/abc123.jsonl
 find-original-session ~/.codex/sessions/2024/11/14/rollout-*.jsonl
 
-# Verbose mode shows the parent chain
+# Verbose mode shows the parent chain with derivation types
 find-original-session abc123 --verbose
 ```
 
@@ -1036,44 +1041,53 @@ find-original-session abc123 --verbose
 
 ### Features
 
-- **Parent chain traversal**: Follows the `trim_metadata.parent_file` chain
-  back to the original
+- **Parent chain traversal**: Follows both `trim_metadata.parent_file` and
+  `continue_metadata.parent_session_file` chains back to the original
 - **Multi-agent support**: Works with both Claude Code and Codex sessions
-- **Validation**: Verifies that target file is actually a trimmed session
+- **Derivation tracking**: Shows derivation type (trimmed/continued) and
+  exported chat logs for continued sessions
 - **Clear output**: Shows the full path to the original session file
 
 ### Example
 
 ```bash
-$ find-original-session ~/.claude/ai-chats/abc123.jsonl
-Original session: ~/.claude/ai-chats/def456.jsonl
+$ find-original-session ~/.claude/ai-chats/abc123.jsonl --verbose
+Following parent links...
+
+Parent chain:
+/Users/user/.claude/ai-chats/abc123.jsonl (continued)
+    Exported chat: exported-sessions/20251117-claude-session-abc123.txt
+└─> /Users/user/.claude/ai-chats/def456.jsonl (trimmed)
+  └─> /Users/user/.claude/ai-chats/original.jsonl
+
+/Users/user/.claude/ai-chats/original.jsonl
 ```
 
-<a id="find-trimmed-sessions"></a>
-## 🌳 find-trimmed-sessions
+<a id="find-derived-sessions"></a>
+## 🌳 find-derived-sessions
 
-Find all trimmed sessions that were derived from an original session. This is
-the inverse of `find-original-session` - it searches for all sessions that
-have the specified session as their parent.
+Find all derived sessions (trimmed or continued) from an original session. This is
+the inverse of `find-original-session` - it searches for all sessions that have
+the specified session as their parent.
 
 ### Usage
 
 ```bash
-# Find all trimmed descendants of a session (by file path)
-find-trimmed-sessions original-session.jsonl
+# Find all derived descendants of a session (tree view by default)
+find-derived-sessions original-session.jsonl
 
 # Find by session ID (supports partial matching)
-find-trimmed-sessions abc123-def456-789
-find-trimmed-sessions abc123  # Partial ID works if unique
+find-derived-sessions abc123-def456-789
+find-derived-sessions abc123  # Partial ID works if unique
 
-# Show results in tree format
-find-trimmed-sessions original-session.jsonl --tree
+# Show results in flat list instead of tree
+find-derived-sessions original-session.jsonl --flat
 
-# Show statistics about each trimmed session
-find-trimmed-sessions original-session.jsonl --stats
+# Show statistics about each derived session
+find-derived-sessions original-session.jsonl --stats
 
 # Combine tree view with statistics
-find-trimmed-sessions original-session.jsonl --tree --stats
+find-derived-sessions original-session.jsonl --stats
 ```
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
@@ -1082,24 +1096,38 @@ find-trimmed-sessions original-session.jsonl --tree --stats
 
 - **Recursive search**: Finds all descendants, not just direct children
 - **Multi-agent support**: Works with both Claude Code and Codex sessions
-- **Tree visualization**: Optional tree view showing parent-child relationships
-- **Statistics display**: Shows trim stats (tools trimmed, chars saved) for each
-  descendant
-- **Sorted output**: Results sorted by creation time (most recent first)
+- **Tree visualization**: Tree view by default showing parent-child relationships
+  with derivation types (trimmed/continued)
+- **Exported log tracking**: Shows exported chat log paths for continued sessions
+- **Statistics display**: Shows metadata for each derived session (trim stats for
+  trimmed sessions, continuation info for continued sessions)
 
 ### Example
 
 ```bash
-$ find-trimmed-sessions ~/.claude/ai-chats/abc123.jsonl --tree
-Original: ~/.claude/ai-chats/abc123.jsonl
+$ find-derived-sessions ~/.claude/ai-chats/original.jsonl
+/Users/user/.claude/ai-chats/original.jsonl
+├─ /Users/user/.claude/ai-chats/def456.jsonl (trimmed)
+│  └─ /Users/user/.claude/ai-chats/ghi789.jsonl (continued)
+│     → exported-sessions/20251117-claude-session-ghi789.txt
+└─ /Users/user/.claude/ai-chats/jkl012.jsonl (trimmed)
 
-Trimmed descendants:
-├── def456.jsonl (2024-11-14 10:30:15)
-│   55 tools, 8 assistant msgs, 268K chars saved
-└── ghi789.jsonl (2024-11-14 11:45:22)
-    12 tools, 3 assistant msgs, 45K chars saved
+$ find-derived-sessions abc123 --stats
+/Users/user/.claude/ai-chats/original.jsonl
+├─ /Users/user/.claude/ai-chats/def456.jsonl (trimmed)
+│
+│  Type: trimmed
+│  Tools trimmed: 55
+│  Assistant msgs trimmed: 8
+│  Tokens saved: 268,432
+│
+└─ /Users/user/.claude/ai-chats/ghi789.jsonl (continued)
+   → exported-sessions/20251117-claude-session-ghi789.txt
 
-Total: 2 trimmed sessions found
+   Type: continued
+   Parent session: def456
+   Continued at: 2025-11-17T19:30:00Z
+   Exported chat log: exported-sessions/20251117-claude-session-ghi789.txt
 ```
 
 <a id="delete-session"></a>

@@ -464,6 +464,11 @@ def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str
             footnotes.append("(sub) = Sub-agent session (not directly resumable)")
         ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")
 
+    # Auto-select if only one result
+    if len(display_sessions) == 1:
+        ui_console.print(f"\n[yellow]Auto-selecting only match: {display_sessions[0][0][:16]}...[/yellow]")
+        return display_sessions[0]
+
     ui_console.print("\n[bold]Select a session:[/bold]")
     ui_console.print(f"  • Enter number (1-{len(display_sessions)}) to select")
     ui_console.print("  • Press Enter to cancel\n")

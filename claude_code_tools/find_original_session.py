@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Find the original (untrimmed) session by following parent links.
+Find the original session by following parent links.
 
-Given a session file (trimmed or original), follow the parent_file links
-in trim_metadata backwards until reaching the original session.
+Given a session file (trimmed, continued, or original), follow the parent_file
+or parent_session_file links in trim_metadata/continue_metadata backwards
+until reaching the original session.
 """
 
 import argparse
@@ -55,13 +56,19 @@ def find_original_session(session_file: Path) -> Path:
             # Not JSON - this is the original
             return current
 
-        # Check if this has trim_metadata field
+        # Check if this has trim_metadata or continue_metadata field
+        parent_file = None
+
         if "trim_metadata" in data:
             trim_meta = data["trim_metadata"]
             parent_file = trim_meta.get("parent_file")
-            if parent_file:
-                current = Path(parent_file)
-                continue
+        elif "continue_metadata" in data:
+            continue_meta = data["continue_metadata"]
+            parent_file = continue_meta.get("parent_session_file")
+
+        if parent_file:
+            current = Path(parent_file)
+            continue
 
         # No parent found, this is the original
         return current
@@ -115,29 +122,47 @@ Examples:
             visited = []
 
             while True:
-                visited.append(str(current))
+                # Store current session info
+                session_info = {"path": str(current)}
 
                 with open(current) as f:
                     first_line = f.readline().strip()
 
                 try:
                     data = json.loads(first_line)
+                    parent_file = None
+
                     if "trim_metadata" in data:
+                        session_info["type"] = "trimmed"
                         trim_meta = data["trim_metadata"]
                         parent_file = trim_meta.get("parent_file")
-                        if parent_file:
-                            current = Path(parent_file)
-                            continue
+                    elif "continue_metadata" in data:
+                        session_info["type"] = "continued"
+                        continue_meta = data["continue_metadata"]
+                        parent_file = continue_meta.get("parent_session_file")
+                        session_info["exported_log"] = continue_meta.get("exported_chat_log", "")
+                    else:
+                        session_info["type"] = "original"
+
+                    visited.append(session_info)
+
+                    if parent_file:
+                        current = Path(parent_file)
+                        continue
                 except json.JSONDecodeError:
-                    pass
+                    session_info["type"] = "original"
+                    visited.append(session_info)
 
                 break
 
             print("\nParent chain:", file=sys.stderr)
-            for i, path in enumerate(visited):
+            for i, info in enumerate(visited):
                 indent = "  " * i
                 arrow = "└─> " if i > 0 else ""
-                print(f"{indent}{arrow}{path}", file=sys.stderr)
+                session_type = f" ({info['type']})" if info["type"] != "original" else ""
+                print(f"{indent}{arrow}{info['path']}{session_type}", file=sys.stderr)
+                if "exported_log" in info and info["exported_log"]:
+                    print(f"{indent}    Exported chat: {info['exported_log']}", file=sys.stderr)
             print(file=sys.stderr)
 
         original = find_original_session(session_path)
