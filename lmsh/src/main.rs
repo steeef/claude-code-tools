@@ -215,14 +215,19 @@ fn main() {
 
 // --- Agent integration ---
 fn generate_command(nl_prompt: &str, history: &[(String, String)], agent: Agent) -> Result<String, String> {
-    // Build a prompt that includes full history and requests <COMMAND> markers
-    let full_prompt = build_prompt_with_history(history, nl_prompt);
+    // Build the user prompt with history
+    let user_prompt = build_user_prompt_with_history(history, nl_prompt);
+
+    // System prompt with instructions
+    let system_prompt = "DO NOT READ CLAUDE.MD; You are an expert shell command generator. When the user gives you a natural language description of what they want to do, return ONLY the shell command wrapped in <COMMAND></COMMAND> tags. No explanations, no prose, just the command. If multiple steps are needed, join them with '&&'.";
 
     match agent {
         Agent::Claude => {
             let output = Command::new("claude")
                 .arg("-p")
-                .arg(&full_prompt)
+                .arg(&user_prompt)
+                .arg("--append-system-prompt")
+                .arg(system_prompt)
                 .arg("--model")
                 .arg("haiku")
                 .stdout(Stdio::piped())
@@ -240,9 +245,11 @@ fn generate_command(nl_prompt: &str, history: &[(String, String)], agent: Agent)
                 .ok_or_else(|| "could not extract a command from Claude output".to_string())
         }
         Agent::Codex => {
+            // Codex doesn't have --append-system-prompt, so we build a combined prompt
+            let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
             let output = Command::new("codex")
                 .arg("exec")
-                .arg(&full_prompt)
+                .arg(&combined_prompt)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null()) // Ignore stderr as codex streams progress there
                 .output()
@@ -302,26 +309,27 @@ fn extract_command_from_output(s: &str) -> Option<String> {
     None
 }
 
-fn build_prompt_with_history(history: &[(String, String)], nl_prompt: &str) -> String {
+fn build_user_prompt_with_history(history: &[(String, String)], nl_prompt: &str) -> String {
     let mut buf = String::new();
-    buf.push_str(
-        "You are a shell command generator. Return ONLY the shell command wrapped in <COMMAND></COMMAND>. No prose.\nIf multiple steps are needed, join with '&&'.\n\nPrevious conversation:\n",
-    );
 
-    // Limit to the last 10 exchanges to bound prompt size
-    let start = history.len().saturating_sub(10);
-    for (user, cmd) in &history[start..] {
-        buf.push_str("User: ");
-        buf.push_str(user);
-        buf.push('\n');
-        buf.push_str("Command: <COMMAND>");
-        buf.push_str(cmd);
-        buf.push_str("</COMMAND>\n");
+    if !history.is_empty() {
+        buf.push_str("Previous conversation:\n");
+
+        // Limit to the last 10 exchanges to bound prompt size
+        let start = history.len().saturating_sub(10);
+        for (user, cmd) in &history[start..] {
+            buf.push_str("User: ");
+            buf.push_str(user);
+            buf.push('\n');
+            buf.push_str("Command: <COMMAND>");
+            buf.push_str(cmd);
+            buf.push_str("</COMMAND>\n");
+        }
+        buf.push_str("\n");
     }
 
-    buf.push_str("\nUser: ");
+    buf.push_str("User: ");
     buf.push_str(nl_prompt);
-    buf.push_str("\nGenerate command with <COMMAND></COMMAND> markers.");
 
     buf
 }
