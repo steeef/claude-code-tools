@@ -321,6 +321,25 @@ def execute_action(
             )
             handle_smart_trim_resume_codex(str(session_file), codex_home)
 
+    elif action == "continue":
+        # Continue with context in fresh session
+        from claude_code_tools.claude_continue import claude_continue
+
+        # Only works for Claude Code sessions for now
+        if agent == "claude":
+            print("\n🔄 Starting continuation in fresh session...")
+            claude_continue(
+                str(session_file),
+                claude_home=claude_home,
+                verbose=False,
+            )
+        else:
+            print(
+                "\n⚠️  Note: Continue with context is currently only "
+                "supported for Claude Code sessions.",
+                file=sys.stderr,
+            )
+
 
 def main():
     """Main entry point for session-menu CLI."""

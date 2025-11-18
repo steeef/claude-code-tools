@@ -617,6 +617,28 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
         elif agent == "codex":
             handle_export_codex_session(session.get("file_path", ""))
 
+    elif action == "continue":
+        # Continue with context in fresh session
+        if agent == "claude":
+            from claude_code_tools.claude_continue import claude_continue
+            file_path = get_claude_session_file_path(
+                session["session_id"],
+                session["cwd"],
+                claude_home=session.get("claude_home"),
+            )
+            print("\n🔄 Starting continuation in fresh session...")
+            claude_continue(
+                file_path,
+                claude_home=session.get("claude_home"),
+                verbose=False,
+            )
+        elif agent == "codex":
+            print(
+                "\n⚠️  Note: Continue with context is currently only "
+                "supported for Claude Code sessions.",
+                file=sys.stderr,
+            )
+
 
 def main():
     parser = argparse.ArgumentParser(

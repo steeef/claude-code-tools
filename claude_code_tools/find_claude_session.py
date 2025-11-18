@@ -1046,6 +1046,16 @@ To persist directory changes when resuming sessions:
             elif action == "export":
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
                 handle_export_session(session_file_path)
+            elif action == "continue":
+                # Continue with context in fresh session
+                from claude_code_tools.claude_continue import claude_continue
+                session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
+                print("\n🔄 Starting continuation in fresh session...")
+                claude_continue(
+                    session_file_path,
+                    claude_home=args.claude_home,
+                    verbose=False,
+                )
     else:
         # Fallback: print session IDs as before
         if not args.shell:

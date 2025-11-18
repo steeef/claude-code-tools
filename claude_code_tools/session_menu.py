@@ -160,10 +160,11 @@ def show_action_menu(
         print("3. Copy session file to file (*.jsonl) or directory")
         print("4. Clone session and resume clone")
         print("5. Export to text file (.txt)")
+        print("6. Continue with context in fresh session")
         print()
 
         try:
-            choice = input("Enter choice [1-5] (or Enter for 1): ").strip()
+            choice = input("Enter choice [1-6] (or Enter for 1): ").strip()
             if not choice or choice == "1":
                 # Show resume submenu
                 return show_resume_submenu(stderr_mode=stderr_mode)
@@ -175,6 +176,8 @@ def show_action_menu(
                 return "clone"
             elif choice == "5":
                 return "export"
+            elif choice == "6":
+                return "continue"
             else:
                 print("Invalid choice.")
                 return None
