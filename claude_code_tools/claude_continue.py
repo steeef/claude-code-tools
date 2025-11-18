@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Optional
 
 from claude_code_tools.export_claude_session import export_session_programmatic
+from claude_code_tools.session_lineage import get_continuation_lineage
 from claude_code_tools.session_utils import get_claude_home, resolve_session_path
 
 
@@ -72,6 +73,36 @@ def claude_continue(
         print(f"❌ Error exporting session: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Step 1.5: Get full continuation lineage (all parent sessions with exports)
+    print("Step 1.5: Tracing continuation lineage...")
+
+    try:
+        lineage = get_continuation_lineage(
+            old_session_file, export_missing=True
+        )
+
+        if lineage:
+            print(f"✅ Found {len(lineage)} session(s) in continuation chain:")
+            for node in lineage:
+                derivation_label = f"({node.derivation_type})" if node.derivation_type else ""
+                print(f"   - {node.session_file.name} {derivation_label}")
+                if node.exported_file:
+                    print(f"     Export: {node.exported_file}")
+            print()
+
+        # Collect all exported files in chronological order
+        all_exported_files = [
+            node.exported_file for node in lineage if node.exported_file
+        ]
+        # Add the current session's export at the end
+        all_exported_files.append(chat_log)
+
+    except Exception as e:
+        print(f"⚠️  Warning: Could not trace lineage: {e}", file=sys.stderr)
+        # Fall back to just the current session
+        all_exported_files = [chat_log]
+        lineage = []
+
     # Step 2: Create new session with dummy message
     print("Step 2: Creating new Claude Code session...")
 
@@ -102,10 +133,13 @@ def claude_continue(
         print(f"   stderr: {e.stderr}", file=sys.stderr)
         sys.exit(1)
 
-    # Step 3: Have Claude analyze the chat log with parallel sub-agents
-    print("Step 3: 🤖 Analyzing old session with parallel sub-agents...")
+    # Step 3: Have Claude analyze the chat log(s) with parallel sub-agents
+    print("Step 3: 🤖 Analyzing session history with parallel sub-agents...")
 
-    analysis_prompt = f"""There is a log of a past conversation with an AI agent in this file: {chat_log}. We were running out of context, so I exported the chat log to that file.
+    # Build prompt based on number of exported files
+    if len(all_exported_files) == 1:
+        # Simple case: just the current session
+        analysis_prompt = f"""There is a log of a past conversation with an AI agent in this file: {chat_log}. We were running out of context, so I exported the chat log to that file.
 
 Strategically use PARALLEL SUB-AGENTS to explore {chat_log} (which may be very long) so that YOU have proper CONTEXT to continue the task that the agent was working on at the end of that chat.
 
@@ -114,6 +148,33 @@ DO NOT TRY TO READ {chat_log} by YOURSELF! To save your own context, you must us
 If in this conversation you need more information about what happened during that previous conversation/session, you can again use a sub-agent(s) to explore {chat_log}
 
 When done exploring, state your understanding of the most recent task to me."""
+    else:
+        # Complex case: multiple sessions in the continuation chain
+        file_list = "\n".join([f"{i+1}. {path}" for i, path in enumerate(all_exported_files)])
+
+        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work was continued across multiple sessions as we ran out of context. Here are ALL the exported chat logs in CHRONOLOGICAL ORDER (oldest to newest):
+
+{file_list}
+
+Each session was a continuation of the previous one. The LAST file ({all_exported_files[-1]}) is the most recent session that ran out of context.
+
+Strategically use PARALLEL SUB-AGENTS to explore ALL these files so that YOU have proper CONTEXT to continue the task. You should understand:
+- The original task and requirements
+- How the work progressed across sessions
+- What was accomplished in each continuation
+- The current state and what needs to be done next
+
+DO NOT TRY TO READ these files by YOURSELF! To save your own context, you must use parallel sub-agents to explore these files. Consider:
+- Exploring the beginning of the first file to understand the original task
+- Exploring the end of each continuation to see what was accomplished
+- Exploring the most recent file ({all_exported_files[-1]}) thoroughly to understand the current state
+
+If later in this conversation you need more information about what happened during those previous sessions, you can again use sub-agent(s) to explore the relevant files.
+
+When done exploring, state your understanding of the full task history and the most recent work to me."""
+
+    print(f"   Analyzing {len(all_exported_files)} exported session(s)...")
+    print()
 
     try:
         # Send analysis prompt - suppress output since we'll see it in interactive mode

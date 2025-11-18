@@ -8,12 +8,13 @@ until reaching the original session.
 """
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
-from typing import Optional
 
+from claude_code_tools.session_lineage import (
+    get_full_lineage_chain,
+    get_parent_info,
+)
 from claude_code_tools.session_utils import resolve_session_path
 
 
@@ -31,47 +32,18 @@ def find_original_session(session_file: Path) -> Path:
         ValueError: If circular reference detected.
         FileNotFoundError: If parent file not found.
     """
-    current = session_file.absolute()
-    visited = set()
+    if not session_file.exists():
+        raise FileNotFoundError(f"Session file not found: {session_file}")
 
-    while True:
-        if current in visited:
-            raise ValueError(f"Circular reference detected at {current}")
-        visited.add(current)
+    # Get the full lineage chain (newest to oldest)
+    chain = get_full_lineage_chain(session_file)
 
-        if not current.exists():
-            raise FileNotFoundError(f"Session file not found: {current}")
+    # The last item in the chain is the original
+    if chain:
+        return chain[-1][0]
 
-        # Read first line to check for trim_metadata
-        try:
-            with open(current) as f:
-                first_line = f.readline().strip()
-        except IOError as e:
-            raise IOError(f"Failed to read {current}: {e}")
-
-        # Try to parse as JSON
-        try:
-            data = json.loads(first_line)
-        except json.JSONDecodeError:
-            # Not JSON - this is the original
-            return current
-
-        # Check if this has trim_metadata or continue_metadata field
-        parent_file = None
-
-        if "trim_metadata" in data:
-            trim_meta = data["trim_metadata"]
-            parent_file = trim_meta.get("parent_file")
-        elif "continue_metadata" in data:
-            continue_meta = data["continue_metadata"]
-            parent_file = continue_meta.get("parent_session_file")
-
-        if parent_file:
-            current = Path(parent_file)
-            continue
-
-        # No parent found, this is the original
-        return current
+    # If chain is empty, the current file is the original
+    return session_file
 
 
 def main() -> None:
@@ -118,51 +90,36 @@ Examples:
     try:
         if args.verbose:
             print("Following parent links...", file=sys.stderr)
-            current = session_path.absolute()
-            visited = []
 
-            while True:
-                # Store current session info
-                session_info = {"path": str(current)}
-
-                with open(current) as f:
-                    first_line = f.readline().strip()
-
-                try:
-                    data = json.loads(first_line)
-                    parent_file = None
-
-                    if "trim_metadata" in data:
-                        session_info["type"] = "trimmed"
-                        trim_meta = data["trim_metadata"]
-                        parent_file = trim_meta.get("parent_file")
-                    elif "continue_metadata" in data:
-                        session_info["type"] = "continued"
-                        continue_meta = data["continue_metadata"]
-                        parent_file = continue_meta.get("parent_session_file")
-                        session_info["exported_log"] = continue_meta.get("exported_chat_log", "")
-                    else:
-                        session_info["type"] = "original"
-
-                    visited.append(session_info)
-
-                    if parent_file:
-                        current = Path(parent_file)
-                        continue
-                except json.JSONDecodeError:
-                    session_info["type"] = "original"
-                    visited.append(session_info)
-
-                break
+            # Get the full lineage chain
+            chain = get_full_lineage_chain(session_path)
 
             print("\nParent chain:", file=sys.stderr)
-            for i, info in enumerate(visited):
+            for i, (path, derivation_type) in enumerate(chain):
                 indent = "  " * i
                 arrow = "└─> " if i > 0 else ""
-                session_type = f" ({info['type']})" if info["type"] != "original" else ""
-                print(f"{indent}{arrow}{info['path']}{session_type}", file=sys.stderr)
-                if "exported_log" in info and info["exported_log"]:
-                    print(f"{indent}    Exported chat: {info['exported_log']}", file=sys.stderr)
+                type_label = (
+                    f" ({derivation_type})"
+                    if derivation_type != "original"
+                    else ""
+                )
+                print(
+                    f"{indent}{arrow}{path}{type_label}", file=sys.stderr
+                )
+
+                # Show exported log if this is a continued session
+                if derivation_type == "continued":
+                    _, _, exported_file = get_parent_info(path)
+                    if exported_file:
+                        # Make exported file path absolute if needed
+                        if not exported_file.is_absolute():
+                            abs_exported = path.parent / exported_file
+                            if abs_exported.exists():
+                                exported_file = abs_exported
+                        print(
+                            f"{indent}    Exported chat: {exported_file}",
+                            file=sys.stderr,
+                        )
             print(file=sys.stderr)
 
         original = find_original_session(session_path)
