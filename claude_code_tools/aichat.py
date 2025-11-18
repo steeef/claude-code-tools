@@ -94,8 +94,8 @@ def find_original(ctx):
 def find_derived(ctx):
     """Find derived sessions (trimmed/continued) from an original."""
     import sys
-    sys.argv = [sys.argv[0].replace('aichat', 'find-derived-sessions')] + ctx.args
-    from claude_code_tools.find_derived_sessions import (
+    sys.argv = [sys.argv[0].replace('aichat', 'find-trimmed-sessions')] + ctx.args
+    from claude_code_tools.find_trimmed_sessions import (
         main as find_derived_main,
     )
     find_derived_main()
