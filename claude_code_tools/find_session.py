@@ -39,6 +39,11 @@ from claude_code_tools.find_codex_session import (
     clone_session as clone_codex_session,
     handle_export_session as handle_export_codex_session,
 )
+from claude_code_tools.session_menu import (
+    show_action_menu as menu_show_action_menu,
+    show_resume_submenu as menu_show_resume_submenu,
+    prompt_suppress_options as menu_prompt_suppress_options,
+)
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
@@ -306,6 +311,11 @@ def display_interactive_ui(
             footnotes.append("(sub) = Sub-agent session (not directly resumable)")
         ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")
 
+    # Auto-select if only one result
+    if len(display_sessions) == 1:
+        ui_console.print(f"\n[yellow]Auto-selecting only match: {display_sessions[0]['session_id'][:16]}...[/yellow]")
+        return display_sessions[0]
+
     ui_console.print("\n[bold]Select a session:[/bold]")
     ui_console.print(f"  • Enter number (1-{len(display_sessions)}) to select")
     ui_console.print("  • Press Enter to cancel\n")
@@ -341,31 +351,7 @@ def display_interactive_ui(
 
 def show_resume_submenu(stderr_mode: bool = False) -> Optional[str]:
     """Show resume options submenu."""
-    output = sys.stderr if stderr_mode else sys.stdout
-
-    print(f"\nResume options:", file=output)
-    print("1. Default, just resume as is (default)", file=output)
-    print("2. Trim session (tool results + assistant messages) and resume", file=output)
-    print(file=output)
-
-    try:
-        if stderr_mode:
-            sys.stderr.write("Enter choice [1-2] (or Enter for 1): ")
-            sys.stderr.flush()
-            choice = sys.stdin.readline().strip()
-        else:
-            choice = input("Enter choice [1-2] (or Enter for 1): ").strip()
-
-        if not choice or choice == "1":
-            return "resume"
-        elif choice == "2":
-            return "suppress_resume"
-        else:
-            print("Invalid choice.", file=output)
-            return None
-    except KeyboardInterrupt:
-        print("\nCancelled.", file=output)
-        return None
+    return menu_show_resume_submenu(stderr_mode=stderr_mode)
 
 
 def prompt_suppress_options(
@@ -377,61 +363,7 @@ def prompt_suppress_options(
     Returns:
         Tuple of (tools, threshold, trim_assistant_messages) or None if cancelled
     """
-    output = sys.stderr if stderr_mode else sys.stdout
-
-    print(f"\nTrim session options:", file=output)
-    print(
-        "Enter tool names to trim (comma-separated, e.g., 'bash,read,edit')",
-        file=output,
-    )
-    print("Or press Enter to trim all tools:", file=output)
-
-    try:
-        if stderr_mode:
-            sys.stderr.write("Tools (or Enter for all): ")
-            sys.stderr.flush()
-            tools_input = sys.stdin.readline().strip()
-        else:
-            tools_input = input("Tools (or Enter for all): ").strip()
-
-        tools = tools_input if tools_input else None
-
-        print(
-            f"\nEnter length threshold in characters (default: 500):",
-            file=output,
-        )
-        if stderr_mode:
-            sys.stderr.write("Threshold (or Enter for 500): ")
-            sys.stderr.flush()
-            threshold_input = sys.stdin.readline().strip()
-        else:
-            threshold_input = input("Threshold (or Enter for 500): ").strip()
-
-        threshold = int(threshold_input) if threshold_input else 500
-
-        print(f"\nTrim assistant messages (optional):", file=output)
-        print("  • Positive number (e.g., 10): Trim first 10 messages exceeding threshold", file=output)
-        print("  • Negative number (e.g., -5): Trim all except last 5 messages exceeding threshold", file=output)
-        print("  • Press Enter to skip (no assistant message trimming)", file=output)
-
-        if stderr_mode:
-            sys.stderr.write("Assistant messages (or Enter to skip): ")
-            sys.stderr.flush()
-            assistant_input = sys.stdin.readline().strip()
-        else:
-            assistant_input = input("Assistant messages (or Enter to skip): ").strip()
-
-        trim_assistant = None
-        if assistant_input:
-            trim_assistant = int(assistant_input)
-
-        return (tools, threshold, trim_assistant)
-    except KeyboardInterrupt:
-        print("\nCancelled.", file=output)
-        return None
-    except ValueError:
-        print("Invalid value entered.", file=output)
-        return None
+    return menu_prompt_suppress_options(stderr_mode=stderr_mode)
 
 
 def append_to_codex_history(
@@ -598,94 +530,14 @@ def handle_suppress_resume(
 
 def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
     """Show action menu for selected session."""
-    output = sys.stderr if stderr_mode else sys.stdout
-
-    print(f"\n=== Session: {session['session_id'][:16]}... ===", file=output)
-    print(f"Agent: {session['agent_display']}", file=output)
-    print(f"Project: {session['project']}", file=output)
-    if session.get("branch"):
-        print(f"Branch: {session['branch']}", file=output)
-
-    is_sidechain = session.get("is_sidechain", False)
-
-    # Check if export is available (Claude and Codex sessions)
-    agent = session.get("agent", "")
-    can_export = (agent in ["claude", "codex"])
-
-    if is_sidechain:
-        print("\n[Note: This is a sub-agent session and cannot be resumed directly]", file=output)
-        print(f"\nWhat would you like to do?", file=output)
-        print("1. Show session file path", file=output)
-        print("2. Copy session file to file (*.jsonl) or directory", file=output)
-        if can_export:
-            print("3. Export to text file (.txt)", file=output)
-        print(file=output)
-
-        max_choice = 3 if can_export else 2
-        prompt_text = f"Enter choice [1-{max_choice}] (or Enter to cancel): "
-
-        try:
-            if stderr_mode:
-                sys.stderr.write(prompt_text)
-                sys.stderr.flush()
-                choice = sys.stdin.readline().strip()
-            else:
-                choice = input(prompt_text).strip()
-
-            if not choice:
-                print("Cancelled.", file=output)
-                return None
-            elif choice == "1":
-                return "path"
-            elif choice == "2":
-                return "copy"
-            elif choice == "3" and can_export:
-                return "export"
-            else:
-                print("Invalid choice.", file=output)
-                return None
-        except KeyboardInterrupt:
-            print("\nCancelled.", file=output)
-            return None
-    else:
-        print(f"\nWhat would you like to do?", file=output)
-        print("1. Resume session (default)", file=output)
-        print("2. Show session file path", file=output)
-        print("3. Copy session file to file (*.jsonl) or directory", file=output)
-        print("4. Clone session and resume clone", file=output)
-        if can_export:
-            print("5. Export to text file (.txt)", file=output)
-        print(file=output)
-
-        max_choice = 5 if can_export else 4
-        prompt_text = f"Enter choice [1-{max_choice}] (or Enter for 1): "
-
-        try:
-            if stderr_mode:
-                # In stderr mode, prompt to stderr so it's visible
-                sys.stderr.write(prompt_text)
-                sys.stderr.flush()
-                choice = sys.stdin.readline().strip()
-            else:
-                choice = input(prompt_text).strip()
-
-            if not choice or choice == "1":
-                # Show resume submenu
-                return show_resume_submenu(stderr_mode)
-            elif choice == "2":
-                return "path"
-            elif choice == "3":
-                return "copy"
-            elif choice == "4":
-                return "clone"
-            elif choice == "5" and can_export:
-                return "export"
-            else:
-                print("Invalid choice.", file=output)
-                return None
-        except KeyboardInterrupt:
-            print("\nCancelled.", file=output)
-            return None
+    return menu_show_action_menu(
+        session_id=session['session_id'],
+        agent=session.get('agent', 'unknown'),
+        project_name=session['project'],
+        git_branch=session.get('branch'),
+        is_sidechain=session.get('is_sidechain', False),
+        stderr_mode=stderr_mode,
+    )
 
 
 def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:

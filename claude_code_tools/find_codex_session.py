@@ -24,6 +24,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 
+from claude_code_tools.session_menu import (
+    show_action_menu as menu_show_action_menu,
+    show_resume_submenu as menu_show_resume_submenu,
+    prompt_suppress_options as menu_prompt_suppress_options,
+)
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
@@ -424,26 +429,7 @@ def display_interactive_ui(
 
 def show_resume_submenu() -> Optional[str]:
     """Show resume options submenu."""
-    print(f"\nResume options:")
-    print("1. Default, just resume as is (default)")
-    print("2. Trim session (tool results + assistant messages) and resume")
-    print("3. Smart trim (EXPERIMENTAL - using Claude SDK agents) and resume")
-    print()
-
-    try:
-        choice = input("Enter choice [1-3] (or Enter for 1): ").strip()
-        if not choice or choice == "1":
-            return "resume"
-        elif choice == "2":
-            return "suppress_resume"
-        elif choice == "3":
-            return "smart_trim_resume"
-        else:
-            print("Invalid choice.")
-            return None
-    except KeyboardInterrupt:
-        print("\nCancelled.")
-        return None
+    return menu_show_resume_submenu(stderr_mode=False)
 
 
 def prompt_suppress_options() -> Optional[Tuple[Optional[str], int, Optional[int]]]:
@@ -453,35 +439,7 @@ def prompt_suppress_options() -> Optional[Tuple[Optional[str], int, Optional[int
     Returns:
         Tuple of (tools, threshold, trim_assistant_messages) or None if cancelled
     """
-    print(f"\nTrim session options:")
-    print("Enter tool names to trim (comma-separated, e.g., 'bash,read,edit')")
-    print("Or press Enter to trim all tools:")
-
-    try:
-        tools_input = input("Tools (or Enter for all): ").strip()
-        tools = tools_input if tools_input else None
-
-        print(f"\nEnter length threshold in characters (default: 500):")
-        threshold_input = input("Threshold (or Enter for 500): ").strip()
-        threshold = int(threshold_input) if threshold_input else 500
-
-        print(f"\nTrim assistant messages (optional):")
-        print("  • Positive number (e.g., 10): Trim first 10 messages exceeding threshold")
-        print("  • Negative number (e.g., -5): Trim all except last 5 messages exceeding threshold")
-        print("  • Press Enter to skip (no assistant message trimming)")
-        assistant_input = input("Assistant messages (or Enter to skip): ").strip()
-
-        trim_assistant = None
-        if assistant_input:
-            trim_assistant = int(assistant_input)
-
-        return (tools, threshold, trim_assistant)
-    except KeyboardInterrupt:
-        print("\nCancelled.")
-        return None
-    except ValueError:
-        print("Invalid value entered.")
-        return None
+    return menu_prompt_suppress_options(stderr_mode=False)
 
 
 def append_to_codex_history(
@@ -705,36 +663,14 @@ def show_action_menu(match: dict) -> Optional[str]:
 
     Returns: action choice ('resume', 'path', 'copy', 'clone', 'export') or None if cancelled
     """
-    print(f"\n=== Session: {match['session_id'][:16]}... ===")
-    print(f"Project: {match['project']}")
-    print(f"Branch: {match['branch']}")
-    print(f"\nWhat would you like to do?")
-    print("1. Resume session (default)")
-    print("2. Show session file path")
-    print("3. Copy session file to file (*.jsonl) or directory")
-    print("4. Clone session and resume clone")
-    print("5. Export to text file (.txt)")
-    print()
-
-    try:
-        choice = input("Enter choice [1-5] (or Enter for 1): ").strip()
-        if not choice or choice == "1":
-            # Show resume submenu
-            return show_resume_submenu()
-        elif choice == "2":
-            return "path"
-        elif choice == "3":
-            return "copy"
-        elif choice == "4":
-            return "clone"
-        elif choice == "5":
-            return "export"
-        else:
-            print("Invalid choice.")
-            return None
-    except KeyboardInterrupt:
-        print("\nCancelled.")
-        return None
+    return menu_show_action_menu(
+        session_id=match['session_id'],
+        agent="codex",
+        project_name=match['project'],
+        git_branch=match.get('branch'),
+        is_sidechain=False,
+        stderr_mode=False,
+    )
 
 
 def copy_session_file(file_path: str) -> None:
