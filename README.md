@@ -5,34 +5,39 @@ and other CLI coding agents.
 
 ## Table of Contents
 
-<!--CLAUDE - We should organize this table of contents by category. So the TMX CLI things and the session management command should be basically in a section and all of the session related commands should be nested under there. Yeah. Also, instead of the flat command names, we should use the aichat command names. -->
-
-- [🎮 tmux-cli: Bridging Claude Code and Interactive CLIs — "playwright for the terminal"](#tmux-cli-bridging-claude-code-and-interactive-clis)
 - [🚀 Quick Start](#quick-start)
-- [🎮 tmux-cli Deep Dive](#tmux-cli-deep-dive)
-- [🔄 claude-continue — seamlessly continue sessions running out of context](#claude-continue--seamlessly-continue-sessions-running-out-of-context)
-- [🚀 lmsh (Experimental) — natural language to shell commands](#lmsh-experimental)
-- [🔍 find-session — unified search across Claude & Codex sessions](#find-session)
-- [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
-- [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
-- [🎯 session-menu — direct access to session options by ID or path](#session-menu)
-- [🗜️ trim-session — compress session files for context management](#trim-session)
-- [🤖 smart-trim (EXPERIMENTAL) — intelligent trimming using parallel Claude SDK agents](#smart-trim-experimental)
-- [📄 export-claude-session — export Claude sessions using built-in format](#export-claude-session)
-- [📄 export-codex-session — export Codex sessions using built-in format](#export-codex-session)
-- [📍 find-original-session — trace derived sessions to their source](#find-original-session)
-- [🌳 find-derived-sessions — find all derived versions of a session](#find-derived-sessions)
-- [🔐 vault — encrypted .env backup & sync](#vault)
-- [🔍 env-safe — inspect .env safely without values](#env-safe)
-- [🛡️ Claude Code Safety Hooks — guardrails for bash, git, env, files](#claude-code-safety-hooks)
-- [🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
+- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
+  - [Overview](#tmux-cli-bridging-claude-code-and-interactive-clis)
+  - [Deep Dive](#tmux-cli-deep-dive)
+- [💬 aichat — Session Management](#aichat-session-management)
+  - [aichat find — unified search across agents](#aichat-find)
+  - [aichat find-claude — search Claude sessions](#aichat-find-claude)
+  - [aichat find-codex — search Codex sessions](#aichat-find-codex)
+  - [aichat menu — direct session access](#aichat-menu)
+  - [aichat trim — compress sessions](#aichat-trim)
+  - [aichat smart-trim — intelligent AI-powered trimming](#aichat-smart-trim-experimental)
+  - [aichat export-claude — export Claude sessions](#aichat-export-claude)
+  - [aichat export-codex — export Codex sessions](#aichat-export-codex)
+  - [aichat find-original — trace session lineage](#aichat-find-original)
+  - [aichat find-derived — find derived sessions](#aichat-find-derived)
+  - [aichat delete — safely delete sessions](#aichat-delete)
+  - [aichat continue — continue when out of context](#aichat-continue)
+- [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
+- [🔐 Utilities](#utilities)
+  - [vault — encrypted .env backup](#vault)
+  - [env-safe — safe .env inspection](#env-safe)
+- [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
+- [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
 - [📚 Documentation](#documentation)
 - [📋 Requirements](#requirements)
 - [🛠️ Development](#development)
 - [📄 License](#license)
 
+<a id="tmux-cli-terminal-automation"></a>
+# 🎮 tmux-cli — Terminal Automation
+
 <a id="tmux-cli-bridging-claude-code-and-interactive-clis"></a>
-## 🎮 tmux-cli: Bridging Claude Code and Interactive CLIs
+## Overview: Bridging Claude Code and Interactive CLIs
 
 > **Note**: While the description below focuses on Claude Code, tmux-cli works with any CLI coding agent.
 
@@ -80,11 +85,7 @@ uv tool install git+https://github.com/pchalasani/claude-code-tools
 
 Installation provides both a **unified `aichat` command** (recommended) and individual flat commands for backward compatibility.
 
-**🎯 Recommended: Use `aichat` for session management**
-
-<!--CLAUDE - Showing only these specific command examples risks misunderstanding that these are the only ones available. So it's not clear why we are only showing these. And anyway, we are describing all the commands down below. So do we still need this?
-
-Or if we if we want to keep this, why don't we just call it as examples? -->
+**🎯 Quick Examples:**
 
 ```bash
 aichat --help                 # See all subcommands
@@ -96,26 +97,16 @@ aichat trim session.jsonl     # Compress sessions
 
 **Available Tools:**
 
-Session Management (use `aichat` subcommands - recommended):
-- `aichat find` - Unified search across Claude Code and Codex sessions
-- `aichat find-claude` - Search and resume Claude Code sessions
-- `aichat find-codex` - Search and resume Codex sessions
-- `aichat menu` - Direct access to session options by ID/path
-- `aichat trim` - Compress sessions by trimming content
-- `aichat smart-trim` - (EXPERIMENTAL) Intelligent AI-powered trimming
-- `aichat export-claude` - Export Claude sessions to text
-- `aichat export-codex` - Export Codex sessions to text
-- `aichat find-original` - Trace derived sessions to source
-- `aichat find-derived` - Find all derived versions
-- `aichat delete` - Safely delete sessions
-- `aichat continue` - Transfer context when running out
+Session Management (**aichat** subcommands):
+- All session management tools are available via the unified `aichat` command
+- See the [Session Management](#aichat-session-management) section below for complete documentation
 
 Other Utilities (standalone commands):
 - `tmux-cli` - Interactive CLI controller ("Playwright for terminals")
 - `vault` - Encrypted .env backup and sync
 - `env-safe` - Safe .env inspection without exposing values
 
-**Legacy flat commands** (backward compatible):
+**Backward Compatibility:**
 All session tools are also available as flat commands (`find-claude-session`,
 `find-codex-session`, etc.) for backward compatibility with existing scripts.
 
@@ -177,11 +168,10 @@ For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-ins
 All of this assumes you're familiar and comfortable with tmux, and (like me) run
 all CLI coding sessions inside tmux sessions.
 
-<!--CLAUDE - this is a second-level section , whereas the previous "tmux-cli" is a top-level
-section -- so we should set it up correctly.
-Maybe have ALL of the session-management commands under a single "aichat" section,
-right here. I.e., move the "lmsh" to after the aichat commands.
--->
+<a id="aichat-session-management"></a>
+# 💬 aichat — Session Management
+
+The `aichat` command provides a unified interface for all session-related tools. All subcommands work with both Claude Code and Codex sessions where applicable.
 
 ## 🔄 aichat continue — seamlessly continue sessions running out of context
 
@@ -206,100 +196,35 @@ That's it. Claude will analyze the old session and resume the work in a new sess
 
 **Note**: The legacy `claude-continue` command is still available for backward compatibility.
 
-<a id="lmsh-experimental"></a>
-## 🚀 lmsh (Experimental)
-
-Natural language shell - type what you want in plain English, get an editable command.
-
-```bash
-# Direct usage - translate, edit, execute, then enter interactive mode
-$ lmsh "show me all python files modified today"
-find . -name "*.py" -mtime 0  # <-- Edit before running
-
-# Or interactive mode
-$ lmsh
-lmsh> show recent docker containers
-docker ps -n 5  # <-- Edit before running
-```
-
-**Features:**
-- Rust-based for instant startup (<1ms binary load time)
-- Translates natural language to shell commands using Claude Code CLI
-- Commands are editable before execution - full control
-- Preserves your shell environment
-
-**Note:** Requires Claude Code CLI (`claude` command) to be installed. The translation adds ~2-3s due to Claude Code CLI startup.
-
-**Installation:**
-```bash
-# Install from crates.io (easiest, requires Rust)
-cargo install lmsh
-
-# Or build from source
-cd lmsh && cargo build --release
-cp target/release/lmsh ~/.cargo/bin/
-# Or: make lmsh-install
-```
-
-See [docs/lmsh.md](docs/lmsh.md) for details.
-
-<a id="find-session"></a>
 ## 🔍 aichat find
 
 **Unified session finder** - Search across both Claude Code and Codex sessions simultaneously.
-<!--CLAUDE - let's remove the fs(), fcs() suggestions from everywhere, and remove ALL
-mentions of these things everywhere, it's too confusing. Let's stick to the core
-tool itself, and not suggest these wrapper bash functions at all.
--->
-
-### Setup (Recommended)
-
-Add this function to your shell config (.bashrc/.zshrc) for persistent directory changes:
-
-```bash
-fs() {
-    # Check if user is asking for help
-    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-        aichat find --help
-        return
-    fi
-    # Run aichat find in shell mode and evaluate the output
-    eval "$(aichat find --shell "$@" | sed '/^$/d')"
-}
-```
-
-Or source the provided function:
-```bash
-source /path/to/claude-code-tools/scripts/fs-function.sh
-```
-
-**Why use the shell wrapper?** When you resume a session from a different directory, the wrapper ensures the directory change persists after the session exits. Without it, you'll be back in your original directory after exiting the session (though the session itself runs in the correct directory).
 
 ### Usage
 
 ```bash
 # Search all agents in current project
-fs "keyword1,keyword2"
+aichat find "keyword1,keyword2"
 
 # Show all sessions across all agents in current project
-fs
+aichat find
 
 # Search across all projects (Claude + Codex)
-fs "keywords" -g
+aichat find "keywords" -g
 
 # Show all sessions across all projects
-fs -g
+aichat find -g
 
 # Search only specific agent(s)
-fs "bug,fix" --agents claude
-fs "error" --agents codex
+aichat find "bug,fix" --agents claude
+aichat find "error" --agents codex
 
 # Limit number of results
-fs "keywords" -n 15
+aichat find "keywords" -n 15
 
 # Show only original (non-trimmed) sessions
-fs "keywords" --original
-fs -g --original
+aichat find "keywords" --original
+aichat find -g --original
 ```
 
 ### Features
@@ -314,7 +239,6 @@ fs -g --original
 - **Original session filtering**: Use `--original` flag to show only non-derived
   sessions (excludes trimmed and continued sessions)
 - **Smart resume**: Automatically uses correct CLI tool (`claude` or `codex`) based on selected session
-- **Persistent directory changes**: Using the `fs` wrapper ensures you stay in the session's directory after exit
 - **Optional keyword search**: Keywords are optional—omit them to show all sessions
 - **Action menu** after session selection:
   - **For normal sessions**: Full menu with resume options
@@ -337,7 +261,7 @@ fs -g --original
 - Reverse chronological ordering (most recent first)
 - Press Enter to cancel (no need for Ctrl+C)
 
-**Note**: You can also use `aichat find` directly (or the legacy `find-session` command), but directory changes won't persist after exiting sessions.
+**Note**: The legacy `find-session` command is still available for backward compatibility.
 
 ### Configuration (Optional)
 
@@ -373,47 +297,25 @@ This allows you to:
 
 Search and resume Claude Code sessions by keywords with an interactive UI.
 
-### Setup (Recommended)
-
-Add this function to your shell config (.bashrc/.zshrc) for persistent directory
-changes:
-
-```bash
-fcs() {
-    # Check if user is asking for help
-    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-        aichat find-claude --help
-        return
-    fi
-    # Run aichat find-claude in shell mode and evaluate the output
-    eval "$(aichat find-claude --shell "$@" | sed '/^$/d')"
-}
-```
-
-Or source the provided function:
-```bash
-source /path/to/claude-code-tools/scripts/fcs-function.sh
-```
-
 ### Usage
 
 ```bash
 # Search in current project
-fcs "keyword1,keyword2,keyword3"
+aichat find-claude "keyword1,keyword2,keyword3"
 
 # Show all sessions in current project (no keyword filtering)
-fcs
+aichat find-claude
 
 # Search across all Claude projects
-fcs "keywords" --global
-fcs "keywords" -g
+aichat find-claude "keywords" --global
+aichat find-claude "keywords" -g
 
 # Show all sessions across all projects
-fcs -g
+aichat find-claude -g
 
 # Show only original (non-trimmed) sessions
-fcs "keywords" --original
-fcs -g --original
+aichat find-claude "keywords" --original
+aichat find-claude -g --original
 ```
 
 ### Features
@@ -443,11 +345,9 @@ fcs -g --original
 - Cross-project search capabilities (local by default, `-g` for global)
 - Shows last user message preview (filtered, multi-line wrapping)
 - Automatic session resumption with `claude -r`
-- Persistent directory changes when resuming cross-project sessions
 - Press Enter to cancel (no need for Ctrl+C)
 
-**Note**: You can also use `aichat find-claude` directly (or the legacy `find-claude-session` command), but directory changes
-won't persist after exiting Claude Code.
+**Note**: The legacy `find-claude-session` command is still available for backward compatibility.
 
 For detailed documentation, see [docs/find-claude-session.md](docs/find-claude-session.md).
 
@@ -466,52 +366,31 @@ Search and resume Codex sessions by keywords. Usage is similar to `aichat find-c
 - Extracts metadata from `session_meta` entries in Codex JSONL files
 - Resumes sessions with `codex resume <session-id>`
 
-### Setup (Recommended)
-
-Add this function to your shell config (.bashrc/.zshrc) for persistent directory changes:
-
-```bash
-fcs-codex() {
-    # Check if user is asking for help
-    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-        aichat find-codex --help
-        return
-    fi
-    # Run aichat find-codex in shell mode and evaluate the output
-    eval "$(aichat find-codex --shell "$@" | sed '/^$/d')"
-}
-```
-
-Or source the provided function:
-```bash
-source /path/to/claude-code-tools/scripts/fcs-codex-function.sh
-```
-
 ### Usage
 
 ```bash
 # Search in current project only (default)
-fcs-codex "keyword1,keyword2"
+aichat find-codex "keyword1,keyword2"
 
 # Show all sessions in current project (no keyword filtering)
-fcs-codex
+aichat find-codex
 
 # Search across all projects
-fcs-codex "keywords" -g
-fcs-codex "keywords" --global
+aichat find-codex "keywords" -g
+aichat find-codex "keywords" --global
 
 # Show all sessions across all projects
-fcs-codex -g
+aichat find-codex -g
 
 # Limit number of results
-fcs-codex "keywords" -n 5
+aichat find-codex "keywords" -n 5
 
 # Custom Codex home directory
-fcs-codex "keywords" --codex-home /custom/path
+aichat find-codex "keywords" --codex-home /custom/path
 
 # Show only original (non-trimmed) sessions
-fcs-codex "keywords" --original
-fcs-codex -g --original
+aichat find-codex "keywords" --original
+aichat find-codex -g --original
 ```
 
 ### Features
@@ -542,7 +421,7 @@ fcs-codex -g --original
 - Multi-line preview wrapping for better readability
 - Press Enter to cancel (no need for Ctrl+C)
 
-**Note**: You can also use `aichat find-codex` directly (or the legacy `find-codex-session` command), but directory changes won't persist after exiting Codex.
+**Note**: The legacy `find-codex-session` command is still available for backward compatibility.
 
 Looks like this --
 
@@ -1281,6 +1160,46 @@ Are you sure you want to DELETE this session? (yes/no): yes
 - **Session preview**: Shows enough info to identify the session
 - **Force flag**: `--force` skips confirmation for scripting (use with caution)
 - **Error handling**: Clear error messages if session not found
+
+<a id="lmsh-experimental"></a>
+# 🚀 lmsh (Experimental)
+
+Natural language shell - type what you want in plain English, get an editable command.
+
+```bash
+# Direct usage - translate, edit, execute, then enter interactive mode
+$ lmsh "show me all python files modified today"
+find . -name "*.py" -mtime 0  # <-- Edit before running
+
+# Or interactive mode
+$ lmsh
+lmsh> show recent docker containers
+docker ps -n 5  # <-- Edit before running
+```
+
+**Features:**
+- Rust-based for instant startup (<1ms binary load time)
+- Translates natural language to shell commands using Claude Code CLI
+- Commands are editable before execution - full control
+- Preserves your shell environment
+
+**Note:** Requires Claude Code CLI (`claude` command) to be installed. The translation adds ~2-3s due to Claude Code CLI startup.
+
+**Installation:**
+```bash
+# Install from crates.io (easiest, requires Rust)
+cargo install lmsh
+
+# Or build from source
+cd lmsh && cargo build --release
+cp target/release/lmsh ~/.cargo/bin/
+# Or: make lmsh-install
+```
+
+See [docs/lmsh.md](docs/lmsh.md) for details.
+
+<a id="utilities"></a>
+# 🔐 Utilities
 
 <a id="vault"></a>
 ## 🔐 vault
