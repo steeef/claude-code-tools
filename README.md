@@ -13,6 +13,7 @@ and other CLI coding agents.
 - [🔍 find-session — unified search across Claude & Codex sessions](#find-session)
 - [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
 - [🔍 find-codex-session — search and resume Codex sessions](#find-codex-session)
+- [🎯 session-menu — direct access to session options by ID or path](#session-menu)
 - [🗜️ trim-session — compress session files for context management](#trim-session)
 - [🤖 smart-trim (EXPERIMENTAL) — intelligent trimming using parallel Claude SDK agents](#smart-trim-experimental)
 - [📄 export-claude-session — export Claude sessions using built-in format](#export-claude-session)
@@ -505,6 +506,36 @@ Note: You can also use `find-codex-session` directly, but directory changes won'
 Looks like this --
 
 ![find-codex-session.png](demos/find-codex-session.png)
+
+<a id="session-menu"></a>
+## 🎯 session-menu
+
+Access session management options directly by session ID or file path, without searching. Auto-detects whether it's a Claude or Codex session.
+
+### Usage
+
+```bash
+# By partial session ID (searches both Claude and Codex)
+session-menu 40a9-436f
+
+# By full file path
+session-menu ~/.claude/projects/my-project/abc123.jsonl
+
+# With custom Claude home
+session-menu abc123 --claude-home ~/.claude-custom
+
+# Respects CLAUDE_CONFIG_DIR environment variable
+export CLAUDE_CONFIG_DIR=~/.claude-rja
+session-menu abc123
+```
+
+### Features
+
+- **Auto-detection**: Determines agent type (Claude/Codex) from file path
+- **Partial ID matching**: Finds sessions with partial session IDs
+- **Same menu options**: Resume, trim, export, copy, clone - identical to find-session tools
+- **Environment aware**: Respects `CLAUDE_CONFIG_DIR` environment variable
+- **Quick access**: Skip the search step when you already know the session ID
 
 <a id="trim-session"></a>
 ## 🗜️ trim-session
