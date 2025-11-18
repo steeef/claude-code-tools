@@ -35,6 +35,13 @@ from claude_code_tools.trim_session import (
     is_trimmed_session,
     get_session_derivation_type,
 )
+
+# Try to import TUI - it's optional
+try:
+    from claude_code_tools.session_tui import run_session_tui
+    TUI_AVAILABLE = True
+except ImportError:
+    TUI_AVAILABLE = False
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
 from claude_code_tools.session_utils import get_claude_home
@@ -974,6 +981,53 @@ def resume_session(session_id: str, project_path: str, shell_mode: bool = False,
         sys.exit(1)
 
 
+def create_action_handler(claude_home: Optional[str] = None):
+    """
+    Create an action handler function for TUI/UI integration.
+
+    Args:
+        claude_home: Optional Claude home directory
+
+    Returns:
+        Function that handles session actions
+    """
+    def handle_session_action(session: Tuple, action: str) -> None:
+        """Handle actions for a selected session."""
+        session_id = session[0]
+        project_path = session[6]
+
+        if action == "resume":
+            resume_session(session_id, project_path, shell_mode=False, claude_home=claude_home)
+        elif action == "suppress_resume":
+            options = prompt_suppress_options()
+            if options:
+                tools, threshold, trim_assistant = options
+                handle_suppress_resume_claude(
+                    session_id, project_path, tools, threshold, trim_assistant, claude_home
+                )
+        elif action == "smart_trim_resume":
+            handle_smart_trim_resume_claude(session_id, project_path, claude_home)
+        elif action == "path":
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            print(f"\nSession file path:")
+            print(session_file_path)
+        elif action == "copy":
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            copy_session_file(session_file_path)
+        elif action == "clone":
+            clone_session(session_id, project_path, shell_mode=False, claude_home=claude_home)
+        elif action == "export":
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            handle_export_session(session_file_path)
+        elif action == "continue":
+            from claude_code_tools.claude_continue import claude_continue
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            print("\n🔄 Starting continuation in fresh session...")
+            claude_continue(session_file_path, claude_home=claude_home, verbose=False)
+
+    return handle_session_action
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Search Claude Code session files by keywords",
@@ -1039,6 +1093,11 @@ To persist directory changes when resuming sessions:
         action="store_true",
         help="Exclude continued sessions from results"
     )
+    parser.add_argument(
+        "--simple",
+        action="store_true",
+        help="Use simple text-based UI instead of interactive TUI"
+    )
 
     args = parser.parse_args()
     
@@ -1095,8 +1154,14 @@ To persist directory changes when resuming sessions:
             print(f"No sessions found{keyword_msg} in {scope}", file=sys.stderr)
         sys.exit(0)
     
-    # If we have rich and there are results, show interactive UI
-    if RICH_AVAILABLE and console:
+    # Choose UI based on flags - TUI is default, use --simple for old interface
+    if TUI_AVAILABLE and not args.simple and not args.shell:
+        # Use Textual TUI for interactive arrow-key navigation (default)
+        action_handler = create_action_handler(args.claude_home)
+        # Limit to num_matches, same as simple UI
+        run_session_tui(matching_sessions[:args.num_matches], keywords, action_handler)
+    elif RICH_AVAILABLE and console:
+        # Use Rich-based interactive UI
         selected_session = display_interactive_ui(matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches)
         if selected_session:
             # Show action menu
