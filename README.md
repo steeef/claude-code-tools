@@ -8,6 +8,7 @@ and other CLI coding agents.
 - [🎮 tmux-cli: Bridging Claude Code and Interactive CLIs — "playwright for the terminal"](#tmux-cli-bridging-claude-code-and-interactive-clis)
 - [🚀 Quick Start](#quick-start)
 - [🎮 tmux-cli Deep Dive](#tmux-cli-deep-dive)
+- [🔄 claude-continue — seamlessly continue sessions running out of context](#claude-continue--seamlessly-continue-sessions-running-out-of-context)
 - [🚀 lmsh (Experimental) — natural language to shell commands](#lmsh-experimental)
 - [🔍 find-session — unified search across Claude & Codex sessions](#find-session)
 - [🔍 find-claude-session — search and resume Claude sessions](#find-claude-session)
@@ -74,6 +75,7 @@ uv tool install git+https://github.com/pchalasani/claude-code-tools
 
 This gives you:
 - `tmux-cli` - The interactive CLI controller we just covered
+- `claude-continue` - Transfer context to new session when running out of context
 - `find-session` - Unified search across Claude Code and Codex sessions
 - `find-claude-session` - Search and resume Claude Code sessions by keywords
 - `find-codex-session` - Search and resume Codex sessions by keywords
@@ -142,8 +144,29 @@ the tmux-cli command; you can do tmu-cli --help to see how to use it.
 
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
-All of this assumes you're familiar and comfortable with tmux, and (like me) run 
+All of this assumes you're familiar and comfortable with tmux, and (like me) run
 all CLI coding sessions inside tmux sessions.
+
+## 🔄 claude-continue — seamlessly continue sessions running out of context
+
+When your Claude Code session is running out of context, instead of manually
+compacting (which loses valuable session details) or resuming a trimmed session, use the `claude-continue` CLI command to transfer context to a fresh session.
+
+**How it works**: Exports your old session to a text file, creates a new Claude
+Code session, uses parallel sub-agents to analyze the old session and understand
+the task, then hands off to interactive mode so you can continue where you left off.
+
+**Usage**: When approaching context limits, run `/status` in your Claude Code session
+to display the session ID. Exit the session, then run:
+
+```bash
+claude-continue <session-id>  # or partial session ID works if match is unique
+
+# Use --cli to specify custom Claude command (supports shell functions)
+claude-continue <session-id> --cli ccrja  # for custom profiles, aliases, or shell functions
+```
+
+That's it. Claude will analyze the old session and resume the work in a new session.
 
 <a id="lmsh-experimental"></a>
 ## 🚀 lmsh (Experimental)

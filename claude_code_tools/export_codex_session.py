@@ -10,6 +10,69 @@ from pathlib import Path
 from typing import Optional, TextIO
 
 
+def export_session_programmatic(
+    session_id_or_path: str,
+    output_path: Optional[Path] = None,
+    codex_home: Optional[str] = None,
+    verbose: bool = False
+) -> Path:
+    """
+    Export a Codex session programmatically.
+
+    This is a programmatic interface to the export functionality, useful for
+    other tools that need to export sessions and get the output path.
+
+    Args:
+        session_id_or_path: Session file path or session ID (full or partial)
+        output_path: Optional output file path. If None, auto-generates in
+            exported-sessions/ directory
+        codex_home: Optional custom Codex home directory
+        verbose: If True, print progress messages
+
+    Returns:
+        Path to the exported file
+
+    Raises:
+        FileNotFoundError: If session cannot be found
+        SystemExit: If partial ID matches multiple sessions
+    """
+    # Resolve session file
+    session_file = resolve_session_path(session_id_or_path, codex_home=codex_home)
+
+    # Generate default output path if not provided
+    if output_path is None:
+        today = datetime.now().strftime("%Y%m%d")
+        session_id = session_file.stem
+        output_dir = Path.cwd() / "exported-sessions"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{today}-codex-session-{session_id}.txt"
+
+    # Ensure output directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if verbose:
+        print(f"📄 Exporting session: {session_file.name}")
+        print(f"📝 Output file: {output_path}")
+        print()
+
+    # Export to file
+    with open(output_path, 'w') as f:
+        stats = export_session_to_markdown(session_file, f, verbose=verbose)
+
+    if verbose:
+        # Print statistics
+        print(f"✅ Export complete!")
+        print(f"   User messages: {stats['user_messages']}")
+        print(f"   Assistant messages: {stats['assistant_messages']}")
+        print(f"   Tool calls: {stats['tool_calls']}")
+        print(f"   Tool results: {stats['tool_results']}")
+        print(f"   Skipped items: {stats['skipped']}")
+        print()
+        print(f"📄 Exported to: {output_path}")
+
+    return output_path
+
+
 def resolve_session_path(session_id_or_path: str, codex_home: Optional[str] = None) -> Path:
     """
     Resolve a session ID or path to a full file path.

@@ -30,6 +30,7 @@ smart-trim = "claude_code_tools.smart_trim:main"
 export-claude-session = "claude_code_tools.export_claude_session:main"
 export-codex-session = "claude_code_tools.export_codex_session:main"
 delete-session = "claude_code_tools.delete_session:main"
+claude-continue = "claude_code_tools.claude_continue:main"
 
 [build-system]
 requires = ["hatchling"]
