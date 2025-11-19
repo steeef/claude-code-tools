@@ -59,6 +59,13 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+try:
+    from claude_code_tools.session_tui import run_session_tui
+
+    TUI_AVAILABLE = True
+except ImportError:
+    TUI_AVAILABLE = False
+
 
 @dataclass
 class AgentConfig:
@@ -556,6 +563,22 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
     )
 
 
+def create_action_handler(shell_mode: bool = False):
+    """Create an action handler for the TUI."""
+    def action_handler(session, action: str) -> None:
+        """Handle actions from the TUI - session can be tuple or dict."""
+        # Convert session to dict if it's a tuple or dict-like
+        if isinstance(session, dict):
+            session_dict = session
+        else:
+            # Shouldn't happen in unified find, but handle gracefully
+            session_dict = {"session_id": str(session), "agent": "unknown"}
+
+        handle_action(session_dict, action, shell_mode=shell_mode)
+
+    return action_handler
+
+
 def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
     """Handle the selected action based on agent type."""
     agent = session["agent"]
@@ -725,6 +748,11 @@ Examples:
         action="store_true",
         help="Exclude continued sessions from results",
     )
+    parser.add_argument(
+        "--altui",
+        action="store_true",
+        help="Use alternative UI (switches between Rich table and Textual TUI)",
+    )
 
     args = parser.parse_args()
 
@@ -783,7 +811,20 @@ Examples:
         sys.exit(0)
 
     # Display interactive UI
-    if RICH_AVAILABLE:
+    # ============================================================
+    # UI Selection: Change DEFAULT_UI to switch the default interface
+    # Options: 'tui' (Textual) or 'rich' (Rich table)
+    # ============================================================
+    DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
+
+    use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
+
+    if TUI_AVAILABLE and use_tui and not args.shell:
+        # Use Textual TUI for interactive arrow-key navigation (default)
+        action_handler = create_action_handler(shell_mode=args.shell)
+        # Limit to num_matches
+        run_session_tui(matching_sessions[:args.num_matches], keywords, action_handler)
+    elif RICH_AVAILABLE:
         selected_session = display_interactive_ui(
             matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches
         )

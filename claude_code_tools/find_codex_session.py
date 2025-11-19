@@ -45,6 +45,13 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+try:
+    from claude_code_tools.session_tui import run_session_tui
+
+    TUI_AVAILABLE = True
+except ImportError:
+    TUI_AVAILABLE = False
+
 
 def get_codex_home(custom_home: Optional[str] = None) -> Path:
     """Get the Codex home directory."""
@@ -836,6 +843,51 @@ def resume_session(
             sys.exit(1)
 
 
+def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] = None):
+    """Create an action handler for the TUI."""
+    def action_handler(session, action: str) -> None:
+        """Handle actions from the TUI - session can be tuple or dict."""
+        # Ensure session is a dict
+        if not isinstance(session, dict):
+            # Shouldn't happen in codex find, but handle gracefully
+            session = {"session_id": str(session)}
+
+        # Handle actions
+        if action == "resume":
+            resume_session(
+                session["session_id"],
+                session["cwd"],
+                shell_mode
+            )
+        elif action == "suppress_resume":
+            # Prompt for suppress options
+            options = prompt_suppress_options()
+            if options:
+                tools, threshold, trim_assistant = options
+                handle_suppress_resume_codex(
+                    session, tools, threshold, trim_assistant, codex_home
+                )
+        elif action == "smart_trim_resume":
+            # Smart trim using parallel agents
+            handle_smart_trim_resume_codex(session, codex_home)
+        elif action == "path":
+            print(f"\nSession file path:")
+            print(session["file_path"])
+        elif action == "copy":
+            copy_session_file(session["file_path"])
+        elif action == "clone":
+            clone_session(
+                session["file_path"],
+                session["session_id"],
+                session["cwd"],
+                shell_mode=shell_mode
+            )
+        elif action == "export":
+            handle_export_session(session["file_path"])
+
+    return action_handler
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -899,6 +951,11 @@ Examples:
         action="store_true",
         help="Exclude continued sessions from results",
     )
+    parser.add_argument(
+        "--altui",
+        action="store_true",
+        help="Use alternative UI (switches between Rich table and Textual TUI)",
+    )
 
     args = parser.parse_args()
 
@@ -942,50 +999,33 @@ Examples:
         args.no_cont,
     )
 
-    # Display and get selection
-    selected_match = display_interactive_ui(matches, keywords)
-    if not selected_match:
-        return
+    # Display UI and handle actions
+    # ============================================================
+    # UI Selection: Change DEFAULT_UI to switch the default interface
+    # Options: 'tui' (Textual) or 'rich' (Rich table)
+    # ============================================================
+    DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
 
-    # Show action menu
-    action = show_action_menu(selected_match)
-    if not action:
-        return
+    use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
 
-    # Perform selected action
-    if action == "resume":
-        resume_session(
-            selected_match["session_id"],
-            selected_match["cwd"],
-            args.shell
-        )
-    elif action == "suppress_resume":
-        # Prompt for suppress options
-        options = prompt_suppress_options()
-        if options:
-            tools, threshold, trim_assistant = options
-            codex_home = get_codex_home(args.codex_home)
-            handle_suppress_resume_codex(
-                selected_match, tools, threshold, trim_assistant, codex_home
-            )
-    elif action == "smart_trim_resume":
-        # Smart trim using parallel agents
-        codex_home = get_codex_home(args.codex_home)
-        handle_smart_trim_resume_codex(selected_match, codex_home)
-    elif action == "path":
-        print(f"\nSession file path:")
-        print(selected_match["file_path"])
-    elif action == "copy":
-        copy_session_file(selected_match["file_path"])
-    elif action == "clone":
-        clone_session(
-            selected_match["file_path"],
-            selected_match["session_id"],
-            selected_match["cwd"],
-            shell_mode=args.shell
-        )
-    elif action == "export":
-        handle_export_session(selected_match["file_path"])
+    if TUI_AVAILABLE and use_tui and not args.shell:
+        # Use Textual TUI for interactive arrow-key navigation (default)
+        action_handler = create_action_handler(shell_mode=args.shell, codex_home=codex_home)
+        run_session_tui(matches, keywords, action_handler)
+    else:
+        # Fallback to Rich-based UI
+        selected_match = display_interactive_ui(matches, keywords)
+        if not selected_match:
+            return
+
+        # Show action menu
+        action = show_action_menu(selected_match)
+        if not action:
+            return
+
+        # Perform selected action using action handler
+        action_handler = create_action_handler(shell_mode=args.shell, codex_home=codex_home)
+        action_handler(selected_match, action)
 
 
 if __name__ == "__main__":

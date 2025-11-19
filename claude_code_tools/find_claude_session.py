@@ -35,6 +35,13 @@ from claude_code_tools.trim_session import (
     is_trimmed_session,
     get_session_derivation_type,
 )
+
+# Try to import TUI - it's optional
+try:
+    from claude_code_tools.session_tui import run_session_tui
+    TUI_AVAILABLE = True
+except ImportError:
+    TUI_AVAILABLE = False
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
 from claude_code_tools.session_utils import get_claude_home
@@ -127,6 +134,34 @@ def extract_project_name(original_path: str) -> str:
     # Get the last component of the path as the project name
     parts = original_path.rstrip("/").split("/")
     return parts[-1] if parts else "unknown"
+
+
+def extract_cwd_from_session(session_file: Path) -> Optional[str]:
+    """
+    Extract the working directory (cwd) from a Claude session file.
+
+    Args:
+        session_file: Path to the session JSONL file
+
+    Returns:
+        The cwd string if found, None otherwise
+    """
+    try:
+        with open(session_file, 'r', encoding='utf-8') as f:
+            # Check first few lines for cwd field
+            for i, line in enumerate(f):
+                if i >= 5:  # Only check first 5 lines
+                    break
+                try:
+                    data = json.loads(line.strip())
+                    if "cwd" in data:
+                        return data["cwd"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    except (OSError, IOError):
+        pass
+
+    return None
 
 
 def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, int, Optional[str]]:
@@ -356,7 +391,12 @@ def find_sessions(
                             # Get creation time (birthtime on macOS, ctime elsewhere)
                             create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                             preview = get_session_preview(jsonl_file)
-                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed, is_sidechain))
+                            # Extract actual cwd from session file - MUST NOT use reconstructed path as fallback
+                            actual_cwd = extract_cwd_from_session(jsonl_file)
+                            if not actual_cwd:
+                                # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
+                                continue
+                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
                     
                     progress.advance(task)
         else:
@@ -394,7 +434,12 @@ def find_sessions(
                         # Get creation time (birthtime on macOS, ctime elsewhere)
                         create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                         preview = get_session_preview(jsonl_file)
-                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed, is_sidechain))
+                        # Extract actual cwd from session file - MUST NOT use reconstructed path as fallback
+                        actual_cwd = extract_cwd_from_session(jsonl_file)
+                        if not actual_cwd:
+                            # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
+                            continue
+                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
     else:
         # Search current project only
         claude_dir = get_claude_project_dir(claude_home)
@@ -435,7 +480,9 @@ def find_sessions(
                 # Get creation time (birthtime on macOS, ctime elsewhere)
                 create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                 preview = get_session_preview(jsonl_file)
-                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, os.getcwd(), git_branch, is_trimmed, is_sidechain))
+                # Extract actual cwd from session file for consistency
+                actual_cwd = extract_cwd_from_session(jsonl_file) or os.getcwd()
+                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
     
     # Sort by modification time (newest first)
     matching_sessions.sort(key=lambda x: x[1], reverse=True)
@@ -974,6 +1021,53 @@ def resume_session(session_id: str, project_path: str, shell_mode: bool = False,
         sys.exit(1)
 
 
+def create_action_handler(claude_home: Optional[str] = None):
+    """
+    Create an action handler function for TUI/UI integration.
+
+    Args:
+        claude_home: Optional Claude home directory
+
+    Returns:
+        Function that handles session actions
+    """
+    def handle_session_action(session: Tuple, action: str) -> None:
+        """Handle actions for a selected session."""
+        session_id = session[0]
+        project_path = session[6]
+
+        if action == "resume":
+            resume_session(session_id, project_path, shell_mode=False, claude_home=claude_home)
+        elif action == "suppress_resume":
+            options = prompt_suppress_options()
+            if options:
+                tools, threshold, trim_assistant = options
+                handle_suppress_resume_claude(
+                    session_id, project_path, tools, threshold, trim_assistant, claude_home
+                )
+        elif action == "smart_trim_resume":
+            handle_smart_trim_resume_claude(session_id, project_path, claude_home)
+        elif action == "path":
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            print(f"\nSession file path:")
+            print(session_file_path)
+        elif action == "copy":
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            copy_session_file(session_file_path)
+        elif action == "clone":
+            clone_session(session_id, project_path, shell_mode=False, claude_home=claude_home)
+        elif action == "export":
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            handle_export_session(session_file_path)
+        elif action == "continue":
+            from claude_code_tools.claude_continue import claude_continue
+            session_file_path = get_session_file_path(session_id, project_path, claude_home)
+            print("\n🔄 Starting continuation in fresh session...")
+            claude_continue(session_file_path, claude_home=claude_home, verbose=False)
+
+    return handle_session_action
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Search Claude Code session files by keywords",
@@ -1039,6 +1133,11 @@ To persist directory changes when resuming sessions:
         action="store_true",
         help="Exclude continued sessions from results"
     )
+    parser.add_argument(
+        "--altui",
+        action="store_true",
+        help="Use alternative UI (switches between Rich table and Textual TUI)"
+    )
 
     args = parser.parse_args()
     
@@ -1095,8 +1194,21 @@ To persist directory changes when resuming sessions:
             print(f"No sessions found{keyword_msg} in {scope}", file=sys.stderr)
         sys.exit(0)
     
-    # If we have rich and there are results, show interactive UI
-    if RICH_AVAILABLE and console:
+    # ============================================================
+    # UI Selection: Change DEFAULT_UI to switch the default interface
+    # Options: 'tui' (Textual) or 'rich' (Rich table)
+    # ============================================================
+    DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
+
+    use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
+
+    if TUI_AVAILABLE and use_tui and not args.shell:
+        # Use Textual TUI for interactive arrow-key navigation (default)
+        action_handler = create_action_handler(args.claude_home)
+        # Limit to num_matches, same as simple UI
+        run_session_tui(matching_sessions[:args.num_matches], keywords, action_handler)
+    elif RICH_AVAILABLE and console:
+        # Use Rich-based interactive UI
         selected_session = display_interactive_ui(matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches)
         if selected_session:
             # Show action menu
