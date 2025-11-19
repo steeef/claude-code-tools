@@ -136,6 +136,34 @@ def extract_project_name(original_path: str) -> str:
     return parts[-1] if parts else "unknown"
 
 
+def extract_cwd_from_session(session_file: Path) -> Optional[str]:
+    """
+    Extract the working directory (cwd) from a Claude session file.
+
+    Args:
+        session_file: Path to the session JSONL file
+
+    Returns:
+        The cwd string if found, None otherwise
+    """
+    try:
+        with open(session_file, 'r', encoding='utf-8') as f:
+            # Check first few lines for cwd field
+            for i, line in enumerate(f):
+                if i >= 5:  # Only check first 5 lines
+                    break
+                try:
+                    data = json.loads(line.strip())
+                    if "cwd" in data:
+                        return data["cwd"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    except (OSError, IOError):
+        pass
+
+    return None
+
+
 def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, int, Optional[str]]:
     """
     Check if all keywords are present in the JSONL file, count lines, and extract git branch.
@@ -363,7 +391,12 @@ def find_sessions(
                             # Get creation time (birthtime on macOS, ctime elsewhere)
                             create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                             preview = get_session_preview(jsonl_file)
-                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed, is_sidechain))
+                            # Extract actual cwd from session file - MUST NOT use reconstructed path as fallback
+                            actual_cwd = extract_cwd_from_session(jsonl_file)
+                            if not actual_cwd:
+                                # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
+                                continue
+                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
                     
                     progress.advance(task)
         else:
@@ -401,7 +434,12 @@ def find_sessions(
                         # Get creation time (birthtime on macOS, ctime elsewhere)
                         create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                         preview = get_session_preview(jsonl_file)
-                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, original_path, git_branch, is_trimmed, is_sidechain))
+                        # Extract actual cwd from session file - MUST NOT use reconstructed path as fallback
+                        actual_cwd = extract_cwd_from_session(jsonl_file)
+                        if not actual_cwd:
+                            # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
+                            continue
+                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
     else:
         # Search current project only
         claude_dir = get_claude_project_dir(claude_home)
@@ -442,7 +480,9 @@ def find_sessions(
                 # Get creation time (birthtime on macOS, ctime elsewhere)
                 create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                 preview = get_session_preview(jsonl_file)
-                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, os.getcwd(), git_branch, is_trimmed, is_sidechain))
+                # Extract actual cwd from session file for consistency
+                actual_cwd = extract_cwd_from_session(jsonl_file) or os.getcwd()
+                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
     
     # Sort by modification time (newest first)
     matching_sessions.sort(key=lambda x: x[1], reverse=True)

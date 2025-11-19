@@ -90,7 +90,8 @@ def find_session_file(
         codex_home: Optional custom Codex home directory
 
     Returns:
-        Tuple of (agent, file_path, project_name, git_branch) or None
+        Tuple of (agent, file_path, project_path, git_branch) or None
+        Note: project_path is the full working directory path, not just the name
     """
     # Try Claude first
     claude_base = get_claude_home(claude_home)
@@ -101,11 +102,14 @@ def find_session_file(
                 if project_dir.is_dir():
                     # Support partial session ID matching
                     for session_file in project_dir.glob(f"*{session_id}*.jsonl"):
-                        # Extract project name from directory
-                        project_name = project_dir.name.replace("-", "/")
+                        # Extract actual cwd from session file
+                        actual_cwd = extract_cwd_from_session(session_file)
+                        if not actual_cwd:
+                            # Skip sessions without cwd
+                            continue
                         # Try to get git branch from session file
                         git_branch = extract_git_branch_claude(session_file)
-                        return ("claude", session_file, project_name, git_branch)
+                        return ("claude", session_file, actual_cwd, git_branch)
 
     # Try Codex next
     codex_base = get_codex_home(codex_home)
@@ -129,14 +133,12 @@ def find_session_file(
                                 session_file
                             )
                             if metadata:
-                                project_name = Path(
-                                    metadata.get("cwd", "")
-                                ).name or "unknown"
+                                project_path = metadata.get("cwd", "")
                                 git_branch = metadata.get("branch")
                                 return (
                                     "codex",
                                     session_file,
-                                    project_name,
+                                    project_path,
                                     git_branch,
                                 )
 
@@ -159,6 +161,34 @@ def extract_git_branch_claude(session_file: Path) -> Optional[str]:
                     continue
     except (OSError, IOError):
         pass
+    return None
+
+
+def extract_cwd_from_session(session_file: Path) -> Optional[str]:
+    """
+    Extract the working directory (cwd) from a Claude session file.
+
+    Args:
+        session_file: Path to the session JSONL file
+
+    Returns:
+        The cwd string if found, None otherwise
+    """
+    try:
+        with open(session_file, 'r', encoding='utf-8') as f:
+            # Check first few lines for cwd field
+            for i, line in enumerate(f):
+                if i >= 5:  # Only check first 5 lines
+                    break
+                try:
+                    data = json.loads(line.strip())
+                    if "cwd" in data:
+                        return data["cwd"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    except (OSError, IOError):
+        pass
+
     return None
 
 
@@ -398,9 +428,18 @@ Examples:
         # Extract project info based on agent type
         if agent == "claude":
             git_branch = extract_git_branch_claude(session_file)
-            # Extract project name from path encoding
-            project_name = session_file.parent.name.replace("-", "/")
-            project_path = project_name  # Simplified for now
+            # Extract actual cwd from session file
+            actual_cwd = extract_cwd_from_session(session_file)
+            if actual_cwd:
+                project_path = actual_cwd
+                project_name = Path(actual_cwd).name
+            else:
+                # Cannot extract cwd - this shouldn't happen for valid Claude sessions
+                print(
+                    f"Error: Could not extract working directory from session file: {session_file}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
         else:
             metadata = extract_session_metadata_codex(session_file)
             if metadata:
@@ -429,7 +468,7 @@ Examples:
             )
             sys.exit(1)
 
-        agent, session_file, project_name, git_branch = result
+        agent, session_file, project_path, git_branch = result
 
         # Override agent if specified
         if args.agent and args.agent != agent:
@@ -439,12 +478,8 @@ Examples:
                 file=sys.stderr,
             )
 
-        # Set project path
-        if agent == "claude":
-            project_path = project_name
-        else:
-            metadata = extract_session_metadata_codex(session_file)
-            project_path = metadata.get("cwd", "") if metadata else ""
+    # Derive project name from project path
+    project_name = Path(project_path).name if project_path else "unknown"
 
     # Check if sidechain
     is_sidechain = is_sidechain_session(session_file)
