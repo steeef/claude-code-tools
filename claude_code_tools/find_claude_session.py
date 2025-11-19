@@ -1134,9 +1134,9 @@ To persist directory changes when resuming sessions:
         help="Exclude continued sessions from results"
     )
     parser.add_argument(
-        "--simple",
+        "--altui",
         action="store_true",
-        help="Use simple text-based UI instead of interactive TUI"
+        help="Use alternative UI (switches between Rich table and Textual TUI)"
     )
 
     args = parser.parse_args()
@@ -1194,8 +1194,15 @@ To persist directory changes when resuming sessions:
             print(f"No sessions found{keyword_msg} in {scope}", file=sys.stderr)
         sys.exit(0)
     
-    # Choose UI based on flags - TUI is default, use --simple for old interface
-    if TUI_AVAILABLE and not args.simple and not args.shell:
+    # ============================================================
+    # UI Selection: Change DEFAULT_UI to switch the default interface
+    # Options: 'tui' (Textual) or 'rich' (Rich table)
+    # ============================================================
+    DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
+
+    use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
+
+    if TUI_AVAILABLE and use_tui and not args.shell:
         # Use Textual TUI for interactive arrow-key navigation (default)
         action_handler = create_action_handler(args.claude_home)
         # Limit to num_matches, same as simple UI

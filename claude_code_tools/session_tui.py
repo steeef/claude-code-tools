@@ -11,10 +11,11 @@ import textwrap
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Vertical
+from textual.containers import Container, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import DataTable, Footer, Header, OptionList, Static
+from textual.widgets import Footer, Header, ListView, ListItem, OptionList, Static
 from textual.widgets.option_list import Option
+from textual.message import Message
 from rich.text import Text
 
 
@@ -92,6 +93,134 @@ class ActionMenuScreen(ModalScreen[Optional[str]]):
         self.dismiss(None)
 
 
+class SessionCard(Static):
+    """A card widget displaying session information with multi-line preview."""
+
+    DEFAULT_CSS = """
+    SessionCard {
+        height: auto;
+        padding: 1 2;
+        border: solid $panel-lighten-1;
+        margin: 0 1;
+    }
+
+    SessionCard.selected {
+        background: $accent;
+        border: solid $accent-lighten-2;
+    }
+
+    SessionCard:hover {
+        background: $panel-lighten-1;
+    }
+    """
+
+    def __init__(
+        self,
+        session: Tuple[Any, ...],
+        index: int,
+        is_selected: bool = False,
+    ):
+        """
+        Initialize session card.
+
+        Args:
+            session: Session tuple data
+            index: Display index (1-based)
+            is_selected: Whether this card is currently selected
+        """
+        super().__init__()
+        self.session = session
+        self.index = index
+        self.is_selected = is_selected
+
+        # Extract session details
+        if isinstance(session, (tuple, list)) and len(session) >= 10:  # Claude tuple format
+            (
+                session_id,
+                mod_time,
+                create_time,
+                line_count,
+                project_name,
+                preview,
+                project_path,
+                git_branch,
+                is_trimmed,
+                is_sidechain,
+            ) = session[:10]
+            agent = "Claude"
+        else:  # Dict format
+            session_id = session.get("session_id", "")
+            mod_time = session.get("mod_time", 0)
+            line_count = session.get("lines", 0)
+            project_name = session.get("project", "")
+            preview = session.get("preview", "")
+            git_branch = session.get("branch", "")
+            is_sidechain = session.get("is_sidechain", False)
+            agent = session.get("agent_display", "Unknown")
+
+        # Store extracted values
+        self.session_id = session_id
+        self.agent = agent
+        self.project_name = project_name
+        self.git_branch = git_branch
+        self.mod_time = mod_time
+        self.line_count = line_count
+        self.preview = preview
+        self.is_sidechain = is_sidechain
+
+    def render(self) -> Text:
+        """Render the session card content."""
+        date_str = datetime.fromtimestamp(self.mod_time).strftime("%m/%d %H:%M")
+
+        # First line: index, agent, project, branch, date
+        branch_display = f"({self.git_branch})" if self.git_branch else ""
+        header = Text()
+        header.append(f"{self.index}. ", style="bold cyan")
+        header.append(f"[{self.agent}] ", style="bold yellow")
+        header.append(f"{self.project_name[:30]} ", style="white")
+        if branch_display:
+            header.append(f"{branch_display[:18]} ", style="dim")
+        # Pad to align date to the right
+        header.append(" " * (70 - len(header.plain)))
+        header.append(f"{date_str}", style="dim")
+
+        # Second line: Session ID and line count
+        session_display = f"{self.session_id[:12]}..."
+        if self.is_sidechain:
+            session_display += " (sub)"
+
+        info = Text()
+        info.append(f"   Session: ", style="dim")
+        info.append(session_display, style="cyan")
+        info.append(f"                  {self.line_count:,} lines", style="dim")
+
+        # Preview lines (wrapped, max 3 lines)
+        preview_text = Text()
+        if self.preview:
+            preview_lines = textwrap.wrap(self.preview, width=70)[:3]
+            preview_text.append("   Preview: ", style="dim")
+            preview_text.append(preview_lines[0] if preview_lines else "")
+            for line in preview_lines[1:]:
+                preview_text.append("\n            ")
+                preview_text.append(line)
+
+        # Combine all parts
+        result = Text()
+        result.append_text(header)
+        result.append("\n")
+        result.append_text(info)
+        if self.preview:
+            result.append("\n")
+            result.append_text(preview_text)
+
+        return result
+
+    def on_mount(self) -> None:
+        """Update classes when mounted."""
+        if self.is_selected:
+            self.add_class("selected")
+
+
 class SessionTableScreen(Screen):
     """Main screen displaying interactive session table."""
 
@@ -130,9 +259,10 @@ class SessionTableScreen(Screen):
         self.action_handler = action_handler
         self.goto_mode = False
         self.goto_input = ""
+        self.selected_index = 0
 
     def compose(self) -> ComposeResult:
-        """Compose the session table UI."""
+        """Compose the session list UI."""
         title = (
             f"Sessions matching: {', '.join(self.keywords)}"
             if self.keywords
@@ -141,96 +271,89 @@ class SessionTableScreen(Screen):
         yield Header(show_clock=True)
         yield Static(f"[bold cyan]{title}[/]", id="table-title")
 
-        table = DataTable(id="session-table")
-        table.cursor_type = "row"
-        table.zebra_stripes = True
-        yield table
+        # Create scrollable container for session cards
+        with VerticalScroll(id="session-list"):
+            for idx, session in enumerate(self.sessions, 1):
+                yield SessionCard(session, idx, is_selected=(idx == 1))
 
         yield Static("", id="goto-input-display")
         yield Footer()
 
     def on_mount(self) -> None:
-        """Initialize table when screen is mounted."""
-        table = self.query_one(DataTable)
-
-        # Add columns
-        table.add_column("#", width=4)
-        table.add_column("Agent", width=8)
-        table.add_column("Session ID", width=20)
-        table.add_column("Project", width=25)
-        table.add_column("Branch", width=15)
-        table.add_column("Date", width=12)
-        table.add_column("Lines", width=7)
-        # Preview column without fixed width - allows wrapping
-        table.add_column("Preview")
-
-        # Add rows
-        for idx, session in enumerate(self.sessions, 1):
-            # Unpack session tuple - format varies by agent
-            if len(session) >= 10:  # Claude format
-                (
-                    session_id,
-                    mod_time,
-                    create_time,
-                    line_count,
-                    project_name,
-                    preview,
-                    project_path,
-                    git_branch,
-                    is_trimmed,
-                    is_sidechain,
-                ) = session[:10]
-                agent = "Claude"
-            else:  # Assume dict format
-                session_id = session.get("session_id", "")
-                mod_time = session.get("mod_time", 0)
-                line_count = session.get("lines", 0)
-                project_name = session.get("project", "")
-                preview = session.get("preview", "")
-                git_branch = session.get("branch", "")
-                is_sidechain = session.get("is_sidechain", False)
-                agent = session.get("agent_display", "Unknown")
-
-            # Format date
-            date_str = datetime.fromtimestamp(mod_time).strftime("%m/%d %H:%M")
-
-            # Format session ID with indicators
-            session_id_display = session_id[:8] + "..."
-            if is_sidechain:
-                session_id_display += " (sub)"
-
-            # Format preview with wrapping for multi-line display
-            if preview:
-                # Wrap preview text to ~60 chars per line, max 3 lines
-                preview_lines = textwrap.wrap(preview, width=60)[:3]
-                preview_text = Text("\n".join(preview_lines))
-            else:
-                preview_text = ""
-
-            table.add_row(
-                str(idx),
-                agent,
-                session_id_display,
-                project_name[:25],
-                git_branch[:15] if git_branch else "N/A",
-                date_str,
-                str(line_count),
-                preview_text,
-            )
-
-        # Focus the table
-        table.focus()
+        """Initialize list when screen is mounted."""
+        # Focus the scroll container
+        self.query_one("#session-list").focus()
 
         # Auto-select if only one session
         if len(self.sessions) == 1:
             self.notify("Auto-selecting only session...")
             self.show_action_menu_for_row(0)
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Handle row selection via Enter key."""
+    def on_click(self, event) -> None:
+        """Handle click on session card."""
         if not self.goto_mode:
-            row_index = event.cursor_row
-            self.show_action_menu_for_row(row_index)
+            # Find which card was clicked
+            card = event.widget
+            if isinstance(card, SessionCard):
+                # Find the index of this card
+                cards = list(self.query(SessionCard))
+                if card in cards:
+                    self.select_card(cards.index(card))
+                    self.show_action_menu_for_row(cards.index(card))
+
+    def on_key(self, event) -> None:
+        """Handle key press events."""
+        if self.goto_mode:
+            # Goto mode key handling
+            if event.key == "escape":
+                self.goto_mode = False
+                self.goto_input = ""
+                self.update_goto_display()
+                event.prevent_default()
+            elif event.key.isdigit():
+                self.goto_input += event.key
+                self.update_goto_display()
+                event.prevent_default()
+            elif event.key == "enter":
+                if self.goto_input:
+                    row_index = int(self.goto_input) - 1
+                    if 0 <= row_index < len(self.sessions):
+                        self.select_card(row_index)
+                        self.show_action_menu_for_row(row_index)
+                self.goto_mode = False
+                self.goto_input = ""
+                self.update_goto_display()
+                event.prevent_default()
+        else:
+            # Normal navigation
+            if event.key == "enter":
+                self.show_action_menu_for_row(self.selected_index)
+                event.prevent_default()
+            elif event.key == "down":
+                if self.selected_index < len(self.sessions) - 1:
+                    self.select_card(self.selected_index + 1)
+                event.prevent_default()
+            elif event.key == "up":
+                if self.selected_index > 0:
+                    self.select_card(self.selected_index - 1)
+                event.prevent_default()
+
+    def select_card(self, index: int) -> None:
+        """Select a card by index."""
+        if 0 <= index < len(self.sessions):
+            cards = list(self.query(SessionCard))
+
+            # Remove selected class from all cards
+            for card in cards:
+                card.remove_class("selected")
+
+            # Add selected class to new card
+            if index < len(cards):
+                cards[index].add_class("selected")
+                # Scroll to make it visible
+                cards[index].scroll_visible()
+
+            self.selected_index = index
 
     def show_action_menu_for_row(self, row_index: int) -> None:
         """Show action menu for selected session."""
@@ -238,7 +361,7 @@ class SessionTableScreen(Screen):
             session = self.sessions[row_index]
 
             # Extract session details
-            if len(session) >= 10:  # Claude tuple format
+            if isinstance(session, (tuple, list)) and len(session) >= 10:  # Claude tuple format
                 session_id = session[0]
                 project_name = session[4]
                 git_branch = session[7]
@@ -276,9 +399,7 @@ class SessionTableScreen(Screen):
                 self.app.exit()
             else:
                 # For other actions, show the action menu again (persistent loop)
-                self.show_action_menu_for_row(
-                    self.query_one(DataTable).cursor_row
-                )
+                self.show_action_menu_for_row(self.selected_index)
 
     def action_quit_app(self) -> None:
         """Quit the application."""
@@ -295,33 +416,8 @@ class SessionTableScreen(Screen):
         if not self.goto_mode:
             row_index = int(row_num) - 1
             if 0 <= row_index < len(self.sessions):
-                table = self.query_one(DataTable)
-                table.move_cursor(row=row_index)
+                self.select_card(row_index)
                 self.show_action_menu_for_row(row_index)
-
-    def on_key(self, event) -> None:
-        """Handle key press events for goto mode."""
-        if self.goto_mode:
-            if event.key == "escape":
-                self.goto_mode = False
-                self.goto_input = ""
-                self.update_goto_display()
-                event.prevent_default()
-            elif event.key.isdigit():
-                self.goto_input += event.key
-                self.update_goto_display()
-                event.prevent_default()
-            elif event.key == "enter":
-                if self.goto_input:
-                    row_index = int(self.goto_input) - 1
-                    if 0 <= row_index < len(self.sessions):
-                        table = self.query_one(DataTable)
-                        table.move_cursor(row=row_index)
-                        self.show_action_menu_for_row(row_index)
-                self.goto_mode = False
-                self.goto_input = ""
-                self.update_goto_display()
-                event.prevent_default()
 
     def update_goto_display(self) -> None:
         """Update the goto input display."""
@@ -367,8 +463,9 @@ class SessionMenuApp(App):
         background: $panel;
     }
 
-    #session-table {
+    #session-list {
         height: 1fr;
+        padding: 1 0;
     }
     """
 
