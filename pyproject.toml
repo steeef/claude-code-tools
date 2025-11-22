@@ -48,6 +48,8 @@ build-backend = "hatchling.build"
 include = [
     "claude_code_tools/**/*.py",
     "docs/*.md",
+    "node_ui/menu.js",
+    "node_ui/package.json",
 ]
 exclude = [
     "demos/",

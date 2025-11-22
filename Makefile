@@ -18,6 +18,8 @@ help:
 
 install:
 	uv tool install --force -e .
+	@echo "[node-ui] Note: Node-based alt UI uses node_ui/menu.js (no build step)."
+	@echo "[node-ui] If you haven't yet: cd node_ui && npm install"
 	@if command -v cargo >/dev/null 2>&1; then \
 		echo "Building and installing lmsh..."; \
 		cd lmsh && cargo build --release; \

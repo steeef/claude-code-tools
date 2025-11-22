@@ -30,6 +30,7 @@ from claude_code_tools.session_menu import (
     show_resume_submenu as menu_show_resume_submenu,
     prompt_suppress_options as menu_prompt_suppress_options,
 )
+from claude_code_tools.node_menu_ui import run_node_menu_ui
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
@@ -1031,20 +1032,33 @@ def create_action_handler(claude_home: Optional[str] = None):
     Returns:
         Function that handles session actions
     """
-    def handle_session_action(session: Tuple, action: str) -> None:
+    def handle_session_action(
+        session: Tuple, action: str, kwargs: Optional[dict] = None
+    ) -> None:
         """Handle actions for a selected session."""
-        session_id = session[0]
-        project_path = session[6]
+        kwargs = kwargs or {}
+
+        if isinstance(session, dict):
+            session_id = session.get("session_id")
+            project_path = session.get("cwd")
+        else:
+            session_id = session[0]
+            project_path = session[6]
 
         if action == "resume":
             resume_session(session_id, project_path, shell_mode=False, claude_home=claude_home)
         elif action == "suppress_resume":
-            options = prompt_suppress_options()
-            if options:
+            tools = kwargs.get("tools")
+            threshold = kwargs.get("threshold")
+            trim_assistant = kwargs.get("trim_assistant")
+            if tools is None and threshold is None and trim_assistant is None:
+                options = prompt_suppress_options()
+                if not options:
+                    return
                 tools, threshold, trim_assistant = options
-                handle_suppress_resume_claude(
-                    session_id, project_path, tools, threshold, trim_assistant, claude_home
-                )
+            handle_suppress_resume_claude(
+                session_id, project_path, tools, threshold or 500, trim_assistant, claude_home
+            )
         elif action == "smart_trim_resume":
             handle_smart_trim_resume_claude(session_id, project_path, claude_home)
         elif action == "path":
@@ -1201,10 +1215,35 @@ To persist directory changes when resuming sessions:
     DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
 
     use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
+    action_handler = create_action_handler(args.claude_home)
 
-    if TUI_AVAILABLE and use_tui and not args.shell:
+    if args.altui:
+        run_node_menu_ui(
+            [
+                {
+                    "agent": "claude",
+                    "agent_display": "Claude",
+                    "session_id": s[0],
+                    "mod_time": s[1],
+                    "create_time": s[2],
+                    "lines": s[3],
+                    "project": s[4],
+                    "preview": s[5],
+                    "cwd": s[6],
+                    "branch": s[7] if len(s) > 7 else "",
+                    "claude_home": args.claude_home,
+                    "is_trimmed": s[8] if len(s) > 8 else False,
+                    "derivation_type": None,
+                    "is_sidechain": s[9] if len(s) > 9 else False,
+                }
+                for s in matching_sessions[: args.num_matches]
+            ],
+            keywords,
+            action_handler,
+            stderr_mode=args.shell,
+        )
+    elif TUI_AVAILABLE and use_tui and not args.shell:
         # Use Textual TUI for interactive arrow-key navigation (default)
-        action_handler = create_action_handler(args.claude_home)
         # Limit to num_matches, same as simple UI
         run_session_tui(matching_sessions[:args.num_matches], keywords, action_handler)
     elif RICH_AVAILABLE and console:

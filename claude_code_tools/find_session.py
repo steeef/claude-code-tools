@@ -44,6 +44,7 @@ from claude_code_tools.session_menu import (
     show_resume_submenu as menu_show_resume_submenu,
     prompt_suppress_options as menu_prompt_suppress_options,
 )
+from claude_code_tools.node_menu_ui import run_node_menu_ui
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
@@ -564,9 +565,9 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
 
 
 def create_action_handler(shell_mode: bool = False):
-    """Create an action handler for the TUI."""
-    def action_handler(session, action: str) -> None:
-        """Handle actions from the TUI - session can be tuple or dict."""
+    """Create an action handler for the TUI or Node UI."""
+    def action_handler(session, action: str, kwargs: Optional[dict] = None) -> None:
+        """Handle actions from the UI - session can be tuple or dict."""
         # Convert session to dict if it's a tuple or dict-like
         if isinstance(session, dict):
             session_dict = session
@@ -574,14 +575,19 @@ def create_action_handler(shell_mode: bool = False):
             # Shouldn't happen in unified find, but handle gracefully
             session_dict = {"session_id": str(session), "agent": "unknown"}
 
-        handle_action(session_dict, action, shell_mode=shell_mode)
+        handle_action(
+            session_dict, action, shell_mode=shell_mode, action_kwargs=kwargs or {}
+        )
 
     return action_handler
 
 
-def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
+def handle_action(
+    session: dict, action: str, shell_mode: bool = False, action_kwargs: Optional[dict] = None
+) -> None:
     """Handle the selected action based on agent type."""
     agent = session["agent"]
+    action_kwargs = action_kwargs or {}
 
     if action == "resume":
         if agent == "claude":
@@ -597,13 +603,19 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
             )
 
     elif action == "suppress_resume":
-        # Prompt for suppress options
-        options = prompt_suppress_options(stderr_mode=shell_mode)
-        if options:
-            tools, threshold, trim_assistant = options
-            handle_suppress_resume(
-                session, tools, threshold, trim_assistant, shell_mode
-            )
+        # Use provided options when available, otherwise prompt
+        tools = action_kwargs.get("tools")
+        threshold = action_kwargs.get("threshold")
+        trim_assistant = action_kwargs.get("trim_assistant")
+        if tools is None and threshold is None and trim_assistant is None:
+            options = prompt_suppress_options(stderr_mode=shell_mode)
+            if options:
+                tools, threshold, trim_assistant = options
+            else:
+                return
+        handle_suppress_resume(
+            session, tools, threshold or 500, trim_assistant, shell_mode
+        )
 
     elif action == "path":
         if agent == "claude":
@@ -814,16 +826,20 @@ Examples:
     # ============================================================
     # UI Selection: Change DEFAULT_UI to switch the default interface
     # Options: 'tui' (Textual) or 'rich' (Rich table)
+    # Alt UI (--altui) forces the Node UI runner
     # ============================================================
     DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
 
     use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
 
-    if TUI_AVAILABLE and use_tui and not args.shell:
+    action_handler = create_action_handler(shell_mode=args.shell)
+    limited_sessions = matching_sessions[: args.num_matches]
+
+    if args.altui:
+        run_node_menu_ui(limited_sessions, keywords, action_handler, stderr_mode=args.shell)
+    elif TUI_AVAILABLE and use_tui and not args.shell:
         # Use Textual TUI for interactive arrow-key navigation (default)
-        action_handler = create_action_handler(shell_mode=args.shell)
-        # Limit to num_matches
-        run_session_tui(matching_sessions[:args.num_matches], keywords, action_handler)
+        run_session_tui(limited_sessions, keywords, action_handler)
     elif RICH_AVAILABLE:
         selected_session = display_interactive_ui(
             matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches

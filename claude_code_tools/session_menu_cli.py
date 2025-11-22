@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
+from claude_code_tools.node_menu_ui import run_node_menu_ui
+
 from claude_code_tools.session_menu import (
     show_action_menu,
     prompt_suppress_options,
@@ -243,6 +245,7 @@ def execute_action(
     project_path: str,
     claude_home: Optional[str] = None,
     codex_home: Optional[str] = None,
+    action_kwargs: Optional[dict] = None,
 ) -> None:
     """
     Execute the selected action by delegating to appropriate tool.
@@ -306,10 +309,15 @@ def execute_action(
             resume_session(str(session_file), shell_mode=False)
 
     elif action == "suppress_resume":
-        result = prompt_suppress_options()
-        if result is None:
-            return
-        tools, threshold, trim_assistant = result
+        action_kwargs = action_kwargs or {}
+        tools = action_kwargs.get("tools")
+        threshold = action_kwargs.get("threshold")
+        trim_assistant = action_kwargs.get("trim_assistant")
+        if tools is None and threshold is None and trim_assistant is None:
+            result = prompt_suppress_options()
+            if result is None:
+                return
+            tools, threshold, trim_assistant = result
 
         if agent == "claude":
             from claude_code_tools.find_claude_session import (
@@ -320,7 +328,7 @@ def execute_action(
                 session_id,
                 project_path,
                 tools,
-                threshold,
+                threshold or 500,
                 trim_assistant,
                 claude_home,
             )
@@ -331,7 +339,7 @@ def execute_action(
             handle_suppress_resume_codex(
                 str(session_file),
                 tools,
-                threshold,
+                threshold or 500,
                 trim_assistant,
                 codex_home,
             )
@@ -405,6 +413,11 @@ Examples:
         action="store_true",
         help="Shell mode for persistent directory changes",
     )
+    parser.add_argument(
+        "--altui",
+        action="store_true",
+        help="Use Node-based alternative UI for menus",
+    )
 
     args = parser.parse_args()
 
@@ -436,7 +449,8 @@ Examples:
             else:
                 # Cannot extract cwd - this shouldn't happen for valid Claude sessions
                 print(
-                    f"Error: Could not extract working directory from session file: {session_file}",
+                    "Error: Could not extract working directory from "
+                    f"session file: {session_file}",
                     file=sys.stderr,
                 )
                 sys.exit(1)
@@ -484,25 +498,57 @@ Examples:
     # Check if sidechain
     is_sidechain = is_sidechain_session(session_file)
 
-    # Show action menu
-    action = show_action_menu(
-        session_id=session_id,
-        agent=agent,
-        project_name=project_name,
-        git_branch=git_branch,
-        is_sidechain=is_sidechain,
-        stderr_mode=args.shell,
-    )
+    if args.altui:
+        session_dict = {
+            "agent": agent,
+            "agent_display": agent.title(),
+            "session_id": session_id,
+            "mod_time": session_file.stat().st_mtime,
+            "create_time": session_file.stat().st_ctime,
+            "lines": 0,
+            "project": project_name,
+            "preview": "",
+            "cwd": project_path,
+            "branch": git_branch or "",
+            "file_path": str(session_file),
+            "claude_home": args.claude_home,
+            "is_trimmed": False,
+            "derivation_type": None,
+            "is_sidechain": is_sidechain,
+        }
 
-    if action:
-        execute_action(
-            action,
-            agent,
-            session_file,
-            project_path,
-            args.claude_home,
-            args.codex_home,
+        def handler(session_dict_in, action, kwargs=None):
+            execute_action(
+                action,
+                agent,
+                session_file,
+                project_path,
+                args.claude_home,
+                args.codex_home,
+                action_kwargs=kwargs,
+            )
+
+        run_node_menu_ui([session_dict], [session_id], handler, stderr_mode=args.shell)
+    else:
+        # Show action menu
+        action = show_action_menu(
+            session_id=session_id,
+            agent=agent,
+            project_name=project_name,
+            git_branch=git_branch,
+            is_sidechain=is_sidechain,
+            stderr_mode=args.shell,
         )
+
+        if action:
+            execute_action(
+                action,
+                agent,
+                session_file,
+                project_path,
+                args.claude_home,
+                args.codex_home,
+            )
 
 
 if __name__ == "__main__":

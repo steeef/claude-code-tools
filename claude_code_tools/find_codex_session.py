@@ -29,6 +29,7 @@ from claude_code_tools.session_menu import (
     show_resume_submenu as menu_show_resume_submenu,
     prompt_suppress_options as menu_prompt_suppress_options,
 )
+from claude_code_tools.node_menu_ui import run_node_menu_ui
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
@@ -845,8 +846,9 @@ def resume_session(
 
 def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] = None):
     """Create an action handler for the TUI."""
-    def action_handler(session, action: str) -> None:
+    def action_handler(session, action: str, kwargs: Optional[dict] = None) -> None:
         """Handle actions from the TUI - session can be tuple or dict."""
+        kwargs = kwargs or {}
         # Ensure session is a dict
         if not isinstance(session, dict):
             # Shouldn't happen in codex find, but handle gracefully
@@ -860,13 +862,17 @@ def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] =
                 shell_mode
             )
         elif action == "suppress_resume":
-            # Prompt for suppress options
-            options = prompt_suppress_options()
-            if options:
+            tools = kwargs.get("tools")
+            threshold = kwargs.get("threshold")
+            trim_assistant = kwargs.get("trim_assistant")
+            if tools is None and threshold is None and trim_assistant is None:
+                options = prompt_suppress_options()
+                if not options:
+                    return
                 tools, threshold, trim_assistant = options
-                handle_suppress_resume_codex(
-                    session, tools, threshold, trim_assistant, codex_home
-                )
+            handle_suppress_resume_codex(
+                session, tools, threshold or 500, trim_assistant, codex_home
+            )
         elif action == "smart_trim_resume":
             # Smart trim using parallel agents
             handle_smart_trim_resume_codex(session, codex_home)
@@ -1007,10 +1013,36 @@ Examples:
     DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
 
     use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
+    action_handler = create_action_handler(shell_mode=args.shell, codex_home=codex_home)
 
-    if TUI_AVAILABLE and use_tui and not args.shell:
+    if args.altui:
+        run_node_menu_ui(
+            [
+                {
+                    "agent": "codex",
+                    "agent_display": "Codex",
+                    "session_id": m.get("session_id"),
+                    "mod_time": m.get("mod_time"),
+                    "create_time": m.get("mod_time"),
+                    "lines": m.get("lines"),
+                    "project": m.get("project"),
+                    "preview": m.get("preview"),
+                    "cwd": m.get("cwd"),
+                    "branch": m.get("branch", ""),
+                    "file_path": m.get("file_path"),
+                    "claude_home": None,
+                    "is_trimmed": m.get("is_trimmed", False),
+                    "derivation_type": m.get("derivation_type"),
+                    "is_sidechain": m.get("is_sidechain", False),
+                }
+                for m in matches
+            ],
+            keywords,
+            action_handler,
+            stderr_mode=args.shell,
+        )
+    elif TUI_AVAILABLE and use_tui and not args.shell:
         # Use Textual TUI for interactive arrow-key navigation (default)
-        action_handler = create_action_handler(shell_mode=args.shell, codex_home=codex_home)
         run_session_tui(matches, keywords, action_handler)
     else:
         # Fallback to Rich-based UI
@@ -1024,7 +1056,6 @@ Examples:
             return
 
         # Perform selected action using action handler
-        action_handler = create_action_handler(shell_mode=args.shell, codex_home=codex_home)
         action_handler(selected_match, action)
 
 
