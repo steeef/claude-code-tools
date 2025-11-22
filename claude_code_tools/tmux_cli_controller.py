@@ -217,20 +217,29 @@ class TmuxCLIController:
     def list_panes(self) -> List[Dict[str, str]]:
         """
         List all panes in the current window.
-        
+
         Returns:
             List of dicts with pane info (id, index, title, active, size, command, formatted_id)
         """
-        target = f"{self.session_name}:{self.window_name}" if self.session_name and self.window_name else ""
-        
-        output, code = self._run_tmux_command([
-            'list-panes',
-            '-t', target,
-            '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}|#{pane_current_command}'
-        ] if target else [
-            'list-panes',
-            '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}|#{pane_current_command}'
-        ])
+        # Use explicit target if provided
+        if self.session_name and self.window_name:
+            target = f"{self.session_name}:{self.window_name}"
+        else:
+            # Use the window where the command is being executed from
+            target = self.get_current_window_id()
+
+        if target:
+            output, code = self._run_tmux_command([
+                'list-panes',
+                '-t', target,
+                '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}|#{pane_current_command}'
+            ])
+        else:
+            # Fallback to default behavior
+            output, code = self._run_tmux_command([
+                'list-panes',
+                '-F', '#{pane_id}|#{pane_index}|#{pane_title}|#{pane_active}|#{pane_width}x#{pane_height}|#{pane_current_command}'
+            ])
         
         if code != 0:
             return []
