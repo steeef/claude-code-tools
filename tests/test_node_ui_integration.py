@@ -34,7 +34,7 @@ def test_altui_prefers_node_ui_runner(monkeypatch):
 
     calls = {"invoked": False}
 
-    def fake_run_node_menu_ui(sessions, keywords, action_handler, stderr_mode):
+    def fake_run_node_menu_ui(sessions, keywords, action_handler, stderr_mode, **kwargs):
         calls["invoked"] = True
         assert sessions == _sample_sessions()
         assert keywords == ["test"]
@@ -65,7 +65,7 @@ def test_kwargs_passed_to_action_handler(monkeypatch):
 
     captured = {}
 
-    def fake_run_node_menu_ui(sessions, keywords, action_handler, stderr_mode):
+    def fake_run_node_menu_ui(sessions, keywords, action_handler, stderr_mode, **kwargs):
         # Simulate Node writing out kwargs
         action_handler(
             sessions[0], "suppress_resume", {"tools": "bash", "threshold": 250}

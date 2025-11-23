@@ -21,6 +21,8 @@ import re
 import shlex
 import sys
 import time
+import termios
+import tty
 from datetime import datetime
 from pathlib import Path
 from typing import List, Set, Tuple, Optional
@@ -36,6 +38,27 @@ from claude_code_tools.trim_session import (
     is_trimmed_session,
     get_session_derivation_type,
 )
+
+
+def _read_key() -> str:
+    """Read a single keypress (Enter/Esc)."""
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return ch
+
+
+def prompt_post_action() -> str:
+    """After non-launch actions: Enter exits, Esc returns to menu."""
+    print("\n[Action complete] Press Enter to exit, or Esc to return to menu", file=sys.stderr)
+    ch = _read_key()
+    if ch == "\x1b":
+        return "back"
+    return "exit"
 
 # Try to import TUI - it's optional
 try:
@@ -1022,7 +1045,7 @@ def resume_session(session_id: str, project_path: str, shell_mode: bool = False,
         sys.exit(1)
 
 
-def create_action_handler(claude_home: Optional[str] = None):
+def create_action_handler(claude_home: Optional[str] = None, nonlaunch_flag: Optional[dict] = None):
     """
     Create an action handler function for TUI/UI integration.
 
@@ -1065,14 +1088,23 @@ def create_action_handler(claude_home: Optional[str] = None):
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
             print(f"\nSession file path:")
             print(session_file_path)
+            if nonlaunch_flag is not None:
+                nonlaunch_flag["done"] = True
+                nonlaunch_flag["session_id"] = session_id
         elif action == "copy":
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
             copy_session_file(session_file_path)
+            if nonlaunch_flag is not None:
+                nonlaunch_flag["done"] = True
+                nonlaunch_flag["session_id"] = session_id
         elif action == "clone":
             clone_session(session_id, project_path, shell_mode=False, claude_home=claude_home)
         elif action == "export":
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
             handle_export_session(session_file_path)
+            if nonlaunch_flag is not None:
+                nonlaunch_flag["done"] = True
+                nonlaunch_flag["session_id"] = session_id
         elif action == "continue":
             from claude_code_tools.claude_continue import claude_continue
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
@@ -1215,33 +1247,49 @@ To persist directory changes when resuming sessions:
     DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
 
     use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
-    action_handler = create_action_handler(args.claude_home)
+    nonlaunch_flag = {"done": False}
+    action_handler = create_action_handler(args.claude_home, nonlaunch_flag=nonlaunch_flag)
 
     if args.altui:
-        run_node_menu_ui(
-            [
-                {
-                    "agent": "claude",
-                    "agent_display": "Claude",
-                    "session_id": s[0],
-                    "mod_time": s[1],
-                    "create_time": s[2],
-                    "lines": s[3],
-                    "project": s[4],
-                    "preview": s[5],
-                    "cwd": s[6],
-                    "branch": s[7] if len(s) > 7 else "",
-                    "claude_home": args.claude_home,
-                    "is_trimmed": s[8] if len(s) > 8 else False,
-                    "derivation_type": None,
-                    "is_sidechain": s[9] if len(s) > 9 else False,
-                }
-                for s in matching_sessions[: args.num_matches]
-            ],
-            keywords,
-            action_handler,
-            stderr_mode=args.shell,
-        )
+        limited = [
+            {
+                "agent": "claude",
+                "agent_display": "Claude",
+                "session_id": s[0],
+                "mod_time": s[1],
+                "create_time": s[2],
+                "lines": s[3],
+                "project": s[4],
+                "preview": s[5],
+                "cwd": s[6],
+                "branch": s[7] if len(s) > 7 else "",
+                "claude_home": args.claude_home,
+                "is_trimmed": s[8] if len(s) > 8 else False,
+                "derivation_type": None,
+                "is_sidechain": s[9] if len(s) > 9 else False,
+            }
+            for s in matching_sessions[: args.num_matches]
+        ]
+
+        focus_id = None
+        start_action = False
+        while True:
+            nonlaunch_flag["done"] = False
+            run_node_menu_ui(
+                limited,
+                keywords,
+                action_handler,
+                stderr_mode=args.shell,
+                focus_session_id=focus_id,
+                start_action=start_action,
+            )
+            if nonlaunch_flag["done"]:
+                choice = prompt_post_action()
+                if choice == "back":
+                    focus_id = nonlaunch_flag.get("session_id")
+                    start_action = True
+                    continue
+            break
     elif TUI_AVAILABLE and use_tui and not args.shell:
         # Use Textual TUI for interactive arrow-key navigation (default)
         # Limit to num_matches, same as simple UI

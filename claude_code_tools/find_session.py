@@ -20,6 +20,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
+import termios
+import tty
 
 # Import search functions from existing tools
 from claude_code_tools.find_claude_session import (
@@ -564,8 +566,11 @@ def show_action_menu(session: dict, stderr_mode: bool = False) -> Optional[str]:
     )
 
 
-def create_action_handler(shell_mode: bool = False):
+def create_action_handler(
+    shell_mode: bool = False, nonlaunch_flag: Optional[dict] = None
+):
     """Create an action handler for the TUI or Node UI."""
+
     def action_handler(session, action: str, kwargs: Optional[dict] = None) -> None:
         """Handle actions from the UI - session can be tuple or dict."""
         # Convert session to dict if it's a tuple or dict-like
@@ -578,6 +583,10 @@ def create_action_handler(shell_mode: bool = False):
         handle_action(
             session_dict, action, shell_mode=shell_mode, action_kwargs=kwargs or {}
         )
+
+        if nonlaunch_flag is not None and action in {"path", "copy", "export"}:
+            nonlaunch_flag["done"] = True
+            nonlaunch_flag["session_id"] = session_dict.get("session_id")
 
     return action_handler
 
@@ -832,11 +841,30 @@ Examples:
 
     use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
 
-    action_handler = create_action_handler(shell_mode=args.shell)
+    nonlaunch_flag = {"done": False}
+    action_handler = create_action_handler(shell_mode=args.shell, nonlaunch_flag=nonlaunch_flag)
     limited_sessions = matching_sessions[: args.num_matches]
 
     if args.altui:
-        run_node_menu_ui(limited_sessions, keywords, action_handler, stderr_mode=args.shell)
+        focus_id = None
+        start_action = False
+        while True:
+            nonlaunch_flag["done"] = False
+            run_node_menu_ui(
+                limited_sessions,
+                keywords,
+                action_handler,
+                stderr_mode=args.shell,
+                focus_session_id=focus_id,
+                start_action=start_action,
+            )
+            if nonlaunch_flag["done"]:
+                choice = prompt_post_action()
+                if choice == "back":
+                    focus_id = nonlaunch_flag.get("session_id")
+                    start_action = True
+                    continue
+            break
     elif TUI_AVAILABLE and use_tui and not args.shell:
         # Use Textual TUI for interactive arrow-key navigation (default)
         run_session_tui(limited_sessions, keywords, action_handler)
@@ -861,3 +889,22 @@ Examples:
 
 if __name__ == "__main__":
     main()
+def _read_key() -> str:
+    """Read a single keypress (non-blocking for Enter/Esc semantics)."""
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return ch
+
+
+def prompt_post_action() -> str:
+    """Prompt after non-launch action: Enter exits, Esc goes back."""
+    print("\n[Action complete] Press Enter to exit, or Esc to return to menu", file=sys.stderr)
+    ch = _read_key()
+    if ch == "\x1b":
+        return "back"
+    return "exit"
