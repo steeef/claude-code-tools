@@ -28,6 +28,8 @@ const outPath = cli.flags.out;
 const focusId = payload.focus_id || null;
 const startAction = payload.start_action || false;
 const rpcPath = payload.rpc_path || null;
+const scopeLine = payload.scope_line || '';
+const tipLine = payload.tip_line || '';
 const BRANCH_ICON = '';
 const DATE_FMT = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -68,6 +70,14 @@ const formatDateRange = (start, end) => {
   return '';
 };
 
+const colorize = {
+  agent: (txt) => chalk.magenta(txt),
+  project: (txt) => chalk.green(txt),
+  branch: (txt) => chalk.cyan(txt),
+  lines: (txt) => chalk.yellow(txt),
+  date: (txt) => chalk.blue(txt),
+};
+
 // Non-TTY fallback: pick first session and resume
 if (!process.stdout.isTTY) {
   if (sessions.length) {
@@ -85,9 +95,8 @@ function writeResult(sessionId, action, kwargs = {}) {
   fs.writeFileSync(outPath, JSON.stringify({session_id: sessionId, action, kwargs}), 'utf8');
 }
 
-function SessionRow({session, active, index, width}) {
+function SessionRow({session, active, index, width, pad}) {
   const id = (session.session_id || '').slice(0, 8);
-  const branch = session.branch ? chalk.cyan(` ${BRANCH_ICON} ${session.branch}`) : '';
   const anno = toAnno(session);
   const lines = formatLines(session.lines);
   const date = formatDateRange(session.create_time, session.mod_time);
@@ -96,22 +105,23 @@ function SessionRow({session, active, index, width}) {
   const trimmedPreview = preview.length > maxPreview
     ? preview.slice(0, maxPreview - 1) + '…'
     : preview;
-  const parts = [
-    `${index + 1}. [${session.agent_display}] ${id}${anno ? ' ' + anno : ''}`,
-    session.project,
-    branch,
-    lines,
-    date,
-  ].filter(Boolean);
-  const header = parts.join(' | ');
+
+  const agentIdRaw = `[${session.agent_display}] ${id}${anno ? ' ' + anno : ''}`;
+  const agentIdPart = colorize.agent(agentIdRaw.padEnd(pad.agentId));
+  const projPart = colorize.project((session.project || '').padEnd(pad.project));
+  const branchRaw = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+  const branchPart = colorize.branch(branchRaw.padEnd(pad.branch));
+  const linesPart = colorize.lines((lines || '').padEnd(pad.lines));
+  const datePart = colorize.date((date || '').padEnd(pad.date));
+  const header = `${(index + 1).toString().padEnd(2)} ${agentIdPart} | ${projPart} | ${branchPart} | ${linesPart} | ${datePart}`;
   return h(
     Box,
     {flexDirection: 'column'},
     h(
       Text,
       {
-        color: active ? 'black' : 'white',
-        backgroundColor: active ? 'cyan' : undefined,
+        color: active ? 'white' : 'white',
+        backgroundColor: active ? '#303030' : undefined,
       },
       `${active ? figures.pointer : ' '} ${header}`
     ),
@@ -194,6 +204,47 @@ function ResultsView({onSelect, onQuit}) {
   const clampedScroll = Math.max(0, Math.min(scroll, Math.max(0, sessions.length - maxItems)));
   const visible = sessions.slice(clampedScroll, clampedScroll + maxItems);
 
+  const pad = (() => {
+    const proj = Math.max(...sessions.map((s) => (s.project || '').length), 0);
+    const branch = Math.max(
+      ...sessions.map((s) => {
+        const raw = s.branch ? `${BRANCH_ICON} ${s.branch}` : '';
+        return raw.length;
+      }),
+      0,
+    );
+    const lines = Math.max(...sessions.map((s) => (formatLines(s.lines) || '').length), 0);
+    const date = Math.max(
+      ...sessions.map((s) => (formatDateRange(s.create_time, s.mod_time) || '').length),
+      0,
+    );
+    const agentId = Math.max(
+      ...sessions.map((s) => {
+        const anno = toAnno(s);
+        const id = (s.session_id || '').slice(0, 8);
+        return `[${s.agent_display}] ${id}${anno ? ' ' + anno : ''}`.length;
+      }),
+      0,
+    );
+    return {project: proj, branch, lines, date, agentId};
+  })();
+
+  const annoSet = new Set();
+  sessions.forEach((s) => {
+    const a = toAnno(s);
+    if (a.includes('t')) annoSet.add('t');
+    if (a.includes('c')) annoSet.add('c');
+    if (a.includes('sub')) annoSet.add('sub');
+  });
+  const annoLine = (() => {
+    if (!annoSet.size) return null;
+    const parts = [];
+    if (annoSet.has('t')) parts.push('(t)=trimmed');
+    if (annoSet.has('c')) parts.push('(c)=continued');
+    if (annoSet.has('sub')) parts.push('(sub)=sub-agent (not resumable)');
+    return parts.join(' ');
+  })();
+
   return h(
     Box,
     {flexDirection: 'column'},
@@ -212,6 +263,7 @@ function ResultsView({onSelect, onQuit}) {
           active: clampedScroll + i === index,
           index: clampedScroll + i,
           width,
+          pad,
         })
       )
     ),
@@ -223,17 +275,38 @@ function ResultsView({onSelect, onQuit}) {
         {dimColor: true},
         `Enter: select  Esc: quit  ↑/↓ or j/k: move  number+Enter: jump ${numBuffer ? '[typing ' + numBuffer + ']' : ''}`
       )
-    )
+    ),
+    scopeLine
+      ? h(
+          Box,
+          {marginTop: 0},
+          h(Text, {dimColor: true}, scopeLine)
+        )
+      : null,
+    tipLine
+      ? h(
+          Box,
+          {marginTop: 0},
+          h(Text, {dimColor: true}, tipLine)
+        )
+      : null,
+    annoLine
+      ? h(
+          Box,
+          {marginTop: 0},
+          h(Text, {dimColor: true}, annoLine)
+        )
+      : null
   );
 }
 
 const mainActions = [
-  {label: 'Resume', value: 'resume'},
-  {label: 'Show path', value: 'path'},
-  {label: 'Copy file', value: 'copy'},
-  {label: 'Clone + resume', value: 'clone'},
-  {label: 'Export to text', value: 'export'},
-  {label: 'Continue (fresh)', value: 'continue'},
+  {label: 'Resume session', value: 'resume'},
+  {label: 'Show session file path', value: 'path'},
+  {label: 'Copy session file', value: 'copy'},
+  {label: 'Clone session and resume clone', value: 'clone'},
+  {label: 'Export to text file (.txt)', value: 'export'},
+  {label: 'Continue with context in fresh session', value: 'continue'},
 ];
 
 const resumeOptions = [
@@ -262,26 +335,26 @@ function ConfirmView({session, actionLabel, onConfirm, onBack}) {
 }
 
 function ActionView({session, onBack, onDone}) {
-  const items = session.is_sidechain
+  const baseItems = session.is_sidechain
     ? mainActions.filter((a) => ['path', 'copy', 'export'].includes(a.value))
     : mainActions;
 
+  const items = baseItems.map((item, idx) => ({
+    ...item,
+    label: `${idx + 1}. ${item.label}`,
+    number: idx + 1,
+  }));
+
   const handleSelect = (item) => {
-    if (['path', 'copy', 'export'].includes(item.value)) {
-      onDone(item.value);
-    } else if (item.value === 'resume') {
-      onDone('resume');
-    } else if (item.value === 'continue') {
-      onDone('continue');
-    } else if (item.value === 'suppress_resume') {
-      onDone('suppress_resume');
-    } else {
-      onDone(item.value);
-    }
+    onDone(item.value);
   };
 
   useInput((input, key) => {
     if (key.escape) onBack();
+    const num = Number(input);
+    if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
+        onDone(items[num - 1].value);
+    }
   });
 
   return h(
@@ -314,7 +387,7 @@ function ActionView({session, onBack, onDone}) {
     h(
       Box,
       {marginTop: 1},
-      h(Text, {dimColor: true}, 'Enter: select  Esc: back')
+      h(Text, {dimColor: true}, 'Enter: select  Esc: back  number: jump')
     )
   );
 }
@@ -322,6 +395,10 @@ function ActionView({session, onBack, onDone}) {
 function ResumeView({onBack, onDone, session}) {
   useInput((input, key) => {
     if (key.escape) onBack();
+    const num = Number(input);
+    if (!Number.isNaN(num) && num >= 1 && num <= resumeOptions.length) {
+      onDone(resumeOptions[num - 1].value);
+    }
   });
   return h(
     Box,

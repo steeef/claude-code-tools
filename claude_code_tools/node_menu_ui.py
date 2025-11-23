@@ -30,6 +30,8 @@ def _write_payload(
     focus_id: str | None = None,
     start_action: bool = False,
     rpc_path: str | None = None,
+    scope_line: str | None = None,
+    tip_line: str | None = None,
 ) -> Path:
     """Write payload to a temp file and return its path."""
     payload = {
@@ -38,6 +40,8 @@ def _write_payload(
         "focus_id": focus_id,
         "start_action": start_action,
         "rpc_path": rpc_path,
+        "scope_line": scope_line,
+        "tip_line": tip_line,
     }
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix="-node-ui.json")
     Path(tmp.name).write_text(json.dumps(payload), encoding="utf-8")
@@ -77,6 +81,8 @@ def run_node_menu_ui(
     focus_session_id: str | None = None,
     start_action: bool = False,
     rpc_path: str | None = None,
+    scope_line: str | None = None,
+    tip_line: str | None = None,
 ) -> None:
     """Launch Node UI and dispatch selected action.
 
@@ -92,6 +98,8 @@ def run_node_menu_ui(
         focus_id=focus_session_id,
         start_action=start_action,
         rpc_path=rpc_path,
+        scope_line=scope_line,
+        tip_line=tip_line,
     )
     out_fd, out_path = tempfile.mkstemp(suffix="-node-ui-out.json")
     os.close(out_fd)

@@ -116,6 +116,32 @@ def load_config() -> List[AgentConfig]:
     return get_default_agents()
 
 
+def build_scope_lines(args) -> tuple[str, str | None]:
+    """Return scope line and optional tip line mirroring Rich UI messaging."""
+    if args.original:
+        return (
+            "Showing: Original sessions only (excluding trimmed, continued, and sub-agent sessions)",
+            None,
+        )
+
+    excluded_types = []
+    if args.no_sub:
+        excluded_types.append("sub-agent")
+    if args.no_trim:
+        excluded_types.append("trimmed")
+    if args.no_cont:
+        excluded_types.append("continued")
+
+    if excluded_types:
+        excluded_str = ", ".join(excluded_types)
+        return (f"Showing: All sessions except {excluded_str}", None)
+
+    return (
+        "Showing: All session types (original, trimmed, continued, and sub-agent)",
+        "Tip: Use --no-sub, --no-trim, or --no-cont to exclude specific types",
+    )
+
+
 def search_all_agents(
     keywords: List[str],
     global_search: bool = False,
@@ -784,25 +810,10 @@ Examples:
         else []
     )
 
-    # Display informational message about what session types are being shown
-    if args.original:
-        print("Showing: Original sessions only (excluding trimmed, continued, and sub-agent sessions)", file=sys.stderr)
-    else:
-        # Build list of excluded types
-        excluded_types = []
-        if args.no_sub:
-            excluded_types.append("sub-agent")
-        if args.no_trim:
-            excluded_types.append("trimmed")
-        if args.no_cont:
-            excluded_types.append("continued")
-
-        if excluded_types:
-            excluded_str = ", ".join(excluded_types)
-            print(f"Showing: All sessions except {excluded_str}", file=sys.stderr)
-        else:
-            print("Showing: All session types (original, trimmed, continued, and sub-agent)", file=sys.stderr)
-            print("Tip: Use --no-sub, --no-trim, or --no-cont to exclude specific types", file=sys.stderr)
+    scope_line, tip_line = build_scope_lines(args)
+    print(scope_line, file=sys.stderr)
+    if tip_line:
+        print(tip_line, file=sys.stderr)
     print(file=sys.stderr)  # Blank line for readability
 
     # Search all agents
@@ -859,6 +870,8 @@ Examples:
                 focus_session_id=focus_id,
                 start_action=start_action,
                 rpc_path=rpc_path,
+                scope_line=scope_line,
+                tip_line=tip_line,
             )
             if nonlaunch_flag["done"]:
                 choice = prompt_post_action()
