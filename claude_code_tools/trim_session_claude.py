@@ -68,6 +68,47 @@ def get_content_length(content: Any) -> int:
         return len(str(content))
 
 
+def truncate_content(content: Any, threshold: int, tool_name: str) -> str:
+    """
+    Truncate content to threshold length, preserving first N characters.
+
+    Args:
+        content: The content field from a tool_result.
+        threshold: Maximum length to preserve.
+        tool_name: Name of the tool (for truncation notice).
+
+    Returns:
+        Truncated content string.
+    """
+    # Convert content to string if needed
+    if isinstance(content, str):
+        content_str = content
+    elif isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(item["text"])
+            else:
+                parts.append(str(item))
+        content_str = "".join(parts)
+    else:
+        content_str = str(content)
+
+    # If content is within threshold, return as-is
+    if len(content_str) <= threshold:
+        return content_str
+
+    # Truncate and add notice
+    original_length = len(content_str)
+    truncated = content_str[:threshold]
+    truncation_notice = (
+        f"\n\n[...truncated - original content was "
+        f"{original_length:,} characters, showing first {threshold}]"
+    )
+
+    return truncated + truncation_notice
+
+
 def process_claude_session(
     input_file: Path,
     output_file: Path,
@@ -183,19 +224,17 @@ def process_claude_session(
                                 result_content
                             )
 
-                            # Check if should suppress
+                            # Check if should truncate
                             if content_length >= threshold and (
                                 target_tools is None
                                 or tool_name.lower() in target_tools
                             ):
-                                placeholder = create_placeholder(
-                                    tool_name, content_length
+                                truncated = truncate_content(
+                                    result_content, threshold, tool_name
                                 )
-                                item["content"] = placeholder
+                                item["content"] = truncated
                                 num_tools_trimmed += 1
-                                chars_saved += (
-                                    content_length - len(placeholder)
-                                )
+                                chars_saved += content_length - len(truncated)
 
                 # Also suppress in toolUseResult.content if present
                 if (
@@ -227,10 +266,10 @@ def process_claude_session(
                                 target_tools is None
                                 or tool_name.lower() in target_tools
                             ):
-                                placeholder = create_placeholder(
-                                    tool_name, content_length
+                                truncated = truncate_content(
+                                    result_content, threshold, tool_name
                                 )
-                                tool_result["content"] = placeholder
+                                tool_result["content"] = truncated
 
             # Replace sessionId if new_session_id provided
             if new_session_id and "sessionId" in data:

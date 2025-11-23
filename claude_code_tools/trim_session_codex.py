@@ -65,11 +65,58 @@ def get_output_length(output_str: str) -> int:
         return len(output_str)
 
 
+def truncate_output(
+    output_str: str, threshold: int, tool_name: str, metadata: Dict
+) -> str:
+    """
+    Truncate Codex output to threshold length, preserving first N characters.
+
+    Args:
+        output_str: The JSON-encoded output string.
+        threshold: Maximum length to preserve.
+        tool_name: Name of the tool (for truncation notice).
+        metadata: Original metadata to preserve.
+
+    Returns:
+        JSON-encoded output string with truncated content.
+    """
+    try:
+        # First parse: get the output object
+        output_obj = json.loads(output_str)
+        # Get the actual output content
+        if isinstance(output_obj, dict) and "output" in output_obj:
+            content = str(output_obj["output"])
+        else:
+            content = str(output_obj)
+    except (json.JSONDecodeError, TypeError):
+        content = output_str
+
+    # If content is within threshold, return original
+    if len(content) <= threshold:
+        return output_str
+
+    # Truncate and add notice
+    original_length = len(content)
+    truncated = content[:threshold]
+    truncation_notice = (
+        f"\n\n[...truncated - original content was "
+        f"{original_length:,} characters, showing first {threshold}]"
+    )
+
+    # Create truncated output object
+    truncated_obj = {
+        "output": truncated + truncation_notice,
+        "metadata": metadata,
+    }
+
+    return json.dumps(truncated_obj)
+
+
 def create_suppressed_output(
     tool_name: str, original_length: int, call_id: str, metadata: Dict
 ) -> str:
     """
-    Create a suppressed output in Codex format.
+    Create a suppressed output in Codex format (deprecated - use truncate_output).
 
     Args:
         tool_name: Name of the tool.
@@ -247,15 +294,15 @@ def process_codex_session(
                 except (json.JSONDecodeError, TypeError):
                     metadata = {}
 
-                # Create suppressed output
-                suppressed_output = create_suppressed_output(
-                    tool_name, output_length, call_id, metadata
+                # Truncate output
+                truncated_output = truncate_output(
+                    output_str, threshold, tool_name, metadata
                 )
 
                 # Replace the output
-                payload["output"] = suppressed_output
+                payload["output"] = truncated_output
                 num_tools_trimmed += 1
-                chars_saved += output_length - len(suppressed_output)
+                chars_saved += output_length - len(truncated_output)
 
             # Write the (potentially modified) line
             outfile.write(json.dumps(data) + "\n")

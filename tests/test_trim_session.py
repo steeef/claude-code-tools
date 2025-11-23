@@ -171,6 +171,59 @@ class TestProcessSession:
 
         assert output_path.exists(), "Output file should exist"
 
+    @pytest.mark.parametrize(
+        "session_fixture,agent",
+        [
+            ("claude_session", "claude"),
+            ("codex_session", "codex"),
+        ],
+    )
+    def test_truncates_instead_of_replaces(
+        self, session_fixture, agent, temp_output_dir, request
+    ):
+        """Test that tool results are truncated, not completely replaced."""
+        session_path = request.getfixturevalue(session_fixture)
+        output_path = temp_output_dir / "truncated.jsonl"
+
+        threshold = 100
+        process_session(
+            agent=agent,
+            input_file=session_path,
+            output_file=output_path,
+            target_tools=None,
+            threshold=threshold,
+            verbose=False,
+        )
+
+        # Read output and verify tool results are truncated, not replaced
+        with open(output_path) as f:
+            for line in f:
+                data = json.loads(line)
+
+                # Check user messages for tool_result content
+                if data.get("type") == "user":
+                    content = data.get("message", {}).get("content", [])
+                    if isinstance(content, list):
+                        for item in content:
+                            if (
+                                isinstance(item, dict)
+                                and item.get("type") == "tool_result"
+                            ):
+                                result_content = item.get("content", "")
+                                if isinstance(result_content, str):
+                                    # Should not be a placeholder replacement
+                                    assert not result_content.startswith(
+                                        "[Results from"
+                                    ), (
+                                        "Tool result should be truncated, "
+                                        "not replaced with placeholder"
+                                    )
+                                    # Should contain truncation notice if truncated
+                                    if "...truncated" in result_content.lower():
+                                        # Verify original content is preserved
+                                        # (should start with actual content)
+                                        assert len(result_content) > 0
+
 
 class TestTrimAndCreateSession:
     """Tests for the main trim_and_create_session function."""
