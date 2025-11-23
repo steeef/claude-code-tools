@@ -666,10 +666,16 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
                 claude_home=session.get("claude_home"),
             )
             print("\n🔄 Starting continuation in fresh session...")
+
+            # Prompt for custom instructions
+            print("\nEnter custom summarization instructions (or press Enter to skip):")
+            custom_prompt = input("> ").strip() or None
+
             claude_continue(
                 file_path,
                 claude_home=session.get("claude_home"),
                 verbose=False,
+                custom_prompt=custom_prompt
             )
         elif agent == "codex":
             print(

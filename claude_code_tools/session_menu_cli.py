@@ -358,10 +358,16 @@ def execute_action(
         # Only works for Claude Code sessions for now
         if agent == "claude":
             print("\n🔄 Starting continuation in fresh session...")
+
+            # Prompt for custom instructions
+            print("\nEnter custom summarization instructions (or press Enter to skip):")
+            custom_prompt = input("> ").strip() or None
+
             claude_continue(
                 str(session_file),
                 claude_home=claude_home,
                 verbose=False,
+                custom_prompt=custom_prompt
             )
         else:
             print(

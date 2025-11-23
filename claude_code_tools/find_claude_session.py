@@ -1063,7 +1063,17 @@ def create_action_handler(claude_home: Optional[str] = None):
             from claude_code_tools.claude_continue import claude_continue
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
             print("\n🔄 Starting continuation in fresh session...")
-            claude_continue(session_file_path, claude_home=claude_home, verbose=False)
+
+            # Prompt for custom instructions
+            print("\nEnter custom summarization instructions (or press Enter to skip):")
+            custom_prompt = input("> ").strip() or None
+
+            claude_continue(
+                session_file_path,
+                claude_home=claude_home,
+                verbose=False,
+                custom_prompt=custom_prompt
+            )
 
     return handle_session_action
 
@@ -1252,10 +1262,16 @@ To persist directory changes when resuming sessions:
                 from claude_code_tools.claude_continue import claude_continue
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
                 print("\n🔄 Starting continuation in fresh session...")
+
+                # Prompt for custom instructions
+                print("\nEnter custom summarization instructions (or press Enter to skip):")
+                custom_prompt = input("> ").strip() or None
+
                 claude_continue(
                     session_file_path,
                     claude_home=args.claude_home,
                     verbose=False,
+                    custom_prompt=custom_prompt
                 )
     else:
         # Fallback: print session IDs as before

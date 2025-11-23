@@ -37,7 +37,8 @@ def claude_continue(
     session_id_or_path: str,
     claude_home: Optional[str] = None,
     verbose: bool = False,
-    claude_cli: str = "claude"
+    claude_cli: str = "claude",
+    custom_prompt: Optional[str] = None
 ) -> None:
     """
     Continue a Claude Code session in a new session with full context.
@@ -47,6 +48,7 @@ def claude_continue(
         claude_home: Optional custom Claude home directory
         verbose: If True, show detailed progress
         claude_cli: Claude CLI command to use (default: "claude")
+        custom_prompt: Optional custom instructions for summarization
     """
     print("🔄 Claude Continue - Transferring context to new session")
     print()
@@ -172,6 +174,14 @@ DO NOT TRY TO READ these files by YOURSELF! To save your own context, you must u
 If later in this conversation you need more information about what happened during those previous sessions, you can again use sub-agent(s) to explore the relevant files.
 
 When done exploring, state your understanding of the full task history and the most recent work to me."""
+
+    # Append custom instructions if provided
+    if custom_prompt:
+        analysis_prompt += f"""
+
+Below are some special instructions from the user. Prioritize these in combination with the above instructions:
+
+{custom_prompt}"""
 
     print(f"   Analyzing {len(all_exported_files)} exported session(s)...")
     print()
@@ -305,6 +315,11 @@ The tool will:
         default="claude",
         help="Claude CLI command to use (default: claude)"
     )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        help="Custom instructions for summarization"
+    )
 
     args = parser.parse_args()
 
@@ -313,7 +328,8 @@ The tool will:
             args.session,
             claude_home=args.claude_home,
             verbose=args.verbose,
-            claude_cli=args.cli
+            claude_cli=args.cli,
+            custom_prompt=args.prompt
         )
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user", file=sys.stderr)
