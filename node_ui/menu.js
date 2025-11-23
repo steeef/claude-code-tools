@@ -131,7 +131,7 @@ function SessionRow({session, active, index, width, pad}) {
   );
 }
 
-function ResultsView({onSelect, onQuit}) {
+function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   const initialIndex = focusId
     ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId))
     : 0;
@@ -174,6 +174,7 @@ function ResultsView({onSelect, onQuit}) {
         setNumBuffer('');
         return;
       }
+      clearScreen();
       return onSelect(index);
     }
     if (key.upArrow || input === 'k') {
@@ -334,7 +335,7 @@ function ConfirmView({session, actionLabel, onConfirm, onBack}) {
   );
 }
 
-function ActionView({session, onBack, onDone}) {
+function ActionView({session, onBack, onDone, clearScreen}) {
   const baseItems = session.is_sidechain
     ? mainActions.filter((a) => ['path', 'copy', 'export'].includes(a.value))
     : mainActions;
@@ -350,7 +351,10 @@ function ActionView({session, onBack, onDone}) {
   };
 
   useInput((input, key) => {
-    if (key.escape) onBack();
+    if (key.escape) {
+      clearScreen();
+      onBack();
+    }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
         onDone(items[num - 1].value);
@@ -360,6 +364,7 @@ function ActionView({session, onBack, onDone}) {
   return h(
     Box,
     {flexDirection: 'column'},
+    h(Text, null, ''),
     h(
       Box,
       {flexDirection: 'column'},
@@ -392,9 +397,12 @@ function ActionView({session, onBack, onDone}) {
   );
 }
 
-function ResumeView({onBack, onDone, session}) {
+function ResumeView({onBack, onDone, session, clearScreen}) {
   useInput((input, key) => {
-    if (key.escape) onBack();
+    if (key.escape) {
+      clearScreen();
+      onBack();
+    }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 1 && num <= resumeOptions.length) {
       onDone(resumeOptions[num - 1].value);
@@ -435,14 +443,17 @@ function ResumeView({onBack, onDone, session}) {
   );
 }
 
-function TrimForm({onSubmit, onBack}) {
+function TrimForm({onSubmit, onBack, clearScreen}) {
   const [field, setField] = useState('tools');
   const [tools, setTools] = useState('');
   const [threshold, setThreshold] = useState('500');
   const [assistant, setAssistant] = useState('');
 
   useInput((input, key) => {
-    if (key.escape) return onBack();
+    if (key.escape) {
+      clearScreen();
+      return onBack();
+    }
     if (key.return) {
       if (field === 'tools') setField('threshold');
       else if (field === 'threshold') setField('assistant');
@@ -494,7 +505,7 @@ function TrimForm({onSubmit, onBack}) {
   );
 }
 
-function NonLaunchView({session, action, rpcPath, onBack, onExit}) {
+function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) {
   const {exit} = useApp();
   const needsDest = action === 'copy' || action === 'export';
   const [dest, setDest] = useState('');
@@ -547,7 +558,10 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit}) {
 
   useInput((input, key) => {
     if (stage === 'prompt') {
-      if (key.escape) return onBack();
+      if (key.escape) {
+        clearScreen();
+        return onBack();
+      }
       if (key.return) {
         setStage('running');
         return;
@@ -558,7 +572,10 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit}) {
       }
       if (input) setDest((d) => d + input);
     } else if (stage === 'result') {
-      if (key.escape) return onBack();
+      if (key.escape) {
+        clearScreen();
+        return onBack();
+      }
       if (key.return) {
         onExit();
         exit({exitCode: 0});
@@ -601,6 +618,8 @@ function App() {
   const [nonLaunch, setNonLaunch] = useState(null);
   const session = sessions[current];
 
+  const clearScreen = () => {};
+
   const quit = () => exit({exitCode: 0});
 
   const finish = (action, kwargs = {}) => {
@@ -613,18 +632,19 @@ function App() {
     return null;
   }
 
+  let view = null;
+
   if (screen === 'results') {
-    return h(ResultsView, {
+    view = h(ResultsView, {
       onSelect: (idx) => {
         setCurrent(idx);
         setScreen('action');
       },
       onQuit: quit,
+      clearScreen,
     });
-  }
-
-  if (screen === 'action') {
-    return h(ActionView, {
+  } else if (screen === 'action') {
+    view = h(ActionView, {
       session,
       onBack: () => setScreen('results'),
       onDone: (action) => {
@@ -635,39 +655,37 @@ function App() {
         else if (action === 'suppress_resume') setScreen('trim');
         else finish(action);
       },
+      clearScreen,
     });
-  }
-
-  if (screen === 'resume') {
-    return h(ResumeView, {
+  } else if (screen === 'resume') {
+    view = h(ResumeView, {
       session,
       onBack: () => setScreen('action'),
       onDone: (value) => {
         if (value === 'suppress_resume') setScreen('trim');
         else finish(value);
       },
+      clearScreen,
     });
-  }
-
-  if (screen === 'trim') {
-    return h(TrimForm, {
+  } else if (screen === 'trim') {
+    view = h(TrimForm, {
       onBack: () => setScreen('resume'),
       onSubmit: (opts) => finish('suppress_resume', opts),
       session,
+      clearScreen,
     });
-  }
-
-  if (screen === 'nonlaunch') {
-    return h(NonLaunchView, {
+  } else if (screen === 'nonlaunch') {
+    view = h(NonLaunchView, {
       session,
       action: nonLaunch.action,
       rpcPath,
       onBack: () => setScreen('action'),
       onExit: quit,
+      clearScreen,
     });
   }
 
-  return null;
+  return view || null;
 }
 
 render(h(App));
