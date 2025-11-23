@@ -844,6 +844,7 @@ Examples:
     nonlaunch_flag = {"done": False}
     action_handler = create_action_handler(shell_mode=args.shell, nonlaunch_flag=nonlaunch_flag)
     limited_sessions = matching_sessions[: args.num_matches]
+    rpc_path = str(Path(__file__).parent / "action_rpc.py")
 
     if args.altui:
         focus_id = None
@@ -857,6 +858,7 @@ Examples:
                 stderr_mode=args.shell,
                 focus_session_id=focus_id,
                 start_action=start_action,
+                rpc_path=rpc_path,
             )
             if nonlaunch_flag["done"]:
                 choice = prompt_post_action()

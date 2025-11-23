@@ -670,7 +670,7 @@ def handle_smart_trim_resume_codex(
         return
 
 
-def handle_export_session(session_file_path: str) -> None:
+def handle_export_session(session_file_path: str, dest_override: str | None = None) -> None:
     """Export Codex session to text file."""
     from claude_code_tools.export_codex_session import export_session_to_markdown as do_export
     from datetime import datetime
@@ -682,11 +682,14 @@ def handle_export_session(session_file_path: str) -> None:
     default_path = output_dir / f"{today}-codex-session-{session_id}.txt"
 
     print(f"\nDefault export path: {default_path}")
-    dest = input("Path (or Enter for default): ").strip()
-    if not dest:
-        dest_path = default_path
+    if dest_override is None:
+        dest = input("Path (or Enter for default): ").strip()
+        if not dest:
+            dest_path = default_path
+        else:
+            dest_path = Path(dest).expanduser()
     else:
-        dest_path = Path(dest).expanduser()
+        dest_path = Path(dest_override).expanduser()
 
         # Force .txt extension
         if dest_path.suffix != ".txt":
@@ -728,13 +731,16 @@ def show_action_menu(match: dict) -> Optional[str]:
     )
 
 
-def copy_session_file(file_path: str) -> None:
+def copy_session_file(file_path: str, dest_override: str | None = None, silent: bool = False) -> None:
     """Copy session file to user-specified file or directory."""
     try:
-        dest = input("\nEnter destination file or directory path: ").strip()
-        if not dest:
-            print("Cancelled.")
-            return
+        if dest_override is None:
+            dest = input("\nEnter destination file or directory path: ").strip()
+            if not dest:
+                print("Cancelled.")
+                return
+        else:
+            dest = dest_override
 
         dest_path = Path(dest).expanduser()
         source = Path(file_path)
@@ -772,7 +778,8 @@ def copy_session_file(file_path: str) -> None:
 
         import shutil
         shutil.copy2(source, dest_file)
-        print(f"\nCopied to: {dest_file}")
+        if not silent:
+            print(f"\nCopied to: {dest_file}")
 
     except KeyboardInterrupt:
         print("\nCancelled.")
@@ -900,14 +907,13 @@ def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] =
             # Smart trim using parallel agents
             handle_smart_trim_resume_codex(session, codex_home)
         elif action == "path":
-            print(f"\nSession file path:")
-            print(session["file_path"])
             if nonlaunch_flag is not None:
                 nonlaunch_flag["done"] = True
+                nonlaunch_flag["session_id"] = session.get("session_id")
         elif action == "copy":
-            copy_session_file(session["file_path"])
             if nonlaunch_flag is not None:
                 nonlaunch_flag["done"] = True
+                nonlaunch_flag["session_id"] = session.get("session_id")
         elif action == "clone":
             clone_session(
                 session["file_path"],
@@ -919,6 +925,7 @@ def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] =
             handle_export_session(session["file_path"])
             if nonlaunch_flag is not None:
                 nonlaunch_flag["done"] = True
+                nonlaunch_flag["session_id"] = session.get("session_id")
 
     return action_handler
 
@@ -1046,6 +1053,7 @@ Examples:
     action_handler = create_action_handler(
         shell_mode=args.shell, codex_home=codex_home, nonlaunch_flag=nonlaunch_flag
     )
+    rpc_path = str(Path(__file__).parent / "action_rpc.py")
 
     if args.altui:
         limited = [
@@ -1069,6 +1077,8 @@ Examples:
             for m in matches
         ]
 
+        focus_id = None
+        start_action = False
         while True:
             nonlaunch_flag["done"] = False
             run_node_menu_ui(
@@ -1076,10 +1086,13 @@ Examples:
                 keywords,
                 action_handler,
                 stderr_mode=args.shell,
+                rpc_path=rpc_path,
             )
             if nonlaunch_flag["done"]:
                 choice = prompt_post_action()
                 if choice == "back":
+                    focus_id = nonlaunch_flag.get("session_id")
+                    start_action = True
                     continue
             break
     elif TUI_AVAILABLE and use_tui and not args.shell:

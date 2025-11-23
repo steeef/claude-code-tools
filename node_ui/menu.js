@@ -6,6 +6,7 @@ import {render, Box, Text, useApp, useInput, useStdout} from 'ink';
 import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import figures from 'figures';
+import {spawnSync} from 'child_process';
 
 const h = React.createElement;
 
@@ -26,6 +27,7 @@ const keywords = payload.keywords || [];
 const outPath = cli.flags.out;
 const focusId = payload.focus_id || null;
 const startAction = payload.start_action || false;
+const rpcPath = payload.rpc_path || null;
 const BRANCH_ICON = '';
 const DATE_FMT = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -265,7 +267,9 @@ function ActionView({session, onBack, onDone}) {
     : mainActions;
 
   const handleSelect = (item) => {
-    if (item.value === 'resume') {
+    if (['path', 'copy', 'export'].includes(item.value)) {
+      onDone(item.value);
+    } else if (item.value === 'resume') {
       onDone('resume');
     } else if (item.value === 'continue') {
       onDone('continue');
@@ -413,12 +417,111 @@ function TrimForm({onSubmit, onBack}) {
   );
 }
 
+function NonLaunchView({session, action, rpcPath, onBack, onExit}) {
+  const {exit} = useApp();
+  const needsDest = action === 'copy' || action === 'export';
+  const [dest, setDest] = useState('');
+  const [stage, setStage] = useState(needsDest ? 'prompt' : 'running');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const runRpc = (destArg) => {
+    if (!rpcPath) {
+      setError('RPC path missing');
+      setStage('result');
+      return;
+    }
+    const req = {
+      action,
+      agent: session.agent,
+      session_id: session.session_id,
+      file_path: session.file_path,
+      cwd: session.cwd,
+      claude_home: session.claude_home,
+      dest: destArg,
+    };
+    const proc = spawnSync('python3', [rpcPath], {
+      input: JSON.stringify(req),
+      encoding: 'utf8',
+    });
+    if (proc.error) {
+      setError(proc.error.message);
+      setStage('result');
+      return;
+    }
+    try {
+      const out = JSON.parse(proc.stdout || '{}');
+      if (out.status === 'ok') {
+        setMessage(out.message || 'Done');
+      } else {
+        setError(out.message || 'Error');
+      }
+    } catch (e) {
+      setError(proc.stdout || 'Bad RPC output');
+    }
+    setStage('result');
+  };
+
+  React.useEffect(() => {
+    if (stage === 'running') {
+      runRpc(dest);
+    }
+  }, [stage]);
+
+  useInput((input, key) => {
+    if (stage === 'prompt') {
+      if (key.escape) return onBack();
+      if (key.return) {
+        setStage('running');
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setDest((d) => d.slice(0, -1));
+        return;
+      }
+      if (input) setDest((d) => d + input);
+    } else if (stage === 'result') {
+      if (key.escape) return onBack();
+      if (key.return) {
+        onExit();
+        exit({exitCode: 0});
+      }
+    }
+  });
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(Text, null, chalk.bgBlue.black(` ${action.toUpperCase()} `), ' ', session.project),
+    h(
+      Text,
+      {dimColor: true},
+      `${(session.session_id || '').slice(0, 8)} ${toAnno(session)} ${formatLines(session.lines)} ${session.branch || ''}`
+    ),
+    session.preview ? h(Text, {dimColor: true}, session.preview.slice(0, 80)) : null,
+    stage === 'prompt'
+      ? h(
+          Box,
+          {flexDirection: 'column', marginTop: 1},
+          h(Text, null, 'Destination: ', dest || chalk.dim('type path...')),
+          h(Text, {dimColor: true}, 'Enter: run  Esc: back')
+        )
+      : h(
+          Box,
+          {flexDirection: 'column', marginTop: 1},
+          error ? h(Text, {color: 'red'}, error) : h(Text, {color: 'green'}, message || 'Done'),
+          h(Text, {dimColor: true}, 'Enter: exit  Esc: back')
+        )
+  );
+}
+
 function App() {
   const {exit} = useApp();
   const [screen, setScreen] = useState(startAction ? 'action' : 'results');
   const [current, setCurrent] = useState(
     focusId ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId)) : 0
   );
+  const [nonLaunch, setNonLaunch] = useState(null);
   const session = sessions[current];
 
   const quit = () => exit({exitCode: 0});
@@ -449,8 +552,8 @@ function App() {
       onBack: () => setScreen('results'),
       onDone: (action) => {
         if (['path', 'copy', 'export'].includes(action)) {
-          // Run immediately, then show post-action choice inside ResultView
-          finish(action);
+          setNonLaunch({action});
+          setScreen('nonlaunch');
         } else if (action === 'resume') setScreen('resume');
         else if (action === 'suppress_resume') setScreen('trim');
         else finish(action);
@@ -473,6 +576,16 @@ function App() {
       onBack: () => setScreen('resume'),
       onSubmit: (opts) => finish('suppress_resume', opts),
       session,
+    });
+  }
+
+  if (screen === 'nonlaunch') {
+    return h(NonLaunchView, {
+      session,
+      action: nonLaunch.action,
+      rpcPath,
+      onBack: () => setScreen('action'),
+      onExit: quit,
     });
   }
 

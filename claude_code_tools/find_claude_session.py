@@ -831,7 +831,7 @@ def get_session_file_path(session_id: str, project_path: str, claude_home: Optio
     return str(claude_project_dir / f"{session_id}.jsonl")
 
 
-def handle_export_session(session_file_path: str) -> None:
+def handle_export_session(session_file_path: str, dest_override: str | None = None, silent: bool = False) -> None:
     """Export session to text file."""
     from claude_code_tools.export_claude_session import export_session_to_markdown as do_export
     from datetime import datetime
@@ -843,16 +843,20 @@ def handle_export_session(session_file_path: str) -> None:
         output_dir = Path.cwd() / "exported-sessions"
         default_path = output_dir / f"{today}-claude-session-{session_id}.txt"
 
-        print(f"\nDefault export path: {default_path}")
-        dest = input("Path (or Enter for default): ").strip()
-        if not dest:
-            dest_path = default_path
-        else:
-            dest_path = Path(dest).expanduser()
+        if dest_override is None:
+            print(f"\nDefault export path: {default_path}")
+            dest = input("Path (or Enter for default): ").strip()
+            if not dest:
+                dest_path = default_path
+            else:
+                dest_path = Path(dest).expanduser()
 
-            # Force .txt extension
+                # Force .txt extension
+                if dest_path.suffix != ".txt":
+                    dest_path = dest_path.with_suffix(".txt")
+        else:
+            dest_path = Path(dest_override).expanduser()
             if dest_path.suffix != ".txt":
-                # Strip any existing extension and add .txt
                 dest_path = dest_path.with_suffix(".txt")
 
         # Create parent directory if needed
@@ -863,25 +867,29 @@ def handle_export_session(session_file_path: str) -> None:
         with open(dest_path, 'w') as f:
             stats = do_export(Path(session_file_path), f, verbose=False)
 
-        print(f"✅ Export complete!")
-        print(f"   User messages: {stats['user_messages']}")
-        print(f"   Assistant messages: {stats['assistant_messages']}")
-        print(f"   Tool calls: {stats['tool_calls']}")
-        print(f"   Tool results: {stats['tool_results']}")
-        print(f"   Skipped items: {stats['skipped']}")
-        print(f"\n📄 Exported to: {dest_path}")
+        if not silent:
+            print(f"✅ Export complete!")
+            print(f"   User messages: {stats['user_messages']}")
+            print(f"   Assistant messages: {stats['assistant_messages']}")
+            print(f"   Tool calls: {stats['tool_calls']}")
+            print(f"   Tool results: {stats['tool_results']}")
+            print(f"   Skipped items: {stats['skipped']}")
+            print(f"\n📄 Exported to: {dest_path}")
 
     except Exception as e:
         print(f"\nError exporting session: {e}")
 
 
-def copy_session_file(session_file_path: str) -> None:
+def copy_session_file(session_file_path: str, dest_override: str | None = None, silent: bool = False) -> None:
     """Copy session file to user-specified file or directory."""
     try:
-        dest = input("\nEnter destination file or directory path: ").strip()
-        if not dest:
-            print("Cancelled.")
-            return
+        if dest_override is None:
+            dest = input("\nEnter destination file or directory path: ").strip()
+            if not dest:
+                print("Cancelled.")
+                return
+        else:
+            dest = dest_override
 
         dest_path = Path(dest).expanduser()
         source = Path(session_file_path)
@@ -919,7 +927,8 @@ def copy_session_file(session_file_path: str) -> None:
 
         import shutil
         shutil.copy2(source, dest_file)
-        print(f"\nCopied to: {dest_file}")
+        if not silent:
+            print(f"\nCopied to: {dest_file}")
 
     except KeyboardInterrupt:
         print("\nCancelled.")
@@ -1085,15 +1094,11 @@ def create_action_handler(claude_home: Optional[str] = None, nonlaunch_flag: Opt
         elif action == "smart_trim_resume":
             handle_smart_trim_resume_claude(session_id, project_path, claude_home)
         elif action == "path":
-            session_file_path = get_session_file_path(session_id, project_path, claude_home)
-            print(f"\nSession file path:")
-            print(session_file_path)
+            # handled in Node UI via RPC
             if nonlaunch_flag is not None:
                 nonlaunch_flag["done"] = True
                 nonlaunch_flag["session_id"] = session_id
         elif action == "copy":
-            session_file_path = get_session_file_path(session_id, project_path, claude_home)
-            copy_session_file(session_file_path)
             if nonlaunch_flag is not None:
                 nonlaunch_flag["done"] = True
                 nonlaunch_flag["session_id"] = session_id
@@ -1249,6 +1254,7 @@ To persist directory changes when resuming sessions:
     use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
     nonlaunch_flag = {"done": False}
     action_handler = create_action_handler(args.claude_home, nonlaunch_flag=nonlaunch_flag)
+    rpc_path = str(Path(__file__).parent / "action_rpc.py")
 
     if args.altui:
         limited = [
@@ -1282,6 +1288,7 @@ To persist directory changes when resuming sessions:
                 stderr_mode=args.shell,
                 focus_session_id=focus_id,
                 start_action=start_action,
+                rpc_path=rpc_path,
             )
             if nonlaunch_flag["done"]:
                 choice = prompt_post_action()

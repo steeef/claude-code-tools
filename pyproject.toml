@@ -50,6 +50,7 @@ include = [
     "docs/*.md",
     "node_ui/menu.js",
     "node_ui/package.json",
+    "claude_code_tools/action_rpc.py",
 ]
 exclude = [
     "demos/",
