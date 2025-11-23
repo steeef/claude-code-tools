@@ -640,6 +640,7 @@ function App() {
 
   if (screen === 'resume') {
     return h(ResumeView, {
+      session,
       onBack: () => setScreen('action'),
       onDone: (value) => {
         if (value === 'suppress_resume') setScreen('trim');
