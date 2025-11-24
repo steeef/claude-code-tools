@@ -756,7 +756,13 @@ def copy_session_file(file_path: str) -> None:
         print(f"\nError copying file: {e}")
 
 
-def clone_session(file_path: str, session_id: str, cwd: str, shell_mode: bool = False) -> None:
+def clone_session(
+    file_path: str,
+    session_id: str,
+    cwd: str,
+    shell_mode: bool = False,
+    codex_home: Optional[str] = None
+) -> None:
     """Clone a Codex session to a new file with new UUID and resume it."""
     import shutil
     import uuid
