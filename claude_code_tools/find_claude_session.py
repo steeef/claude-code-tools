@@ -276,6 +276,42 @@ def is_sidechain_session(filepath: Path) -> bool:
     return False
 
 
+def is_malformed_session(filepath: Path) -> bool:
+    """
+    Check if a session file is malformed (missing critical metadata).
+
+    Malformed sessions have file-history-snapshot as the first line instead
+    of proper session metadata. These cannot be resumed by Claude Code.
+
+    Args:
+        filepath: Path to session JSONL file.
+
+    Returns:
+        True if session is malformed, False otherwise.
+    """
+    if not filepath.exists():
+        return False
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            first_line = f.readline().strip()
+            if not first_line:
+                return True  # Empty file is malformed
+
+            data = json.loads(first_line)
+            # Malformed if first line is file-history-snapshot
+            if data.get("type") == "file-history-snapshot":
+                return True
+            # Malformed if missing sessionId
+            if "sessionId" not in data:
+                return True
+
+    except (json.JSONDecodeError, OSError, IOError):
+        return True  # Parse errors indicate malformed file
+
+    return False
+
+
 def get_session_preview(filepath: Path) -> str:
     """Get a preview of the session from the LAST user message."""
     last_user_message = None
@@ -364,6 +400,10 @@ def find_sessions(
                     for jsonl_file in project_dir.glob("*.jsonl"):
                         matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                         if matches:
+                            # Skip malformed sessions (missing metadata, cannot resume)
+                            if is_malformed_session(jsonl_file):
+                                continue
+
                             # Check if session is trimmed/continued
                             is_trimmed = is_trimmed_session(jsonl_file)
                             derivation_type = get_session_derivation_type(jsonl_file) if is_trimmed else None
@@ -407,6 +447,10 @@ def find_sessions(
                 for jsonl_file in project_dir.glob("*.jsonl"):
                     matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
                     if matches:
+                        # Skip malformed sessions (missing metadata, cannot resume)
+                        if is_malformed_session(jsonl_file):
+                            continue
+
                         # Check if session is trimmed/continued
                         is_trimmed = is_trimmed_session(jsonl_file)
                         derivation_type = get_session_derivation_type(jsonl_file) if is_trimmed else None
