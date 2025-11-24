@@ -611,14 +611,35 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
 
 function App() {
   const {exit} = useApp();
+  const {stdout} = useStdout();
   const [screen, setScreen] = useState(startAction ? 'action' : 'results');
   const [current, setCurrent] = useState(
     focusId ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId)) : 0
   );
   const [nonLaunch, setNonLaunch] = useState(null);
-  const session = sessions[current];
 
-  const clearScreen = () => {};
+  const safeCurrent = React.useMemo(() => {
+    if (!sessions.length) return 0;
+    return Math.min(Math.max(current, 0), sessions.length - 1);
+  }, [current]);
+
+  const session = sessions[safeCurrent];
+
+  const clearScreen = React.useCallback(() => {
+    try {
+      if (stdout?.isTTY) {
+        stdout.write('\u001b[2J');
+        stdout.write('\u001b[H');
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }, [stdout]);
+
+  const switchScreen = (next) => {
+    clearScreen();
+    setScreen(next);
+  };
 
   const quit = () => exit({exitCode: 0});
 
@@ -638,7 +659,7 @@ function App() {
     view = h(ResultsView, {
       onSelect: (idx) => {
         setCurrent(idx);
-        setScreen('action');
+        switchScreen('action');
       },
       onQuit: quit,
       clearScreen,
@@ -646,13 +667,13 @@ function App() {
   } else if (screen === 'action') {
     view = h(ActionView, {
       session,
-      onBack: () => setScreen('results'),
+      onBack: () => switchScreen('results'),
       onDone: (action) => {
         if (['path', 'copy', 'export'].includes(action)) {
           setNonLaunch({action});
-          setScreen('nonlaunch');
-        } else if (action === 'resume') setScreen('resume');
-        else if (action === 'suppress_resume') setScreen('trim');
+          switchScreen('nonlaunch');
+        } else if (action === 'resume') switchScreen('resume');
+        else if (action === 'suppress_resume') switchScreen('trim');
         else finish(action);
       },
       clearScreen,
@@ -660,16 +681,16 @@ function App() {
   } else if (screen === 'resume') {
     view = h(ResumeView, {
       session,
-      onBack: () => setScreen('action'),
+      onBack: () => switchScreen('action'),
       onDone: (value) => {
-        if (value === 'suppress_resume') setScreen('trim');
+        if (value === 'suppress_resume') switchScreen('trim');
         else finish(value);
       },
       clearScreen,
     });
   } else if (screen === 'trim') {
     view = h(TrimForm, {
-      onBack: () => setScreen('resume'),
+      onBack: () => switchScreen('resume'),
       onSubmit: (opts) => finish('suppress_resume', opts),
       session,
       clearScreen,
@@ -679,7 +700,7 @@ function App() {
       session,
       action: nonLaunch.action,
       rpcPath,
-      onBack: () => setScreen('action'),
+      onBack: () => switchScreen('action'),
       onExit: quit,
       clearScreen,
     });
