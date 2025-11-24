@@ -1121,9 +1121,9 @@ def create_action_handler(claude_home: Optional[str] = None):
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
             handle_export_session(session_file_path)
         elif action == "continue":
-            from claude_code_tools.session_utils import execute_continue_action
+            from claude_code_tools.session_utils import continue_with_options
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
-            execute_continue_action(
+            continue_with_options(
                 session_file_path,
                 "claude",
                 claude_home=claude_home,
@@ -1314,9 +1314,9 @@ To persist directory changes when resuming sessions:
                 handle_export_session(session_file_path)
             elif action == "continue":
                 # Continue with context in fresh session
-                from claude_code_tools.session_utils import execute_continue_action
+                from claude_code_tools.session_utils import continue_with_options
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
-                execute_continue_action(
+                continue_with_options(
                     session_file_path,
                     "claude",
                     claude_home=args.claude_home,

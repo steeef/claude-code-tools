@@ -2,9 +2,39 @@
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional, List, Tuple
+
+
+def is_agent_available(agent: str) -> bool:
+    """
+    Check if a coding agent is available on this system.
+
+    Checks two conditions (either one is sufficient):
+    1. The agent command exists in PATH (e.g., 'claude' or 'codex')
+    2. The agent config directory exists (e.g., ~/.claude or ~/.codex)
+
+    Args:
+        agent: Agent name ('claude' or 'codex')
+
+    Returns:
+        True if the agent is available, False otherwise
+    """
+    agent = agent.lower()
+
+    # Check if command exists in PATH
+    command = "claude" if agent == "claude" else "codex"
+    if shutil.which(command):
+        return True
+
+    # Check if config directory exists
+    config_dir = Path.home() / f".{agent}"
+    if config_dir.exists() and config_dir.is_dir():
+        return True
+
+    return False
 
 
 def get_claude_home(cli_arg: Optional[str] = None) -> Path:
@@ -210,72 +240,199 @@ def _get_codex_session_id(cwd: str) -> Optional[str]:
     return most_recent.stem  # Filename without .jsonl extension
 
 
-def execute_continue_action(
+def display_lineage(
+    session_file: Path,
+    agent_type: str,
+    claude_home: Optional[str] = None,
+    codex_home: Optional[str] = None,
+    verbose: bool = False,
+) -> Tuple[List, Path]:
+    """
+    Export session and display continuation lineage.
+
+    This function:
+    1. Exports the current session to a text file
+    2. Traces the continuation lineage (all parent sessions)
+    3. Displays the lineage chain to the user
+    4. Returns the lineage and exported files for use by continue functions
+
+    Args:
+        session_file: Path to the session file to analyze
+        agent_type: 'claude' or 'codex'
+        claude_home: Optional custom Claude home directory
+        codex_home: Optional custom Codex home directory
+        verbose: If True, show detailed progress
+
+    Returns:
+        Tuple of (lineage_nodes, current_session_export_path)
+        where lineage_nodes is a list of LineageNode objects
+    """
+    from claude_code_tools.session_lineage import get_continuation_lineage
+
+    # Step 1: Export the current session
+    print("Step 1: Exporting session to text file...")
+
+    if agent_type == "claude":
+        from claude_code_tools.export_claude_session import (
+            export_session_programmatic,
+        )
+        chat_log = export_session_programmatic(
+            str(session_file),
+            claude_home=claude_home,
+            verbose=verbose,
+        )
+    else:
+        from claude_code_tools.export_codex_session import (
+            export_session_programmatic,
+        )
+        chat_log = export_session_programmatic(
+            str(session_file),
+            codex_home=codex_home,
+            verbose=verbose,
+        )
+
+    print(f"✅ Exported chat log to: {chat_log}")
+    print()
+
+    # Step 2: Get and display continuation lineage
+    print("Step 2: Tracing continuation lineage...")
+
+    try:
+        lineage = get_continuation_lineage(session_file, export_missing=True)
+
+        if lineage:
+            print(f"✅ Found {len(lineage)} session(s) in continuation chain:")
+            for node in lineage:
+                derivation_label = (
+                    f"({node.derivation_type})" if node.derivation_type else ""
+                )
+                print(f"   - {node.session_file.name} {derivation_label}")
+                if node.exported_file:
+                    print(f"     Export: {node.exported_file}")
+            print()
+        else:
+            print("✅ No previous sessions in continuation chain (this is the original)")
+            print()
+
+    except Exception as e:
+        print(f"⚠️  Warning: Could not trace lineage: {e}", file=sys.stderr)
+        lineage = []
+
+    return lineage, chat_log
+
+
+def continue_with_options(
     session_file_path: str,
     current_agent: str,
     claude_home: Optional[str] = None,
-    codex_home: Optional[str] = None
+    codex_home: Optional[str] = None,
+    preset_agent: Optional[str] = None,
+    preset_prompt: Optional[str] = None,
 ) -> None:
     """
-    Execute continue action with agent selection dialog.
+    Unified continue flow with proper timing.
 
-    Provides interactive menu for choosing which agent to use for
-    continuation (same-agent or cross-agent), prompts for custom
-    summarization instructions, and routes to the appropriate
-    continue command.
+    This function provides the complete continue experience:
+    1. Export current session
+    2. Display lineage (so user sees full history)
+    3. Prompt for agent choice (unless preset_agent provided)
+    4. Prompt for custom instructions (unless preset_prompt provided)
+    5. Execute continuation with chosen options
 
     Args:
         session_file_path: Path to the session file to continue
         current_agent: Agent type of the session ('claude' or 'codex')
         claude_home: Optional custom Claude home directory
         codex_home: Optional custom Codex home directory
+        preset_agent: If provided, skip agent choice prompt and use this agent
+        preset_prompt: If provided, skip custom prompt and use this
     """
-    print("\n🔄 Starting continuation in fresh session...")
+    session_file = Path(session_file_path)
 
-    # Ask which agent to use for continuation
-    print(f"\nCurrent session is from: {current_agent.upper()}")
-    print("Which agent should continue the work?")
-    print(f"1. {current_agent.upper()} (default - same agent)")
-    other_agent = "CODEX" if current_agent == "claude" else "CLAUDE"
-    print(f"2. {other_agent} (cross-agent)")
+    print("\n🔄 Starting continuation in fresh session...")
     print()
 
-    try:
-        choice = input(
-            f"Enter choice [1-2] (or Enter for {current_agent.upper()}): "
-        ).strip()
-        if not choice or choice == "1":
-            continue_agent = current_agent
-        elif choice == "2":
-            continue_agent = "codex" if current_agent == "claude" else "claude"
-        else:
-            print("Invalid choice, using default.")
-            continue_agent = current_agent
-    except (KeyboardInterrupt, EOFError):
-        print("\nCancelled.")
-        return
+    # Step 1-2: Export and display lineage FIRST
+    # This allows user to make informed decisions
+    lineage, chat_log = display_lineage(
+        session_file,
+        current_agent,
+        claude_home=claude_home,
+        codex_home=codex_home,
+    )
+
+    # Collect all exported files in chronological order
+    all_exported_files = [
+        node.exported_file for node in lineage if node.exported_file
+    ]
+    all_exported_files.append(chat_log)
+
+    # Step 3: Prompt for agent choice (unless preset or other agent unavailable)
+    other_agent_name = "codex" if current_agent == "claude" else "claude"
+
+    if preset_agent:
+        continue_agent = preset_agent.lower()
+        print(f"ℹ️  Using specified agent: {continue_agent.upper()}")
+    elif not is_agent_available(other_agent_name):
+        # Other agent not available, use current agent without prompting
+        continue_agent = current_agent
+        print(f"ℹ️  Continuing with {current_agent.upper()}")
+    else:
+        # Both agents available, offer choice
+        print(f"Current session is from: {current_agent.upper()}")
+        print("Which agent should continue the work?")
+        print(f"1. {current_agent.upper()} (default - same agent)")
+        print(f"2. {other_agent_name.upper()} (cross-agent)")
+        print()
+
+        try:
+            choice = input(
+                f"Enter choice [1-2] (or Enter for {current_agent.upper()}): "
+            ).strip()
+            if not choice or choice == "1":
+                continue_agent = current_agent
+            elif choice == "2":
+                continue_agent = other_agent_name
+            else:
+                print("Invalid choice, using default.")
+                continue_agent = current_agent
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelled.")
+            return
 
     print(f"\nℹ️  Continuing with {continue_agent.upper()}")
 
-    # Prompt for custom instructions
-    print("\nEnter custom summarization instructions (or press Enter to skip):")
-    custom_prompt = input("> ").strip() or None
+    # Step 4: Prompt for custom instructions (unless preset)
+    if preset_prompt is not None:
+        custom_prompt = preset_prompt if preset_prompt else None
+        if custom_prompt:
+            print(f"ℹ️  Using custom prompt: {custom_prompt[:50]}...")
+    else:
+        print("\nEnter custom summarization instructions (or press Enter to skip):")
+        try:
+            custom_prompt = input("> ").strip() or None
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelled.")
+            return
 
+    # Step 5: Execute continuation with precomputed data
     if continue_agent == "claude":
         from claude_code_tools.claude_continue import claude_continue
         claude_continue(
-            session_file_path,
+            str(session_file),
             claude_home=claude_home,
             verbose=False,
-            custom_prompt=custom_prompt
+            custom_prompt=custom_prompt,
+            precomputed_exports=all_exported_files,
         )
     else:
         from claude_code_tools.codex_continue import codex_continue
         codex_continue(
-            session_file_path,
+            str(session_file),
             codex_home=codex_home,
             verbose=False,
-            custom_prompt=custom_prompt
+            custom_prompt=custom_prompt,
+            precomputed_exports=all_exported_files,
         )
 
 

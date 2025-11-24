@@ -664,7 +664,7 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
 
     elif action == "continue":
         # Continue with context in fresh session
-        from claude_code_tools.session_utils import execute_continue_action
+        from claude_code_tools.session_utils import continue_with_options
 
         # Get file path based on agent type
         if agent == "claude":
@@ -677,7 +677,7 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
             # Codex session
             file_path = session["file_path"]
 
-        execute_continue_action(
+        continue_with_options(
             file_path,
             agent,
             claude_home=session.get("claude_home"),

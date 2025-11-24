@@ -173,8 +173,8 @@ def execute_action(
 
     elif action == "continue":
         # Continue with context in fresh session
-        from claude_code_tools.session_utils import execute_continue_action
-        execute_continue_action(
+        from claude_code_tools.session_utils import continue_with_options
+        continue_with_options(
             str(session_file),
             agent,
             claude_home=claude_home,

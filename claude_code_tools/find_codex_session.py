@@ -889,8 +889,8 @@ def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] =
         elif action == "export":
             handle_export_session(session["file_path"])
         elif action == "continue":
-            from claude_code_tools.session_utils import execute_continue_action
-            execute_continue_action(
+            from claude_code_tools.session_utils import continue_with_options
+            continue_with_options(
                 session["file_path"],
                 "codex",
                 claude_home=None,
