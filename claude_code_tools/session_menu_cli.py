@@ -128,8 +128,8 @@ def find_session_file(
                     for day_dir in month_dir.iterdir():
                         if not day_dir.is_dir():
                             continue
-                        # Look for session files matching the ID
-                        for session_file in day_dir.glob(f"*{session_id}.jsonl"):
+                        # Look for session files matching the ID (support partial matching)
+                        for session_file in day_dir.glob(f"*{session_id}*.jsonl"):
                             # Extract metadata from file
                             metadata = extract_session_metadata_codex(
                                 session_file
@@ -366,10 +366,16 @@ def execute_action(
         # Only works for Claude Code sessions for now
         if agent == "claude":
             print("\n🔄 Starting continuation in fresh session...")
+
+            # Prompt for custom instructions
+            print("\nEnter custom summarization instructions (or press Enter to skip):")
+            custom_prompt = input("> ").strip() or None
+
             claude_continue(
                 str(session_file),
                 claude_home=claude_home,
                 verbose=False,
+                custom_prompt=custom_prompt
             )
         else:
             print(

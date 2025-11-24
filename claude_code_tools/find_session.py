@@ -32,6 +32,7 @@ from claude_code_tools.find_claude_session import (
     clone_session as clone_claude_session,
     handle_export_session as handle_export_claude_session,
     is_sidechain_session,
+    is_malformed_session,
 )
 from claude_code_tools.find_codex_session import (
     find_sessions as find_codex_sessions,
@@ -214,6 +215,10 @@ def search_all_agents(
 
                 # Check if session is sidechain (sub-agent)
                 is_sidechain = is_sidechain_session(file_path)
+
+                # Skip malformed Claude sessions (missing metadata, cannot resume)
+                if is_malformed_session(file_path):
+                    continue
 
                 session_dict = {
                     "agent": "claude",
@@ -713,10 +718,16 @@ def handle_action(
                 claude_home=session.get("claude_home"),
             )
             print("\n🔄 Starting continuation in fresh session...")
+
+            # Prompt for custom instructions
+            print("\nEnter custom summarization instructions (or press Enter to skip):")
+            custom_prompt = input("> ").strip() or None
+
             claude_continue(
                 file_path,
                 claude_home=session.get("claude_home"),
                 verbose=False,
+                custom_prompt=custom_prompt
             )
         elif agent == "codex":
             print(
