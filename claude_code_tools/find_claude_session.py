@@ -49,6 +49,7 @@ from claude_code_tools.session_utils import (
     is_valid_session,
     is_malformed_session,
     extract_cwd_from_session,
+    format_session_id_display,
 )
 
 try:
@@ -443,7 +444,7 @@ def find_sessions(
                             if not actual_cwd:
                                 # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
                                 continue
-                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
+                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, derivation_type, is_sidechain))
                     
                     progress.advance(task)
         else:
@@ -490,7 +491,7 @@ def find_sessions(
                         if not actual_cwd:
                             # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
                             continue
-                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
+                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, derivation_type, is_sidechain))
     else:
         # Search current project only
         claude_dir = get_claude_project_dir(claude_home)
@@ -537,7 +538,7 @@ def find_sessions(
                 preview = get_session_preview(jsonl_file)
                 # Extract actual cwd from session file for consistency
                 actual_cwd = extract_cwd_from_session(jsonl_file) or os.getcwd()
-                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
+                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, derivation_type, is_sidechain))
     
     # Sort by modification time (newest first)
     matching_sessions.sort(key=lambda x: x[1], reverse=True)
@@ -579,19 +580,21 @@ def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str
     table.add_column("Lines", style="cyan", justify="right")
     table.add_column("Last User Message", style="white", max_width=60, overflow="fold")
     
-    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch, is_trimmed, is_sidechain) in enumerate(display_sessions, 1):
+    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch, derivation_type, is_sidechain) in enumerate(display_sessions, 1):
         # Format: "10/04 - 10/09 13:45"
         create_date = datetime.fromtimestamp(create_time).strftime('%m/%d')
         mod_date = datetime.fromtimestamp(mod_time).strftime('%m/%d %H:%M')
         date_display = f"{create_date} - {mod_date}"
         branch_display = git_branch if git_branch else "N/A"
 
-        # Add indicators for trimmed and sidechain sessions
-        session_id_display = session_id[:8] + "..."
-        if is_trimmed:
-            session_id_display += " *"
-        if is_sidechain:
-            session_id_display += " (sub)"
+        # Format session ID with annotations using centralized helper
+        session_id_display = format_session_id_display(
+            session_id,
+            is_trimmed=(derivation_type == "trimmed"),
+            is_continued=(derivation_type == "continued"),
+            is_sidechain=is_sidechain,
+            truncate_length=8,
+        )
 
         table.add_row(
             str(idx),
@@ -605,13 +608,16 @@ def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str
     
     ui_console.print(table)
 
-    # Show footnotes if any sessions are trimmed or sidechain
-    has_trimmed = any(s[8] for s in display_sessions)  # is_trimmed is index 8
+    # Show footnotes if any sessions are trimmed, continued, or sidechain
+    has_trimmed = any(s[8] == "trimmed" for s in display_sessions)  # derivation_type is index 8
+    has_continued = any(s[8] == "continued" for s in display_sessions)
     has_sidechain = any(s[9] for s in display_sessions)  # is_sidechain is index 9
-    if has_trimmed or has_sidechain:
+    if has_trimmed or has_continued or has_sidechain:
         footnotes = []
         if has_trimmed:
-            footnotes.append("* = Trimmed session (reduced from original)")
+            footnotes.append("(t) = Trimmed session")
+        if has_continued:
+            footnotes.append("(c) = Continued session")
         if has_sidechain:
             footnotes.append("(sub) = Sub-agent session (not directly resumable)")
         ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")

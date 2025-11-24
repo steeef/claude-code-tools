@@ -36,7 +36,7 @@ from claude_code_tools.trim_session import (
 )
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
-from claude_code_tools.session_utils import get_codex_home
+from claude_code_tools.session_utils import get_codex_home, format_session_id_display
 
 try:
     from rich.console import Console
@@ -367,7 +367,7 @@ def display_interactive_ui(
         title = f"Codex Sessions matching: {', '.join(keywords)}" if keywords else "All Codex Sessions"
         table = Table(title=title, show_header=True)
         table.add_column("#", style="cyan", justify="right")
-        table.add_column("Session ID", style="yellow", no_wrap=True)
+        table.add_column("Session ID", style="dim", no_wrap=True)
         table.add_column("Project", style="green")
         table.add_column("Branch", style="magenta")
         table.add_column("Date-Range", style="blue")
@@ -375,10 +375,12 @@ def display_interactive_ui(
         table.add_column("Last User Message", style="dim", max_width=60, overflow="fold")
 
         for i, match in enumerate(matches, 1):
-            # Add star indicator for trimmed sessions
-            session_id_display = match["session_id"][:16] + "..."
-            if match.get("is_trimmed", False):
-                session_id_display += " *"
+            # Format session ID with annotations using centralized helper
+            session_id_display = format_session_id_display(
+                match["session_id"],
+                is_trimmed=match.get("is_trimmed", False),
+                truncate_length=16,
+            )
 
             table.add_row(
                 str(i),
@@ -395,16 +397,18 @@ def display_interactive_ui(
         # Show footnote if any sessions are trimmed
         has_trimmed = any(m.get("is_trimmed", False) for m in matches)
         if has_trimmed:
-            console.print("[dim]* = Trimmed session (reduced from original)[/dim]")
+            console.print("[dim](t) = Trimmed session[/dim]")
     else:
         # Fallback to plain text
         print("\nMatching Codex Sessions:")
         print("-" * 80)
         for i, match in enumerate(matches, 1):
-            # Add star indicator for trimmed sessions
-            session_id_display = match['session_id'][:16] + "..."
-            if match.get("is_trimmed", False):
-                session_id_display += " *"
+            # Format session ID with annotations using centralized helper
+            session_id_display = format_session_id_display(
+                match['session_id'],
+                is_trimmed=match.get("is_trimmed", False),
+                truncate_length=16,
+            )
 
             print(f"{i}. {session_id_display}")
             print(f"   Project: {match['project']}")
@@ -416,7 +420,7 @@ def display_interactive_ui(
         # Show footnote if any sessions are trimmed
         has_trimmed = any(m.get("is_trimmed", False) for m in matches)
         if has_trimmed:
-            print("* = Trimmed session (reduced from original)")
+            print("(t) = Trimmed session")
 
     # Get user selection
     if len(matches) == 1:

@@ -510,3 +510,44 @@ def find_session_file(
                                 )
 
     return None
+
+
+def format_session_id_display(
+    session_id: str,
+    is_trimmed: bool = False,
+    is_continued: bool = False,
+    is_sidechain: bool = False,
+    truncate_length: int = 8,
+) -> str:
+    """
+    Format session ID with annotations for display in find commands.
+
+    Provides consistent session ID formatting across all find commands
+    (find, find-claude, find-codex) with standard annotations.
+
+    Args:
+        session_id: Full session ID string
+        is_trimmed: Whether session is trimmed (adds "(t)")
+        is_continued: Whether session is continued (adds "(c)")
+        is_sidechain: Whether session is a sub-agent (adds "(sub)")
+        truncate_length: Number of characters to show before "..." (default 8)
+
+    Returns:
+        Formatted string like "abc123... (t) (sub)"
+
+    Examples:
+        >>> format_session_id_display("abc123-def456", is_trimmed=True)
+        'abc123... (t)'
+        >>> format_session_id_display("abc123-def456", is_sidechain=True, truncate_length=16)
+        'abc123-def456... (sub)'
+    """
+    display = session_id[:truncate_length] + "..."
+
+    if is_trimmed:
+        display += " (t)"
+    if is_continued:
+        display += " (c)"
+    if is_sidechain:
+        display += " (sub)"
+
+    return display

@@ -50,6 +50,7 @@ from claude_code_tools.trim_session import (
     is_trimmed_session,
     get_session_derivation_type,
 )
+from claude_code_tools.session_utils import format_session_id_display
 
 try:
     from rich.console import Console
@@ -302,15 +303,15 @@ def display_interactive_ui(
 
         branch_display = session.get("branch", "") or "N/A"
 
-        # Add indicators for derived and sidechain sessions
-        session_id_display = session["session_id"][:8] + "..."
+        # Format session ID with annotations using centralized helper
         derivation_type = session.get("derivation_type")
-        if derivation_type == "trimmed":
-            session_id_display += " (t)"
-        elif derivation_type == "continued":
-            session_id_display += " (c)"
-        if session.get("is_sidechain", False):
-            session_id_display += " (sub)"
+        session_id_display = format_session_id_display(
+            session["session_id"],
+            is_trimmed=(derivation_type == "trimmed"),
+            is_continued=(derivation_type == "continued"),
+            is_sidechain=session.get("is_sidechain", False),
+            truncate_length=8,
+        )
 
         table.add_row(
             str(idx),
