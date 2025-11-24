@@ -131,6 +131,67 @@ def smart_trim(ctx):
     smart_trim_main()
 
 
+@main.command("export", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False), help="Force export with specific agent")
+@click.argument("session", required=True)
+@click.pass_context
+def export_session(ctx, agent, session):
+    """Export session to text/markdown format.
+
+    Auto-detects session type and uses matching export command.
+    Use --agent to override and force export with a specific agent.
+    """
+    import sys
+    from pathlib import Path
+    from claude_code_tools.session_menu_cli import detect_agent_from_path, find_session_file
+
+    # Try to detect session type
+    detected_agent = None
+    session_file = None
+
+    # First check if it's a file path
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = detect_agent_from_path(session_file)
+    else:
+        # Try to find by session ID
+        result = find_session_file(session)
+        if result:
+            detected_agent, session_file, _, _ = result
+
+    # Determine which agent to use
+    if agent:
+        # User explicitly specified agent
+        export_agent = agent.lower()
+        if detected_agent and detected_agent != export_agent:
+            print(f"\nℹ️  Detected {detected_agent.upper()} session")
+            print(f"ℹ️  Exporting with {export_agent.upper()} (user specified)")
+        else:
+            print(f"\nℹ️  Exporting with {export_agent.upper()} (user specified)")
+    elif detected_agent:
+        # Use detected agent
+        export_agent = detected_agent
+        print(f"\nℹ️  Detected {detected_agent.upper()} session")
+        print(f"ℹ️  Exporting with {export_agent.upper()}")
+    else:
+        # Default to Claude if cannot detect
+        export_agent = "claude"
+        print(f"\n⚠️  Could not detect session type, defaulting to CLAUDE")
+
+    print()
+
+    # Route to appropriate export command
+    if export_agent == "claude":
+        sys.argv = [sys.argv[0].replace('aichat', 'export-claude-session'), session] + ctx.args
+        from claude_code_tools.export_claude_session import main as export_main
+        export_main()
+    else:
+        sys.argv = [sys.argv[0].replace('aichat', 'export-codex-session'), session] + ctx.args
+        from claude_code_tools.export_codex_session import main as export_main
+        export_main()
+
+
 @main.command("export-claude", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
 @click.pass_context
 def export_claude(ctx):

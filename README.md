@@ -3,6 +3,34 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
+## ⚠️ Breaking Change Notice (v0.3.0)
+
+**All session management commands are now consolidated under the `aichat` command group.**
+
+Flat commands (`claude-continue`, `find-claude-session`, etc.) have been **removed**.
+All functionality is now accessed via `aichat` subcommands:
+
+| Old Command | New Command |
+|-------------|-------------|
+| `claude-continue <session>` | `aichat continue <session>` |
+| `codex-continue <session>` | `aichat continue <session>` |
+| `find-claude-session <keywords>` | `aichat find-claude <keywords>` |
+| `find-codex-session <keywords>` | `aichat find-codex <keywords>` |
+| `find-session <keywords>` | `aichat find <keywords>` |
+| `export-claude-session <session>` | `aichat export <session>` |
+| `export-codex-session <session>` | `aichat export <session>` |
+| `session-menu <session>` | `aichat menu <session>` |
+| `trim-session <session>` | `aichat trim <session>` |
+| `smart-trim <session>` | `aichat smart-trim <session>` |
+| `find-original-session <session>` | `aichat find-original <session>` |
+| `find-derived-sessions <session>` | `aichat find-derived <session>` |
+| `delete-session <session>` | `aichat delete <session>` |
+
+**Key improvements:**
+- `aichat continue` and `aichat export` now **auto-detect session type** (Claude or Codex)
+- Support for **cross-agent continuation** (continue a Claude session with Codex, or vice versa)
+- Cleaner, more intuitive command structure
+
 ## Table of Contents
 
 - [🚀 Quick Start](#quick-start)
@@ -16,8 +44,7 @@ and other CLI coding agents.
   - [aichat menu — direct session access](#aichat-menu)
   - [aichat trim — compress sessions](#aichat-trim)
   - [aichat smart-trim — intelligent AI-powered trimming](#aichat-smart-trim-experimental)
-  - [aichat export-claude — export Claude sessions](#aichat-export-claude)
-  - [aichat export-codex — export Codex sessions](#aichat-export-codex)
+  - [aichat export — export sessions](#aichat-export)
   - [aichat find-original — trace session lineage](#aichat-find-original)
   - [aichat find-derived — find derived sessions](#aichat-find-derived)
   - [aichat delete — safely delete sessions](#aichat-delete)
@@ -83,7 +110,7 @@ uv tool install git+https://github.com/pchalasani/claude-code-tools
 
 ### What You Get
 
-Installation provides both a **unified `aichat` command** (recommended) and individual flat commands for backward compatibility.
+All tools are accessed through the **unified `aichat` command** and standalone utilities.
 
 **🎯 Quick Examples:**
 
@@ -91,24 +118,24 @@ Installation provides both a **unified `aichat` command** (recommended) and indi
 aichat --help                 # See all subcommands
 aichat find "keywords"        # Find sessions across all agents
 aichat find-claude "bug"      # Find Claude sessions
+aichat continue abc123        # Continue session (auto-detects type)
+aichat export session-id      # Export session (auto-detects type)
 aichat menu abc123            # Access session options by ID
 aichat trim session.jsonl     # Compress sessions
 ```
 
 **Available Tools:**
 
-Session Management (**aichat** subcommands):
+Session Management (`aichat` subcommands):
 - All session management tools are available via the unified `aichat` command
+- Supports both Claude Code and Codex sessions
+- Auto-detects session type for `continue` and `export` commands
 - See the [Session Management](#aichat-session-management) section below for complete documentation
 
 Other Utilities (standalone commands):
 - `tmux-cli` - Interactive CLI controller ("Playwright for terminals")
 - `vault` - Encrypted .env backup and sync
 - `env-safe` - Safe .env inspection without exposing values
-
-**Backward Compatibility:**
-All session tools are also available as flat commands (`find-claude-session`,
-`find-codex-session`, etc.) for backward compatibility with existing scripts.
 
 <a id="tmux-cli-deep-dive"></a>
 ## 🎮 tmux-cli Deep Dive
@@ -175,26 +202,62 @@ The `aichat` command provides a unified interface for all session-related tools.
 
 ## 🔄 aichat continue — seamlessly continue sessions running out of context
 
-When your Claude Code session is running out of context, instead of manually
-compacting (which loses valuable session details) or resuming a trimmed session, use `aichat continue` to transfer context to a fresh session.
+When your coding agent session is running out of context, instead of manually
+compacting (which loses valuable session details) or resuming a trimmed session,
+use `aichat continue` to transfer context to a fresh session.
 
-**How it works**: Exports your old session to a text file, creates a new Claude
-Code session, uses parallel sub-agents to analyze the old session and understand
-the task, then hands off to interactive mode so you can continue where you left off.
+### Features
 
-**Usage**: When approaching context limits, run `/status` in your Claude Code session
-to display the session ID. Exit the session, then run:
+- **Auto-detects session type**: Automatically determines if the session is Claude Code or Codex
+- **Cross-agent continuation**: Option to continue a Claude session with Codex, or vice versa
+- **Intelligent analysis**: Uses parallel sub-agents (Claude) or smart reading strategies (Codex) to understand context
+- **Continuation chains**: Automatically traces and includes all parent sessions in the chain
+
+### How it works
+
+1. Exports your old session (and any parent sessions) to text files
+2. Creates a new session with the agent of your choice
+3. Analyzes the full session history to understand the task
+4. Hands off to interactive mode so you can continue where you left off
+
+### Usage
+
+When approaching context limits, run `/status` in your session to display the
+session ID. Exit the session, then run:
 
 ```bash
-aichat continue <session-id>  # or partial session ID works if match is unique
+# Auto-detect session type (Claude or Codex)
+aichat continue <session-id>
 
-# Use --cli to specify custom Claude command (supports shell functions)
-aichat continue <session-id> --cli ccrja  # for custom profiles, aliases, or shell functions
+# Force continuation with specific agent
+aichat continue <session-id> --agent claude
+aichat continue <session-id> --agent codex
+
+# Partial session IDs work if match is unique
+aichat continue abc123
+
+# Custom Claude command (for profiles, aliases, shell functions)
+aichat continue <session-id> --cli ccrja
+
+# Custom summarization instructions
+aichat continue <session-id> --prompt "Focus on the database schema changes"
 ```
 
-That's it. Claude will analyze the old session and resume the work in a new session.
+### Cross-Agent Continuation
 
-**Note**: The legacy `claude-continue` command is still available for backward compatibility.
+You can continue a Claude session with Codex (or vice versa) in two ways:
+
+1. **Via command line**:
+   ```bash
+   # Continue Claude session with Codex
+   aichat continue <claude-session-id> --agent codex
+
+   # Continue Codex session with Claude
+   aichat continue <codex-session-id> --agent claude
+   ```
+
+2. **Via interactive menu**: When using `aichat menu` or session finders, you'll be
+   prompted to choose which agent to continue with (same-agent is default).
 
 ## 🔍 aichat find
 
@@ -260,8 +323,6 @@ aichat find -g --original
 - Shows agent, project, git branch, date, line count, and preview
 - Reverse chronological ordering (most recent first)
 - Press Enter to cancel (no need for Ctrl+C)
-
-**Note**: The legacy `find-session` command is still available for backward compatibility.
 
 ### Configuration (Optional)
 
@@ -347,8 +408,6 @@ aichat find-claude -g --original
 - Automatic session resumption with `claude -r`
 - Press Enter to cancel (no need for Ctrl+C)
 
-**Note**: The legacy `find-claude-session` command is still available for backward compatibility.
-
 For detailed documentation, see [docs/find-claude-session.md](docs/find-claude-session.md).
 
 Looks like this --
@@ -421,8 +480,6 @@ aichat find-codex -g --original
 - Multi-line preview wrapping for better readability
 - Press Enter to cancel (no need for Ctrl+C)
 
-**Note**: The legacy `find-codex-session` command is still available for backward compatibility.
-
 Looks like this --
 
 ![find-codex-session.png](demos/find-codex-session.png)
@@ -456,8 +513,6 @@ aichat menu abc123
 - **Same menu options**: Resume, trim, export, copy, clone - identical to find-session tools
 - **Environment aware**: Respects `CLAUDE_CONFIG_DIR` environment variable
 - **Quick access**: Skip the search step when you already know the session ID
-
-**Note**: The legacy `session-menu` command is still available for backward compatibility.
 
 <a id="trim-session"></a>
 ## 🗜️ aichat trim
@@ -520,8 +575,6 @@ aichat trim session.jsonl --len 1000 --trim-assistant-messages 10
 # Custom output directory
 aichat trim session.jsonl --output-dir ~/compressed-sessions
 ```
-
-**Note**: The legacy `trim-session` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -666,8 +719,6 @@ aichat smart-trim session.jsonl --exclude-types user,tool_result
 aichat smart-trim session.jsonl --dry-run
 ```
 
-**Note**: The legacy `smart-trim` command is still available for backward compatibility.
-
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
 ### Key Features
@@ -727,36 +778,44 @@ Choosing option 3 will:
 ======================================================================
 ```
 
-<a id="export-claude-session"></a>
-## 📄 aichat export-claude
+<a id="aichat-export"></a>
+## 📄 aichat export — export sessions to text format
 
-Export Claude Code sessions using Claude Code's built-in export format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
+Export Claude Code or Codex sessions to readable text format. Automatically detects session type and extracts essential conversation content while filtering out thinking blocks, system messages, and metadata.
+
+### Features
+
+- **Auto-detects session type**: Automatically determines if session is Claude Code or Codex
+- **Clean format**: Filters out metadata, keeping only conversation flow
+- **Partial ID matching**: Use partial session IDs if match is unique
+- **Auto-generated filenames**: Optional custom output path
 
 ### Usage
 
 ```bash
-# Export a session by file path
-aichat export-claude /path/to/session.jsonl --output summary.txt
+# Auto-detect session type (Claude or Codex)
+aichat export <session-id>
 
-# Export a session by ID (supports partial matching)
-aichat export-claude abc123-def456-789 --output summary.txt
-aichat export-claude abc123 --output summary.txt  # Partial ID works if unique
+# Force export with specific agent
+aichat export <session-id> --agent claude
+aichat export <session-id> --agent codex
 
-# Export with auto-generated filename (creates exported-sessions/YYYYMMDD-claude-session-<id>.txt)
-aichat export-claude abc123
+# Export by file path
+aichat export /path/to/session.jsonl --output summary.txt
+
+# Export by ID with custom output
+aichat export abc123 --output summary.txt
+
+# Export with auto-generated filename (creates exported-sessions/YYYYMMDD-<agent>-session-<id>.txt)
+aichat export abc123
 
 # Run from within Claude Code (uses current session)
-!aichat export-claude --output notes/session-summary.txt
-!aichat export-claude  # Auto-generates filename
-
-# Custom Claude home directory
-aichat export-claude session-id --output summary.txt --claude-home ~/my-claude
+!aichat export --output notes/session-summary.txt
+!aichat export  # Auto-generates filename
 
 # Verbose mode with progress
-aichat export-claude session.jsonl --output summary.txt --verbose
+aichat export session.jsonl --output summary.txt --verbose
 ```
-
-**Note**: The legacy `export-claude-session` command is still available for backward compatibility.
 
 **Notes**:
 - Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
@@ -852,127 +911,6 @@ The export option appears in both normal and sub-agent session menus, making it 
 - **Analysis**: Analyze tool usage patterns and conversation structure
 - **Archival**: Create human-readable archives of important sessions
 
-<a id="export-codex-session"></a>
-## 📄 aichat export-codex
-
-Export Codex sessions using Claude Code's built-in export format. This tool extracts the essential conversation content while filtering out thinking blocks, system messages, and other metadata that doesn't contribute to understanding the conversation flow.
-
-### Usage
-
-```bash
-# Export a session by file path
-aichat export-codex /path/to/session.jsonl --output summary.txt
-
-# Export a session by ID (supports partial matching)
-aichat export-codex 019a4a64-258b-7541-a27a-c3366546e2c1 --output summary.txt
-aichat export-codex 019a4a64 --output summary.txt  # Partial ID works if unique
-
-# Export with auto-generated filename (creates exported-sessions/YYYYMMDD-codex-session-<id>.txt)
-aichat export-codex 019a4a64
-
-# Custom Codex home directory
-aichat export-codex session-id --output summary.txt --codex-home ~/my-codex
-
-# Verbose mode with progress
-aichat export-codex session.jsonl --output summary.txt --verbose
-```
-
-**Note**: The legacy `export-codex-session` command is still available for backward compatibility.
-
-**Notes**:
-- Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
-- `--output` is optional. If not provided, creates file in `exported-sessions/` directory with pattern: `YYYYMMDD-codex-session-<session-id>.txt`
-
-### What Gets Exported
-
-The tool extracts four types of content:
-
-1. **User messages** - Your input and questions (from `input_text` blocks)
-2. **Assistant messages** - Codex's text responses (from `output_text` blocks)
-3. **Tool calls** - Function calls and custom tool calls (with formatted JSON arguments)
-4. **Tool results** - Output from function call results
-
-**Filtered out:**
-- Reasoning blocks (thinking/summary text)
-- Event messages
-- Session metadata
-- Turn context
-- Compacted data
-- System messages
-
-### Output Format
-
-The export uses Claude Code's built-in format with simple prefixes:
-
-```
-> Your question or input here...
-
-⏺ Codex's response here...
-
-⏺ bash(ls -la)
-  ⎿  total 48
-     drwxr-xr-x  12 user  staff   384 Nov 14 15:30 .
-     ...
-```
-
-**Format details:**
-- User messages: `> ` prefix on first line, plain text continuation
-- Assistant messages: `⏺ ` prefix on first line, plain text continuation
-- Tool calls: `⏺ ToolName(simplified args)`
-- Tool results: `  ⎿  ` prefix with indented continuation lines
-
-### Features
-
-- **Session ID resolution**: Accepts either full paths or session UUIDs
-- **Codex directory search**: Searches through `~/.codex/sessions/YYYY/MM/DD/` structure
-- **File extension**: Forces `.txt` extension (strips other extensions)
-- **Statistics**: Shows counts of each content type exported
-- **Progress display**: Optional `--verbose` mode for detailed progress
-- **JSON parsing**: Handles JSON-encoded arguments and outputs
-
-### Integration with find-session Tools
-
-Export functionality is also available through the interactive session finder menus:
-
-**In aichat find-codex:**
-```bash
-aichat find-codex "keywords"
-# Select a session
-# Choose option 5: "Export to text file (.txt)"
-# Enter output path
-```
-
-**In aichat find (Claude and Codex sessions):**
-```bash
-aichat find "keywords"
-# Select a Codex session
-# Choose option 5: "Export to text file (.txt)"
-# Enter output path
-```
-
-The export option appears in the session action menus, making it easy to create readable summaries of any Codex conversation.
-
-### Example Output
-
-```
-✅ Export complete!
-   User messages: 18
-   Assistant messages: 24
-   Tool calls: 85
-   Tool results: 85
-   Skipped items: 342
-
-📄 Exported to: notes/codex-session-summary.txt
-```
-
-### Use Cases
-
-- **Documentation**: Create readable summaries of Codex implementation sessions
-- **Learning**: Review conversation flow without metadata clutter
-- **Sharing**: Share session highlights with team members
-- **Analysis**: Analyze tool usage patterns and conversation structure
-- **Archival**: Create human-readable archives of important sessions
-
 <a id="find-original-session"></a>
 ## 📍 aichat find-original
 
@@ -997,8 +935,6 @@ aichat find-original ~/.codex/sessions/2024/11/14/rollout-*.jsonl
 # Verbose mode shows the parent chain with derivation types
 aichat find-original abc123 --verbose
 ```
-
-**Note**: The legacy `find-original-session` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -1052,8 +988,6 @@ aichat find-derived original-session.jsonl --stats
 # Combine tree view with statistics
 aichat find-derived original-session.jsonl --stats
 ```
-
-**Note**: The legacy `find-derived-sessions` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
@@ -1116,8 +1050,6 @@ aichat delete abc123 --claude-home ~/my-claude
 # Force deletion without confirmation (use with caution!)
 aichat delete abc123 --force
 ```
-
-**Note**: The legacy `delete-session` command is still available for backward compatibility.
 
 **Note**: Accepts full file paths, full session IDs, or partial session IDs. If a partial ID matches multiple sessions, you'll see a list of matches and be prompted to use a more specific ID.
 
