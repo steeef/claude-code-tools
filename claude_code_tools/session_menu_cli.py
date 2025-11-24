@@ -291,7 +291,11 @@ def execute_action(
         else:
             from claude_code_tools.find_codex_session import clone_session
             clone_session(
-                str(session_file), shell_mode=False, codex_home=codex_home
+                str(session_file),
+                session_id,
+                project_path,
+                shell_mode=False,
+                codex_home=codex_home
             )
 
     elif action == "resume":
