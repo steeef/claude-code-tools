@@ -126,8 +126,8 @@ def find_session_file(
                     for day_dir in month_dir.iterdir():
                         if not day_dir.is_dir():
                             continue
-                        # Look for session files matching the ID
-                        for session_file in day_dir.glob(f"*{session_id}.jsonl"):
+                        # Look for session files matching the ID (support partial matching)
+                        for session_file in day_dir.glob(f"*{session_id}*.jsonl"):
                             # Extract metadata from file
                             metadata = extract_session_metadata_codex(
                                 session_file
