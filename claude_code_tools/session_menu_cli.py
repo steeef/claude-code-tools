@@ -367,26 +367,25 @@ def execute_action(
         # Continue with context in fresh session
         from claude_code_tools.claude_continue import claude_continue
 
-        # Only works for Claude Code sessions for now
-        if agent == "claude":
-            print("\n🔄 Starting continuation in fresh session...")
-
-            # Prompt for custom instructions
-            print("\nEnter custom summarization instructions (or press Enter to skip):")
-            custom_prompt = input("> ").strip() or None
-
-            claude_continue(
-                str(session_file),
-                claude_home=claude_home,
-                verbose=False,
-                custom_prompt=custom_prompt
-            )
-        else:
+        if agent == "codex":
             print(
-                "\n⚠️  Note: Continue with context is currently only "
-                "supported for Claude Code sessions.",
+                "\n⚠️  Warning: Started with Codex session, "
+                "resuming as Claude Code session.",
                 file=sys.stderr,
             )
+
+        print("\n🔄 Starting continuation in fresh session...")
+
+        # Prompt for custom instructions
+        print("\nEnter custom summarization instructions (or press Enter to skip):")
+        custom_prompt = input("> ").strip() or None
+
+        claude_continue(
+            str(session_file),
+            claude_home=claude_home,
+            verbose=False,
+            custom_prompt=custom_prompt
+        )
 
 
 def main():
