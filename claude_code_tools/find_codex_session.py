@@ -36,6 +36,7 @@ from claude_code_tools.trim_session import (
 )
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
+from claude_code_tools.session_utils import get_codex_home
 
 try:
     from rich.console import Console
@@ -51,13 +52,6 @@ try:
     TUI_AVAILABLE = True
 except ImportError:
     TUI_AVAILABLE = False
-
-
-def get_codex_home(custom_home: Optional[str] = None) -> Path:
-    """Get the Codex home directory."""
-    if custom_home:
-        return Path(custom_home).expanduser()
-    return Path.home() / ".codex"
 
 
 def extract_session_id_from_filename(filename: str) -> Optional[str]:

@@ -44,7 +44,12 @@ except ImportError:
     TUI_AVAILABLE = False
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
-from claude_code_tools.session_utils import get_claude_home
+from claude_code_tools.session_utils import (
+    get_claude_home,
+    is_valid_session,
+    is_malformed_session,
+    extract_cwd_from_session,
+)
 
 try:
     from rich.console import Console
@@ -136,35 +141,6 @@ def extract_project_name(original_path: str) -> str:
     return parts[-1] if parts else "unknown"
 
 
-def extract_cwd_from_session(session_file: Path) -> Optional[str]:
-    """
-    Extract the working directory (cwd) from a Claude session file.
-
-    Args:
-        session_file: Path to the session JSONL file
-
-    Returns:
-        The cwd string if found, None otherwise
-    """
-    try:
-        with open(session_file, 'r', encoding='utf-8') as f:
-            # Check first few lines for cwd field
-            for i, line in enumerate(f):
-                if i >= 5:  # Only check first 5 lines
-                    break
-                try:
-                    data = json.loads(line.strip())
-                    if "cwd" in data:
-                        return data["cwd"]
-                except (json.JSONDecodeError, KeyError):
-                    continue
-    except (OSError, IOError):
-        pass
-
-    return None
-
-
-def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, int, Optional[str]]:
     """
     Check if all keywords are present in the JSONL file, count lines, and extract git branch.
 
@@ -276,62 +252,71 @@ def is_sidechain_session(filepath: Path) -> bool:
     return False
 
 
-def is_valid_session(filepath: Path) -> bool:
+def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, int, Optional[str]]:
     """
-    Check if a session file is a valid Claude Code session (WHITELIST approach).
-
-    Valid sessions have proper message types (user/assistant/tool_result) in first line.
-    Invalid sessions are file-history-snapshot-only, queue-operation-only, or missing metadata.
+    Check if all keywords are present in the JSONL file, count lines, and extract git branch.
 
     Args:
-        filepath: Path to session JSONL file.
+        filepath: Path to the JSONL file
+        keywords: List of keywords to search for (case-insensitive). Empty list matches all files.
 
     Returns:
-        True if session is valid and resumable, False otherwise.
+        Tuple of (matches: bool, line_count: int, git_branch: Optional[str])
+        - matches: True if ALL keywords are found in the file (or True if no keywords)
+        - line_count: Total number of lines in the file
+        - git_branch: Git branch name from the first message that has it, or None
     """
-    if not filepath.exists():
-        return False
+    # If no keywords, match all files
+    if not keywords:
+        line_count = 0
+        git_branch = None
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line_count += 1
+                    # Extract git branch from JSON if not already found
+                    if git_branch is None:
+                        try:
+                            data = json.loads(line.strip())
+                            if 'gitBranch' in data and data['gitBranch']:
+                                git_branch = data['gitBranch']
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+        except Exception:
+            return False, 0, None
+        return True, line_count, git_branch
+
+    # Convert keywords to lowercase for case-insensitive search
+    keywords_lower = [k.lower() for k in keywords]
+    found_keywords = set()
+    line_count = 0
+    git_branch = None
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
-            first_line = f.readline().strip()
-            if not first_line:
-                return False  # Empty file is invalid
+            for line in f:
+                line_count += 1
+                line_lower = line.lower()
 
-            data = json.loads(first_line)
+                # Extract git branch from JSON if not already found
+                if git_branch is None:
+                    try:
+                        data = json.loads(line.strip())
+                        if 'gitBranch' in data and data['gitBranch']:
+                            git_branch = data['gitBranch']
+                    except (json.JSONDecodeError, KeyError):
+                        pass
 
-            # Must have sessionId
-            if "sessionId" not in data:
-                return False
+                # Check which keywords are in this line
+                for keyword in keywords_lower:
+                    if keyword in line_lower:
+                        found_keywords.add(keyword)
+    except Exception:
+        # Skip files that can't be read
+        return False, 0, None
 
-            # Check for valid message types (whitelist)
-            entry_type = data.get("type", "")
-            valid_types = ["user", "assistant", "tool_result", "tool_use"]
-
-            # Valid if it's a proper message type
-            if entry_type in valid_types:
-                return True
-
-            # Invalid types (corrupted/incomplete sessions)
-            invalid_types = ["file-history-snapshot", "queue-operation"]
-            if entry_type in invalid_types:
-                return False
-
-            # Unknown type - be conservative and reject
-            return False
-
-    except (json.JSONDecodeError, OSError, IOError):
-        return False  # Parse errors indicate invalid file
-
-def is_malformed_session(filepath: Path) -> bool:
-    """
-    Deprecated: Use is_valid_session() instead.
-    Kept for backward compatibility - returns inverse of is_valid_session().
-
-    Returns:
-        True if session is malformed/invalid, False if valid.
-    """
-    return not is_valid_session(filepath)
+    matches = len(found_keywords) == len(keywords_lower)
+    return matches, line_count, git_branch
 
 
 def get_session_preview(filepath: Path) -> str:

@@ -1,9 +1,10 @@
 """Utility functions for working with Claude Code and Codex sessions."""
 
+import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 
 def get_claude_home(cli_arg: Optional[str] = None) -> Path:
@@ -32,6 +33,21 @@ def get_claude_home(cli_arg: Optional[str] = None) -> Path:
 
     # Default fallback
     return Path.home() / ".claude"
+
+
+def get_codex_home(cli_arg: Optional[str] = None) -> Path:
+    """
+    Get Codex home directory.
+
+    Args:
+        cli_arg: Optional CLI argument value for --codex-home
+
+    Returns:
+        Path to Codex home directory (default: ~/.codex)
+    """
+    if cli_arg:
+        return Path(cli_arg).expanduser()
+    return Path.home() / ".codex"
 
 
 def resolve_session_path(
@@ -261,3 +277,236 @@ def execute_continue_action(
             verbose=False,
             custom_prompt=custom_prompt
         )
+
+
+def detect_agent_from_path(file_path: Path) -> Optional[str]:
+    """
+    Auto-detect agent type from file path.
+
+    Args:
+        file_path: Path to session file
+
+    Returns:
+        'claude', 'codex', or None if cannot detect
+    """
+    path_str = str(file_path.absolute())
+
+    if "/.claude/" in path_str or path_str.startswith(
+        str(Path.home() / ".claude")
+    ):
+        return "claude"
+    elif "/.codex/" in path_str or path_str.startswith(
+        str(Path.home() / ".codex")
+    ):
+        return "codex"
+
+    return None
+
+
+def is_valid_session(filepath: Path) -> bool:
+    """
+    Check if a session file is a valid Claude Code session (WHITELIST approach).
+
+    A session is valid if it contains at least ONE line with a resumable message type
+    (user, assistant, tool_result, tool_use). Sessions containing ONLY metadata types
+    (file-history-snapshot, queue-operation) are invalid.
+
+    Real Claude sessions often start with file-history-snapshot lines (with null sessionId)
+    followed by actual conversation messages. We must scan ALL lines to determine validity.
+
+    Args:
+        filepath: Path to session JSONL file.
+
+    Returns:
+        True if session contains at least one resumable message, False otherwise.
+    """
+    if not filepath.exists():
+        return False
+
+    # Whitelist of resumable message types
+    valid_types = ["user", "assistant", "tool_result", "tool_use"]
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            has_any_content = False
+
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                has_any_content = True
+
+                try:
+                    data = json.loads(line)
+                    entry_type = data.get("type", "")
+                    session_id = data.get("sessionId")
+
+                    # Found a valid resumable message type with non-null sessionId
+                    if entry_type in valid_types and session_id is not None:
+                        return True
+
+                except json.JSONDecodeError:
+                    # Skip malformed JSON lines, continue checking other lines
+                    continue
+
+            # If we scanned entire file and found no valid message types
+            # (only metadata or empty), session is invalid
+            return False if has_any_content else False  # Empty file is invalid
+
+    except (OSError, IOError):
+        return False  # File read errors indicate invalid file
+
+
+def is_malformed_session(filepath: Path) -> bool:
+    """
+    Deprecated: Use is_valid_session() instead.
+    Kept for backward compatibility - returns inverse of is_valid_session().
+
+    Returns:
+        True if session is malformed/invalid, False if valid.
+    """
+    return not is_valid_session(filepath)
+
+
+def extract_cwd_from_session(session_file: Path) -> Optional[str]:
+    """
+    Extract the working directory (cwd) from a Claude session file.
+
+    Real Claude sessions often have file-history-snapshot lines with null cwd values
+    at the start, followed by actual messages with valid cwd. We check first 10 lines
+    and skip null values.
+
+    Args:
+        session_file: Path to the session JSONL file
+
+    Returns:
+        The cwd string if found, None otherwise
+    """
+    try:
+        with open(session_file, 'r', encoding='utf-8') as f:
+            # Check first 10 lines for non-null cwd field
+            for i, line in enumerate(f):
+                if i >= 10:  # Check first 10 lines (increased from 5)
+                    break
+                try:
+                    data = json.loads(line.strip())
+                    if "cwd" in data and data["cwd"] is not None:
+                        return data["cwd"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    except (OSError, IOError):
+        pass
+
+    return None
+
+
+def extract_git_branch_claude(session_file: Path) -> Optional[str]:
+    """Extract git branch from Claude session file."""
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("type") == "file-history-snapshot":
+                        git_info = entry.get("metadata", {}).get("git", {})
+                        return git_info.get("branch")
+                except json.JSONDecodeError:
+                    continue
+    except (OSError, IOError):
+        pass
+    return None
+
+
+def extract_session_metadata_codex(session_file: Path) -> Optional[dict]:
+    """Extract metadata from Codex session file."""
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("type") == "session_meta":
+                        payload = entry.get("payload", {})
+                        return {
+                            "cwd": payload.get("cwd"),
+                            "branch": payload.get("branch"),
+                        }
+                except json.JSONDecodeError:
+                    continue
+    except (OSError, IOError):
+        pass
+    return None
+
+
+def find_session_file(
+    session_id: str,
+    claude_home: Optional[str] = None,
+    codex_home: Optional[str] = None,
+) -> Optional[Tuple[str, Path, str, Optional[str]]]:
+    """
+    Search for session file by ID in both Claude and Codex homes.
+
+    Args:
+        session_id: Session identifier
+        claude_home: Optional custom Claude home directory
+        codex_home: Optional custom Codex home directory
+
+    Returns:
+        Tuple of (agent, file_path, project_path, git_branch) or None
+        Note: project_path is the full working directory path, not just the name
+    """
+    # Try Claude first
+    claude_base = get_claude_home(claude_home)
+    if claude_base.exists():
+        projects_dir = claude_base / "projects"
+        if projects_dir.exists():
+            for project_dir in projects_dir.iterdir():
+                if project_dir.is_dir():
+                    # Support partial session ID matching
+                    for session_file in project_dir.glob(f"*{session_id}*.jsonl"):
+                        # Skip malformed/invalid sessions
+                        if is_malformed_session(session_file):
+                            continue
+                        # Extract actual cwd from session file
+                        actual_cwd = extract_cwd_from_session(session_file)
+                        if not actual_cwd:
+                            # Skip sessions without cwd
+                            continue
+                        # Try to get git branch from session file
+                        git_branch = extract_git_branch_claude(session_file)
+                        return ("claude", session_file, actual_cwd, git_branch)
+
+    # Try Codex next
+    codex_base = get_codex_home(codex_home)
+    if codex_base.exists():
+        sessions_dir = codex_base / "sessions"
+        if sessions_dir.exists():
+            # Search through date directories
+            for year_dir in sessions_dir.iterdir():
+                if not year_dir.is_dir():
+                    continue
+                for month_dir in year_dir.iterdir():
+                    if not month_dir.is_dir():
+                        continue
+                    for day_dir in month_dir.iterdir():
+                        if not day_dir.is_dir():
+                            continue
+                        # Look for session files matching the ID
+                        for session_file in day_dir.glob(f"*{session_id}*.jsonl"):
+                            # Extract metadata from file
+                            metadata = extract_session_metadata_codex(session_file)
+                            if metadata:
+                                project_path = metadata.get("cwd", "")
+                                git_branch = metadata.get("branch")
+                                return (
+                                    "codex",
+                                    session_file,
+                                    project_path,
+                                    git_branch,
+                                )
+
+    return None

@@ -143,7 +143,7 @@ def export_session(ctx, agent, session):
     """
     import sys
     from pathlib import Path
-    from claude_code_tools.session_menu_cli import detect_agent_from_path, find_session_file
+    from claude_code_tools.session_utils import detect_agent_from_path, find_session_file
 
     # Try to detect session type
     detected_agent = None
@@ -238,7 +238,7 @@ def continue_session(ctx, agent, session):
     """
     import sys
     from pathlib import Path
-    from claude_code_tools.session_menu_cli import detect_agent_from_path, find_session_file
+    from claude_code_tools.session_utils import detect_agent_from_path, find_session_file
 
     # Try to detect session type
     detected_agent = None
