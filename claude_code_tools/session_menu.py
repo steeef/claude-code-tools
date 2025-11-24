@@ -121,6 +121,7 @@ def show_action_menu(
         'path', 'copy', 'clone', 'export', or None if cancelled
     """
     print(f"\n=== Session: {session_id[:8]}... ===")
+    print(f"Agent: {agent.upper()}")
     print(f"Project: {project_name}")
     if git_branch:
         print(f"Branch: {git_branch}")

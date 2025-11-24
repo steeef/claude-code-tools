@@ -18,22 +18,9 @@ dependencies = [
 dev = ["commitizen>=3.0.0"]
 
 [project.scripts]
-# Unified session management interface (RECOMMENDED)
+# Unified session management interface
+# All session commands accessible via: aichat <subcommand>
 aichat = "claude_code_tools.aichat:main"
-
-# Legacy flat commands (backward compatible)
-find-claude-session = "claude_code_tools.find_claude_session:main"
-find-codex-session = "claude_code_tools.find_codex_session:main"
-find-session = "claude_code_tools.find_session:main"
-find-original-session = "claude_code_tools.find_original_session:main"
-find-derived-sessions = "claude_code_tools.find_derived_sessions:main"
-session-menu = "claude_code_tools.session_menu_cli:main"
-trim-session = "claude_code_tools.trim_session:main"
-smart-trim = "claude_code_tools.smart_trim:main"
-export-claude-session = "claude_code_tools.export_claude_session:main"
-export-codex-session = "claude_code_tools.export_codex_session:main"
-delete-session = "claude_code_tools.delete_session:main"
-claude-continue = "claude_code_tools.claude_continue:main"
 
 # Non-session utilities
 vault = "claude_code_tools.dotenv_vault:main"

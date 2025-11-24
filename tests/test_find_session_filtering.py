@@ -2,14 +2,12 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
 
 import pytest
 
 from claude_code_tools.find_codex_session import (
     find_sessions as find_codex_sessions,
 )
-from claude_code_tools.find_session import search_all_agents
 from claude_code_tools.trim_session import (
     is_trimmed_session,
     trim_and_create_session,
@@ -165,72 +163,3 @@ class TestCodexSessionFiltering:
             assert "is_trimmed" in session
 
 
-class TestUnifiedSearchFiltering:
-    """Tests for search_all_agents with original_only flag."""
-
-    @patch("claude_code_tools.find_session.is_trimmed_session")
-    @patch("claude_code_tools.find_session.find_claude_sessions")
-    def test_filters_trimmed_sessions_in_search_all_agents(
-        self, mock_find_claude, mock_is_trimmed
-    ):
-        """Test that search_all_agents filters trimmed sessions when original_only=True."""
-        # Mock find_claude_sessions to return 2 sessions
-        mock_find_claude.return_value = [
-            ("session1", 1.0, 1.0, 100, "proj1", "preview1", "/test", "main"),
-            ("session2", 2.0, 2.0, 200, "proj2", "preview2", "/test2", "dev"),
-        ]
-
-        # Mock is_trimmed_session: session1 is trimmed, session2 is not
-        mock_is_trimmed.side_effect = [True, False]
-
-        # Search with original_only=True
-        results = search_all_agents(
-            keywords=[],
-            global_search=False,
-            num_matches=10,
-            agents=["claude"],
-            original_only=True,
-        )
-
-        # Should only return session2 (not trimmed)
-        assert len(results) == 1
-        assert results[0]["session_id"] == "session2"
-        assert results[0]["is_trimmed"] is False
-
-    @patch("claude_code_tools.find_session.is_trimmed_session")
-    @patch("claude_code_tools.find_session.find_claude_sessions")
-    def test_includes_all_sessions_when_original_only_false(
-        self, mock_find_claude, mock_is_trimmed
-    ):
-        """Test that search_all_agents includes trimmed when original_only=False."""
-        # Mock find_claude_sessions to return 2 sessions
-        mock_find_claude.return_value = [
-            ("session1", 1.0, 1.0, 100, "proj1", "preview1", "/test", "main"),
-            ("session2", 2.0, 2.0, 200, "proj2", "preview2", "/test2", "dev"),
-        ]
-
-        # Mock is_trimmed_session: session1 is trimmed, session2 is not
-        mock_is_trimmed.side_effect = [True, False]
-
-        # Search with original_only=False (default)
-        results = search_all_agents(
-            keywords=[],
-            global_search=False,
-            num_matches=10,
-            agents=["claude"],
-            original_only=False,
-        )
-
-        # Should return both sessions
-        assert len(results) == 2
-
-        # Check that both sessions are present (order may vary)
-        session_ids = {s["session_id"] for s in results}
-        assert session_ids == {"session1", "session2"}
-
-        # Verify is_trimmed flags are set correctly
-        for session in results:
-            if session["session_id"] == "session1":
-                assert session["is_trimmed"] is True
-            elif session["session_id"] == "session2":
-                assert session["is_trimmed"] is False

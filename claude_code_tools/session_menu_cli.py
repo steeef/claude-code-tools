@@ -23,200 +23,16 @@ from claude_code_tools.session_menu import (
     show_action_menu,
     prompt_suppress_options,
 )
-
-
-def get_claude_home(custom_home: Optional[str] = None) -> Path:
-    """
-    Get Claude home directory with proper precedence.
-
-    Precedence order:
-    1. CLI argument (if provided)
-    2. CLAUDE_CONFIG_DIR environment variable (if set)
-    3. Default ~/.claude
-    """
-    # CLI argument has highest priority
-    if custom_home:
-        return Path(custom_home).expanduser()
-
-    # Check environment variable
-    env_var = os.environ.get('CLAUDE_CONFIG_DIR')
-    if env_var:
-        return Path(env_var).expanduser()
-
-    # Default fallback
-    return Path.home() / ".claude"
-
-
-def get_codex_home(custom_home: Optional[str] = None) -> Path:
-    """Get Codex home directory."""
-    if custom_home:
-        return Path(custom_home).expanduser()
-    return Path.home() / ".codex"
-
-
-def detect_agent_from_path(file_path: Path) -> Optional[str]:
-    """
-    Auto-detect agent type from file path.
-
-    Args:
-        file_path: Path to session file
-
-    Returns:
-        'claude', 'codex', or None if cannot detect
-    """
-    path_str = str(file_path.absolute())
-
-    if "/.claude/" in path_str or path_str.startswith(
-        str(Path.home() / ".claude")
-    ):
-        return "claude"
-    elif "/.codex/" in path_str or path_str.startswith(
-        str(Path.home() / ".codex")
-    ):
-        return "codex"
-
-    return None
-
-
-def find_session_file(
-    session_id: str,
-    claude_home: Optional[str] = None,
-    codex_home: Optional[str] = None,
-) -> Optional[Tuple[str, Path, str, Optional[str]]]:
-    """
-    Search for session file by ID in both Claude and Codex homes.
-
-    Args:
-        session_id: Session identifier
-        claude_home: Optional custom Claude home directory
-        codex_home: Optional custom Codex home directory
-
-    Returns:
-        Tuple of (agent, file_path, project_path, git_branch) or None
-        Note: project_path is the full working directory path, not just the name
-    """
-    # Try Claude first
-    claude_base = get_claude_home(claude_home)
-    if claude_base.exists():
-        projects_dir = claude_base / "projects"
-        if projects_dir.exists():
-            for project_dir in projects_dir.iterdir():
-                if project_dir.is_dir():
-                    # Support partial session ID matching
-                    for session_file in project_dir.glob(f"*{session_id}*.jsonl"):
-                        # Extract actual cwd from session file
-                        actual_cwd = extract_cwd_from_session(session_file)
-                        if not actual_cwd:
-                            # Skip sessions without cwd
-                            continue
-                        # Try to get git branch from session file
-                        git_branch = extract_git_branch_claude(session_file)
-                        return ("claude", session_file, actual_cwd, git_branch)
-
-    # Try Codex next
-    codex_base = get_codex_home(codex_home)
-    if codex_base.exists():
-        sessions_dir = codex_base / "sessions"
-        if sessions_dir.exists():
-            # Search through date directories
-            for year_dir in sessions_dir.iterdir():
-                if not year_dir.is_dir():
-                    continue
-                for month_dir in year_dir.iterdir():
-                    if not month_dir.is_dir():
-                        continue
-                    for day_dir in month_dir.iterdir():
-                        if not day_dir.is_dir():
-                            continue
-                        # Look for session files matching the ID (support partial matching)
-                        for session_file in day_dir.glob(f"*{session_id}*.jsonl"):
-                            # Extract metadata from file
-                            metadata = extract_session_metadata_codex(
-                                session_file
-                            )
-                            if metadata:
-                                project_path = metadata.get("cwd", "")
-                                git_branch = metadata.get("branch")
-                                return (
-                                    "codex",
-                                    session_file,
-                                    project_path,
-                                    git_branch,
-                                )
-
-    return None
-
-
-def extract_git_branch_claude(session_file: Path) -> Optional[str]:
-    """Extract git branch from Claude session file."""
-    try:
-        with open(session_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if entry.get("type") == "file-history-snapshot":
-                        git_info = entry.get("metadata", {}).get("git", {})
-                        return git_info.get("branch")
-                except json.JSONDecodeError:
-                    continue
-    except (OSError, IOError):
-        pass
-    return None
-
-
-def extract_cwd_from_session(session_file: Path) -> Optional[str]:
-    """
-    Extract the working directory (cwd) from a Claude session file.
-
-    Args:
-        session_file: Path to the session JSONL file
-
-    Returns:
-        The cwd string if found, None otherwise
-    """
-    try:
-        with open(session_file, 'r', encoding='utf-8') as f:
-            # Check first few lines for cwd field
-            for i, line in enumerate(f):
-                if i >= 5:  # Only check first 5 lines
-                    break
-                try:
-                    data = json.loads(line.strip())
-                    if "cwd" in data:
-                        return data["cwd"]
-                except (json.JSONDecodeError, KeyError):
-                    continue
-    except (OSError, IOError):
-        pass
-
-    return None
-
-
-def extract_session_metadata_codex(session_file: Path) -> Optional[dict]:
-    """Extract metadata from Codex session file."""
-    try:
-        with open(session_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if entry.get("type") == "session_meta":
-                        payload = entry.get("payload", {})
-                        git_info = payload.get("git", {})
-                        return {
-                            "id": payload.get("id", ""),
-                            "cwd": payload.get("cwd", ""),
-                            "branch": git_info.get("branch", ""),
-                            "timestamp": payload.get("timestamp", ""),
-                        }
-                except json.JSONDecodeError:
-                    continue
-    except (OSError, IOError):
-        pass
-    return None
+from claude_code_tools.session_utils import (
+    get_claude_home,
+    get_codex_home,
+    detect_agent_from_path,
+    extract_cwd_from_session,
+    extract_git_branch_claude,
+    extract_session_metadata_codex,
+    find_session_file,
+    is_malformed_session,
+)
 
 
 def is_sidechain_session(session_file: Path) -> bool:
@@ -365,26 +181,12 @@ def execute_action(
 
     elif action == "continue":
         # Continue with context in fresh session
-        from claude_code_tools.claude_continue import claude_continue
-
-        if agent == "codex":
-            print(
-                "\n⚠️  Warning: Started with Codex session, "
-                "resuming as Claude Code session.",
-                file=sys.stderr,
-            )
-
-        print("\n🔄 Starting continuation in fresh session...")
-
-        # Prompt for custom instructions
-        print("\nEnter custom summarization instructions (or press Enter to skip):")
-        custom_prompt = input("> ").strip() or None
-
-        claude_continue(
+        from claude_code_tools.session_utils import continue_with_options
+        continue_with_options(
             str(session_file),
+            agent,
             claude_home=claude_home,
-            verbose=False,
-            custom_prompt=custom_prompt
+            codex_home=codex_home
         )
 
 

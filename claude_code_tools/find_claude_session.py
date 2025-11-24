@@ -68,7 +68,13 @@ except ImportError:
     TUI_AVAILABLE = False
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
-from claude_code_tools.session_utils import get_claude_home
+from claude_code_tools.session_utils import (
+    get_claude_home,
+    is_valid_session,
+    is_malformed_session,
+    extract_cwd_from_session,
+    format_session_id_display,
+)
 
 try:
     from rich.console import Console
@@ -160,35 +166,6 @@ def extract_project_name(original_path: str) -> str:
     return parts[-1] if parts else "unknown"
 
 
-def extract_cwd_from_session(session_file: Path) -> Optional[str]:
-    """
-    Extract the working directory (cwd) from a Claude session file.
-
-    Args:
-        session_file: Path to the session JSONL file
-
-    Returns:
-        The cwd string if found, None otherwise
-    """
-    try:
-        with open(session_file, 'r', encoding='utf-8') as f:
-            # Check first few lines for cwd field
-            for i, line in enumerate(f):
-                if i >= 5:  # Only check first 5 lines
-                    break
-                try:
-                    data = json.loads(line.strip())
-                    if "cwd" in data:
-                        return data["cwd"]
-                except (json.JSONDecodeError, KeyError):
-                    continue
-    except (OSError, IOError):
-        pass
-
-    return None
-
-
-def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, int, Optional[str]]:
     """
     Check if all keywords are present in the JSONL file, count lines, and extract git branch.
 
@@ -300,40 +277,71 @@ def is_sidechain_session(filepath: Path) -> bool:
     return False
 
 
-def is_malformed_session(filepath: Path) -> bool:
+def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, int, Optional[str]]:
     """
-    Check if a session file is malformed (missing critical metadata).
-
-    Malformed sessions have file-history-snapshot as the first line instead
-    of proper session metadata. These cannot be resumed by Claude Code.
+    Check if all keywords are present in the JSONL file, count lines, and extract git branch.
 
     Args:
-        filepath: Path to session JSONL file.
+        filepath: Path to the JSONL file
+        keywords: List of keywords to search for (case-insensitive). Empty list matches all files.
 
     Returns:
-        True if session is malformed, False otherwise.
+        Tuple of (matches: bool, line_count: int, git_branch: Optional[str])
+        - matches: True if ALL keywords are found in the file (or True if no keywords)
+        - line_count: Total number of lines in the file
+        - git_branch: Git branch name from the first message that has it, or None
     """
-    if not filepath.exists():
-        return False
+    # If no keywords, match all files
+    if not keywords:
+        line_count = 0
+        git_branch = None
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line_count += 1
+                    # Extract git branch from JSON if not already found
+                    if git_branch is None:
+                        try:
+                            data = json.loads(line.strip())
+                            if 'gitBranch' in data and data['gitBranch']:
+                                git_branch = data['gitBranch']
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+        except Exception:
+            return False, 0, None
+        return True, line_count, git_branch
+
+    # Convert keywords to lowercase for case-insensitive search
+    keywords_lower = [k.lower() for k in keywords]
+    found_keywords = set()
+    line_count = 0
+    git_branch = None
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
-            first_line = f.readline().strip()
-            if not first_line:
-                return True  # Empty file is malformed
+            for line in f:
+                line_count += 1
+                line_lower = line.lower()
 
-            data = json.loads(first_line)
-            # Malformed if first line is file-history-snapshot
-            if data.get("type") == "file-history-snapshot":
-                return True
-            # Malformed if missing sessionId
-            if "sessionId" not in data:
-                return True
+                # Extract git branch from JSON if not already found
+                if git_branch is None:
+                    try:
+                        data = json.loads(line.strip())
+                        if 'gitBranch' in data and data['gitBranch']:
+                            git_branch = data['gitBranch']
+                    except (json.JSONDecodeError, KeyError):
+                        pass
 
-    except (json.JSONDecodeError, OSError, IOError):
-        return True  # Parse errors indicate malformed file
+                # Check which keywords are in this line
+                for keyword in keywords_lower:
+                    if keyword in line_lower:
+                        found_keywords.add(keyword)
+    except Exception:
+        # Skip files that can't be read
+        return False, 0, None
 
-    return False
+    matches = len(found_keywords) == len(keywords_lower)
+    return matches, line_count, git_branch
 
 
 def get_session_preview(filepath: Path) -> str:
@@ -460,7 +468,7 @@ def find_sessions(
                             if not actual_cwd:
                                 # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
                                 continue
-                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
+                            matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, derivation_type, is_sidechain))
                     
                     progress.advance(task)
         else:
@@ -507,7 +515,7 @@ def find_sessions(
                         if not actual_cwd:
                             # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
                             continue
-                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
+                        matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, derivation_type, is_sidechain))
     else:
         # Search current project only
         claude_dir = get_claude_project_dir(claude_home)
@@ -521,6 +529,10 @@ def find_sessions(
         for jsonl_file in claude_dir.glob("*.jsonl"):
             matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
             if matches:
+                # Skip malformed sessions (missing metadata, cannot resume)
+                if is_malformed_session(jsonl_file):
+                    continue
+
                 # Check if session is trimmed/continued
                 is_trimmed = is_trimmed_session(jsonl_file)
                 derivation_type = get_session_derivation_type(jsonl_file) if is_trimmed else None
@@ -550,7 +562,7 @@ def find_sessions(
                 preview = get_session_preview(jsonl_file)
                 # Extract actual cwd from session file for consistency
                 actual_cwd = extract_cwd_from_session(jsonl_file) or os.getcwd()
-                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, is_trimmed, is_sidechain))
+                matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, derivation_type, is_sidechain))
     
     # Sort by modification time (newest first)
     matching_sessions.sort(key=lambda x: x[1], reverse=True)
@@ -592,19 +604,21 @@ def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str
     table.add_column("Lines", style="cyan", justify="right")
     table.add_column("Last User Message", style="white", max_width=60, overflow="fold")
     
-    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch, is_trimmed, is_sidechain) in enumerate(display_sessions, 1):
+    for idx, (session_id, mod_time, create_time, line_count, project_name, preview, _, git_branch, derivation_type, is_sidechain) in enumerate(display_sessions, 1):
         # Format: "10/04 - 10/09 13:45"
         create_date = datetime.fromtimestamp(create_time).strftime('%m/%d')
         mod_date = datetime.fromtimestamp(mod_time).strftime('%m/%d %H:%M')
         date_display = f"{create_date} - {mod_date}"
         branch_display = git_branch if git_branch else "N/A"
 
-        # Add indicators for trimmed and sidechain sessions
-        session_id_display = session_id[:8] + "..."
-        if is_trimmed:
-            session_id_display += " *"
-        if is_sidechain:
-            session_id_display += " (sub)"
+        # Format session ID with annotations using centralized helper
+        session_id_display = format_session_id_display(
+            session_id,
+            is_trimmed=(derivation_type == "trimmed"),
+            is_continued=(derivation_type == "continued"),
+            is_sidechain=is_sidechain,
+            truncate_length=8,
+        )
 
         table.add_row(
             str(idx),
@@ -618,13 +632,16 @@ def display_interactive_ui(sessions: List[Tuple[str, float, float, int, str, str
     
     ui_console.print(table)
 
-    # Show footnotes if any sessions are trimmed or sidechain
-    has_trimmed = any(s[8] for s in display_sessions)  # is_trimmed is index 8
+    # Show footnotes if any sessions are trimmed, continued, or sidechain
+    has_trimmed = any(s[8] == "trimmed" for s in display_sessions)  # derivation_type is index 8
+    has_continued = any(s[8] == "continued" for s in display_sessions)
     has_sidechain = any(s[9] for s in display_sessions)  # is_sidechain is index 9
-    if has_trimmed or has_sidechain:
+    if has_trimmed or has_continued or has_sidechain:
         footnotes = []
         if has_trimmed:
-            footnotes.append("* = Trimmed session (reduced from original)")
+            footnotes.append("(t) = Trimmed session")
+        if has_continued:
+            footnotes.append("(c) = Continued session")
         if has_sidechain:
             footnotes.append("(sub) = Sub-agent session (not directly resumable)")
         ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")
@@ -1155,19 +1172,13 @@ def create_action_handler(claude_home: Optional[str] = None, nonlaunch_flag: Opt
                 nonlaunch_flag["done"] = True
                 nonlaunch_flag["session_id"] = session_id
         elif action == "continue":
-            from claude_code_tools.claude_continue import claude_continue
+            from claude_code_tools.session_utils import continue_with_options
             session_file_path = get_session_file_path(session_id, project_path, claude_home)
-            print("\n🔄 Starting continuation in fresh session...")
-
-            # Prompt for custom instructions
-            print("\nEnter custom summarization instructions (or press Enter to skip):")
-            custom_prompt = input("> ").strip() or None
-
-            claude_continue(
+            continue_with_options(
                 session_file_path,
+                "claude",
                 claude_home=claude_home,
-                verbose=False,
-                custom_prompt=custom_prompt
+                codex_home=None
             )
 
     return handle_session_action
@@ -1397,19 +1408,13 @@ To persist directory changes when resuming sessions:
                 handle_export_session(session_file_path)
             elif action == "continue":
                 # Continue with context in fresh session
-                from claude_code_tools.claude_continue import claude_continue
+                from claude_code_tools.session_utils import continue_with_options
                 session_file_path = get_session_file_path(session_id, project_path, args.claude_home)
-                print("\n🔄 Starting continuation in fresh session...")
-
-                # Prompt for custom instructions
-                print("\nEnter custom summarization instructions (or press Enter to skip):")
-                custom_prompt = input("> ").strip() or None
-
-                claude_continue(
+                continue_with_options(
                     session_file_path,
+                    "claude",
                     claude_home=args.claude_home,
-                    verbose=False,
-                    custom_prompt=custom_prompt
+                    codex_home=None
                 )
     else:
         # Fallback: print session IDs as before
