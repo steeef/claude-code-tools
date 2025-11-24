@@ -663,31 +663,25 @@ def handle_action(session: dict, action: str, shell_mode: bool = False) -> None:
 
     elif action == "continue":
         # Continue with context in fresh session
+        from claude_code_tools.session_utils import execute_continue_action
+
+        # Get file path based on agent type
         if agent == "claude":
-            from claude_code_tools.claude_continue import claude_continue
             file_path = get_claude_session_file_path(
                 session["session_id"],
                 session["cwd"],
                 claude_home=session.get("claude_home"),
             )
-            print("\n🔄 Starting continuation in fresh session...")
+        else:
+            # Codex session
+            file_path = session["file_path"]
 
-            # Prompt for custom instructions
-            print("\nEnter custom summarization instructions (or press Enter to skip):")
-            custom_prompt = input("> ").strip() or None
-
-            claude_continue(
-                file_path,
-                claude_home=session.get("claude_home"),
-                verbose=False,
-                custom_prompt=custom_prompt
-            )
-        elif agent == "codex":
-            print(
-                "\n⚠️  Note: Continue with context is currently only "
-                "supported for Claude Code sessions.",
-                file=sys.stderr,
-            )
+        execute_continue_action(
+            file_path,
+            agent,
+            claude_home=session.get("claude_home"),
+            codex_home=session.get("codex_home")
+        )
 
 
 def main():

@@ -166,13 +166,64 @@ def delete(ctx):
 
 
 @main.command("continue", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False), help="Force continuation with specific agent")
+@click.argument("session", required=True)
 @click.pass_context
-def continue_session(ctx):
-    """Continue from an exported session (when running out of context)."""
+def continue_session(ctx, agent, session):
+    """Continue from an exported session (when running out of context).
+
+    Auto-detects session type and uses matching continue command.
+    Use --agent to override and force continuation with a specific agent.
+    """
     import sys
-    sys.argv = [sys.argv[0].replace('aichat', 'claude-continue')] + ctx.args
-    from claude_code_tools.claude_continue import main as continue_main
-    continue_main()
+    from pathlib import Path
+    from claude_code_tools.session_menu_cli import detect_agent_from_path, find_session_file
+
+    # Try to detect session type
+    detected_agent = None
+    session_file = None
+
+    # First check if it's a file path
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = detect_agent_from_path(session_file)
+    else:
+        # Try to find by session ID
+        result = find_session_file(session)
+        if result:
+            detected_agent, session_file, _, _ = result
+
+    # Determine which agent to use
+    if agent:
+        # User explicitly specified agent
+        continue_agent = agent.lower()
+        if detected_agent and detected_agent != continue_agent:
+            print(f"\nℹ️  Detected {detected_agent.upper()} session")
+            print(f"ℹ️  Continuing with {continue_agent.upper()} (user specified)")
+        else:
+            print(f"\nℹ️  Continuing with {continue_agent.upper()} (user specified)")
+    elif detected_agent:
+        # Use detected agent
+        continue_agent = detected_agent
+        print(f"\nℹ️  Detected {detected_agent.upper()} session")
+        print(f"ℹ️  Continuing with {continue_agent.upper()}")
+    else:
+        # Default to Claude if cannot detect
+        continue_agent = "claude"
+        print(f"\n⚠️  Could not detect session type, defaulting to CLAUDE")
+
+    print()
+
+    # Route to appropriate continue command
+    if continue_agent == "claude":
+        sys.argv = [sys.argv[0].replace('aichat', 'claude-continue'), session] + ctx.args
+        from claude_code_tools.claude_continue import main as continue_main
+        continue_main()
+    else:
+        sys.argv = [sys.argv[0].replace('aichat', 'codex-continue'), session] + ctx.args
+        from claude_code_tools.codex_continue import main as continue_main
+        continue_main()
 
 
 if __name__ == "__main__":

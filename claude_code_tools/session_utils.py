@@ -192,3 +192,72 @@ def _get_codex_session_id(cwd: str) -> Optional[str]:
     # so we just return the most recent one
     most_recent = max(session_files, key=lambda p: p.stat().st_mtime)
     return most_recent.stem  # Filename without .jsonl extension
+
+
+def execute_continue_action(
+    session_file_path: str,
+    current_agent: str,
+    claude_home: Optional[str] = None,
+    codex_home: Optional[str] = None
+) -> None:
+    """
+    Execute continue action with agent selection dialog.
+
+    Provides interactive menu for choosing which agent to use for
+    continuation (same-agent or cross-agent), prompts for custom
+    summarization instructions, and routes to the appropriate
+    continue command.
+
+    Args:
+        session_file_path: Path to the session file to continue
+        current_agent: Agent type of the session ('claude' or 'codex')
+        claude_home: Optional custom Claude home directory
+        codex_home: Optional custom Codex home directory
+    """
+    print("\n🔄 Starting continuation in fresh session...")
+
+    # Ask which agent to use for continuation
+    print(f"\nCurrent session is from: {current_agent.upper()}")
+    print("Which agent should continue the work?")
+    print(f"1. {current_agent.upper()} (default - same agent)")
+    other_agent = "CODEX" if current_agent == "claude" else "CLAUDE"
+    print(f"2. {other_agent} (cross-agent)")
+    print()
+
+    try:
+        choice = input(
+            f"Enter choice [1-2] (or Enter for {current_agent.upper()}): "
+        ).strip()
+        if not choice or choice == "1":
+            continue_agent = current_agent
+        elif choice == "2":
+            continue_agent = "codex" if current_agent == "claude" else "claude"
+        else:
+            print("Invalid choice, using default.")
+            continue_agent = current_agent
+    except (KeyboardInterrupt, EOFError):
+        print("\nCancelled.")
+        return
+
+    print(f"\nℹ️  Continuing with {continue_agent.upper()}")
+
+    # Prompt for custom instructions
+    print("\nEnter custom summarization instructions (or press Enter to skip):")
+    custom_prompt = input("> ").strip() or None
+
+    if continue_agent == "claude":
+        from claude_code_tools.claude_continue import claude_continue
+        claude_continue(
+            session_file_path,
+            claude_home=claude_home,
+            verbose=False,
+            custom_prompt=custom_prompt
+        )
+    else:
+        from claude_code_tools.codex_continue import codex_continue
+        codex_continue(
+            session_file_path,
+            codex_home=codex_home,
+            verbose=False,
+            custom_prompt=custom_prompt
+        )
