@@ -276,18 +276,18 @@ def is_sidechain_session(filepath: Path) -> bool:
     return False
 
 
-def is_malformed_session(filepath: Path) -> bool:
+def is_valid_session(filepath: Path) -> bool:
     """
-    Check if a session file is malformed (missing critical metadata).
+    Check if a session file is a valid Claude Code session (WHITELIST approach).
 
-    Malformed sessions have file-history-snapshot as the first line instead
-    of proper session metadata. These cannot be resumed by Claude Code.
+    Valid sessions have proper message types (user/assistant/tool_result) in first line.
+    Invalid sessions are file-history-snapshot-only, queue-operation-only, or missing metadata.
 
     Args:
         filepath: Path to session JSONL file.
 
     Returns:
-        True if session is malformed, False otherwise.
+        True if session is valid and resumable, False otherwise.
     """
     if not filepath.exists():
         return False
@@ -296,20 +296,42 @@ def is_malformed_session(filepath: Path) -> bool:
         with open(filepath, 'r', encoding='utf-8') as f:
             first_line = f.readline().strip()
             if not first_line:
-                return True  # Empty file is malformed
+                return False  # Empty file is invalid
 
             data = json.loads(first_line)
-            # Malformed if first line is file-history-snapshot
-            if data.get("type") == "file-history-snapshot":
-                return True
-            # Malformed if missing sessionId
+
+            # Must have sessionId
             if "sessionId" not in data:
+                return False
+
+            # Check for valid message types (whitelist)
+            entry_type = data.get("type", "")
+            valid_types = ["user", "assistant", "tool_result", "tool_use"]
+
+            # Valid if it's a proper message type
+            if entry_type in valid_types:
                 return True
+
+            # Invalid types (corrupted/incomplete sessions)
+            invalid_types = ["file-history-snapshot", "queue-operation"]
+            if entry_type in invalid_types:
+                return False
+
+            # Unknown type - be conservative and reject
+            return False
 
     except (json.JSONDecodeError, OSError, IOError):
-        return True  # Parse errors indicate malformed file
+        return False  # Parse errors indicate invalid file
 
-    return False
+def is_malformed_session(filepath: Path) -> bool:
+    """
+    Deprecated: Use is_valid_session() instead.
+    Kept for backward compatibility - returns inverse of is_valid_session().
+
+    Returns:
+        True if session is malformed/invalid, False if valid.
+    """
+    return not is_valid_session(filepath)
 
 
 def get_session_preview(filepath: Path) -> str:
@@ -497,6 +519,10 @@ def find_sessions(
         for jsonl_file in claude_dir.glob("*.jsonl"):
             matches, line_count, git_branch = search_keywords_in_file(jsonl_file, keywords)
             if matches:
+                # Skip malformed sessions (missing metadata, cannot resume)
+                if is_malformed_session(jsonl_file):
+                    continue
+
                 # Check if session is trimmed/continued
                 is_trimmed = is_trimmed_session(jsonl_file)
                 derivation_type = get_session_derivation_type(jsonl_file) if is_trimmed else None

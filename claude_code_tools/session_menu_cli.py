@@ -21,6 +21,7 @@ from claude_code_tools.session_menu import (
     show_action_menu,
     prompt_suppress_options,
 )
+from claude_code_tools.find_claude_session import is_malformed_session
 
 
 def get_claude_home(custom_home: Optional[str] = None) -> Path:
@@ -102,6 +103,9 @@ def find_session_file(
                 if project_dir.is_dir():
                     # Support partial session ID matching
                     for session_file in project_dir.glob(f"*{session_id}*.jsonl"):
+                        # Skip malformed/invalid sessions (file-history-snapshot, queue-operation, etc.)
+                        if is_malformed_session(session_file):
+                            continue
                         # Extract actual cwd from session file
                         actual_cwd = extract_cwd_from_session(session_file)
                         if not actual_cwd:
