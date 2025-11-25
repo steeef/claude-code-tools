@@ -32,7 +32,7 @@ from claude_code_tools.session_menu import (
     show_resume_submenu as menu_show_resume_submenu,
     prompt_suppress_options as menu_prompt_suppress_options,
 )
-from claude_code_tools.node_menu_ui import run_node_menu_ui
+from claude_code_tools.node_menu_ui import run_node_menu_ui, run_find_options_ui
 from claude_code_tools.trim_session import (
     trim_and_create_session,
     is_trimmed_session,
@@ -74,6 +74,7 @@ from claude_code_tools.session_utils import (
     is_malformed_session,
     extract_cwd_from_session,
     format_session_id_display,
+    filter_sessions_by_time,
 )
 
 try:
@@ -1255,9 +1256,86 @@ To persist directory changes when resuming sessions:
         action="store_true",
         help="Use simple Rich table UI instead of Node interactive UI"
     )
+    parser.add_argument(
+        "--min-lines",
+        type=int,
+        default=0,
+        help="Only show sessions with at least this many lines (default: 0 = no minimum)"
+    )
+    parser.add_argument(
+        "--before",
+        type=str,
+        help="Only show sessions modified before this time (inclusive). "
+             "Formats: YYYYMMDD, YYYY-MM-DD, MM/DD/YY, with optional T or space + HH:MM:SS",
+    )
+    parser.add_argument(
+        "--after",
+        type=str,
+        help="Only show sessions modified after this time (inclusive). "
+             "Formats: YYYYMMDD, YYYY-MM-DD, MM/DD/YY, with optional T or space + HH:MM:SS",
+    )
+    parser.add_argument(
+        "--no-ui",
+        action="store_true",
+        help="Skip interactive options menu and run search directly with CLI args",
+    )
 
     args = parser.parse_args()
-    
+
+    # Show interactive options UI unless --no-ui or --simple-ui
+    if not args.no_ui and not args.simple_ui:
+        initial_options = {
+            "keywords": args.keywords or "",
+            "global": getattr(args, 'global', False),
+            "num_matches": args.num_matches,
+            "original": args.original,
+            "no_sub": args.no_sub,
+            "no_trim": args.no_trim,
+            "no_cont": args.no_cont,
+            "min_lines": args.min_lines or "",
+            "before": args.before or "",
+            "after": args.after or "",
+        }
+        opts = run_find_options_ui(initial_options, variant="find-claude")
+        if opts is None:
+            sys.exit(0)
+        # Update args with user's selections
+        args.keywords = opts.get("keywords") or ""
+        setattr(args, 'global', opts.get("global", False))
+        args.num_matches = opts.get("num_matches", 10)
+        args.original = opts.get("original", False)
+        args.no_sub = opts.get("no_sub", False)
+        args.no_trim = opts.get("no_trim", False)
+        args.no_cont = opts.get("no_cont", False)
+        args.min_lines = opts.get("min_lines") or 0
+        args.before = opts.get("before")
+        args.after = opts.get("after")
+
+        # Build and display equivalent CLI command
+        cmd_parts = ["aichat find-claude"]
+        if args.keywords:
+            cmd_parts.append(f'"{args.keywords}"')
+        if getattr(args, 'global'):
+            cmd_parts.append("-g")
+        if args.num_matches != 10:
+            cmd_parts.append(f"-n {args.num_matches}")
+        if args.original:
+            cmd_parts.append("--original")
+        if args.no_sub:
+            cmd_parts.append("--no-sub")
+        if args.no_trim:
+            cmd_parts.append("--no-trim")
+        if args.no_cont:
+            cmd_parts.append("--no-cont")
+        if args.min_lines:
+            cmd_parts.append(f"--min-lines {args.min_lines}")
+        if args.before:
+            cmd_parts.append(f"--before {args.before}")
+        if args.after:
+            cmd_parts.append(f"--after {args.after}")
+        cmd_parts.append("--no-ui")
+        print(f"\n→ {' '.join(cmd_parts)}\n", file=sys.stderr)
+
     # Parse keywords
     keywords = [k.strip() for k in args.keywords.split(",") if k.strip()] if args.keywords else []
 
@@ -1301,7 +1379,17 @@ To persist directory changes when resuming sessions:
         no_trim=args.no_trim,
         no_cont=args.no_cont,
     )
-    
+
+    # Filter by minimum lines if specified (line_count is at index 3 in tuple)
+    if args.min_lines > 0:
+        matching_sessions = [s for s in matching_sessions if s[3] >= args.min_lines]
+
+    # Filter by time bounds if specified (mod_time is at index 1 in tuple)
+    if args.before or args.after:
+        matching_sessions = filter_sessions_by_time(
+            matching_sessions, before=args.before, after=args.after, time_index=1
+        )
+
     if not matching_sessions:
         scope = "all projects" if getattr(args, 'global') else "current project"
         keyword_msg = f" containing all keywords: {', '.join(keywords)}" if keywords else ""

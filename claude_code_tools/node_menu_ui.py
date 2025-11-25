@@ -152,3 +152,51 @@ def run_node_menu_ui(
             out_file.unlink(missing_ok=True)  # type: ignore[arg-type]
         except Exception:
             pass
+
+
+def run_find_options_ui(
+    initial_options: Dict[str, Any],
+    variant: str = "find",
+) -> Dict[str, Any] | None:
+    """
+    Launch Node UI to interactively configure find options.
+
+    Args:
+        initial_options: Dict with initial option values (keywords, global, etc.)
+        variant: One of 'find', 'find-claude', 'find-codex'
+
+    Returns:
+        Dict with user-selected options, or None if cancelled
+    """
+    payload = {
+        "sessions": [],
+        "keywords": [],
+        "start_screen": "find_options",
+        "find_options": initial_options,
+        "find_variant": variant,
+    }
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix="-find-opts.json")
+    Path(tmp.name).write_text(json.dumps(payload), encoding="utf-8")
+    data_path = Path(tmp.name)
+
+    out_fd, out_path = tempfile.mkstemp(suffix="-find-opts-out.json")
+    os.close(out_fd)
+    out_file = Path(out_path)
+
+    try:
+        code = _run_node(data_path, out_file)
+        if code != 0:
+            return None
+
+        result = _read_result(out_file)
+        return result.get("find_options")
+    finally:
+        try:
+            data_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            out_file.unlink(missing_ok=True)
+        except Exception:
+            pass

@@ -32,6 +32,9 @@ const startScreen = payload.start_screen || null;
 const rpcPath = payload.rpc_path || null;
 const scopeLine = payload.scope_line || '';
 const tipLine = payload.tip_line || '';
+// Find options form data
+const findOptions = payload.find_options || {};
+const findVariant = payload.find_variant || 'find'; // 'find', 'find-claude', 'find-codex'
 const BRANCH_ICON = '';
 const DATE_FMT = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -803,6 +806,197 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
   );
 }
 
+// Find options form - interactive menu for find command options
+function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
+  // variant: 'find' | 'find-claude' | 'find-codex'
+  const showAgents = variant === 'find';
+  const showNoSub = variant !== 'find-codex';
+
+  // Define fields based on variant
+  const allFields = [
+    'keywords', 'global', 'num_matches',
+    ...(showAgents ? ['agents'] : []),
+    'original',
+    ...(showNoSub ? ['no_sub'] : []),
+    'no_trim', 'no_cont', 'min_lines', 'before', 'after'
+  ];
+
+  const [fieldIdx, setFieldIdx] = useState(0);
+  const field = allFields[fieldIdx];
+
+  // Form state with initial values
+  const [keywords, setKeywords] = useState(initialOptions.keywords || '');
+  const [globalSearch, setGlobalSearch] = useState(initialOptions.global || false);
+  const [numMatches, setNumMatches] = useState(String(initialOptions.num_matches || 10));
+  const [agents, setAgents] = useState(initialOptions.agents || []);
+  const [original, setOriginal] = useState(initialOptions.original || false);
+  const [noSub, setNoSub] = useState(initialOptions.no_sub || false);
+  const [noTrim, setNoTrim] = useState(initialOptions.no_trim || false);
+  const [noCont, setNoCont] = useState(initialOptions.no_cont || false);
+  const [minLines, setMinLines] = useState(String(initialOptions.min_lines || ''));
+  const [before, setBefore] = useState(initialOptions.before || '');
+  const [after, setAfter] = useState(initialOptions.after || '');
+
+  useInput((input, key) => {
+    if (key.escape) {
+      return onCancel();
+    }
+
+    // Submit on Ctrl+S or when pressing Enter on last field
+    const isCtrlS = key.ctrl && input.toLowerCase() === 's';
+    if (isCtrlS || (key.return && fieldIdx === allFields.length - 1)) {
+      return onSubmit({
+        keywords: keywords || null,
+        global: globalSearch,
+        num_matches: parseInt(numMatches, 10) || 10,
+        agents: agents.length > 0 ? agents : null,
+        original,
+        no_sub: noSub,
+        no_trim: noTrim,
+        no_cont: noCont,
+        min_lines: minLines ? parseInt(minLines, 10) : null,
+        before: before || null,
+        after: after || null,
+      });
+    }
+
+    // Navigate between fields
+    if (key.return || key.downArrow || (key.tab && !key.shift)) {
+      setFieldIdx((i) => Math.min(allFields.length - 1, i + 1));
+      return;
+    }
+    if (key.upArrow || (key.tab && key.shift)) {
+      setFieldIdx((i) => Math.max(0, i - 1));
+      return;
+    }
+
+    // Handle input based on field type
+    const booleanFields = ['global', 'original', 'no_sub', 'no_trim', 'no_cont'];
+    const textFields = ['keywords', 'num_matches', 'min_lines', 'before', 'after'];
+
+    if (booleanFields.includes(field)) {
+      // Toggle with space, y/n, or 1/0
+      if (input === ' ' || input === 'y' || input === 'n' || input === '1' || input === '0') {
+        const newVal = input === ' ' ? undefined : (input === 'y' || input === '1');
+        if (field === 'global') setGlobalSearch(newVal !== undefined ? newVal : !globalSearch);
+        if (field === 'original') setOriginal(newVal !== undefined ? newVal : !original);
+        if (field === 'no_sub') setNoSub(newVal !== undefined ? newVal : !noSub);
+        if (field === 'no_trim') setNoTrim(newVal !== undefined ? newVal : !noTrim);
+        if (field === 'no_cont') setNoCont(newVal !== undefined ? newVal : !noCont);
+      }
+    } else if (field === 'agents') {
+      // Toggle agent selection with 1/2 or c/x
+      if (input === '1' || input.toLowerCase() === 'c') {
+        setAgents((a) => a.includes('claude') ? a.filter(x => x !== 'claude') : [...a, 'claude']);
+      }
+      if (input === '2' || input.toLowerCase() === 'x') {
+        setAgents((a) => a.includes('codex') ? a.filter(x => x !== 'codex') : [...a, 'codex']);
+      }
+    } else if (textFields.includes(field)) {
+      // Text input
+      if (key.backspace || key.delete) {
+        if (field === 'keywords') setKeywords((t) => t.slice(0, -1));
+        if (field === 'num_matches') setNumMatches((t) => t.slice(0, -1));
+        if (field === 'min_lines') setMinLines((t) => t.slice(0, -1));
+        if (field === 'before') setBefore((t) => t.slice(0, -1));
+        if (field === 'after') setAfter((t) => t.slice(0, -1));
+      } else if (input && !key.ctrl) {
+        if (field === 'keywords') setKeywords((t) => t + input);
+        if (field === 'num_matches') setNumMatches((t) => t + input);
+        if (field === 'min_lines') setMinLines((t) => t + input);
+        if (field === 'before') setBefore((t) => t + input);
+        if (field === 'after') setAfter((t) => t + input);
+      }
+    }
+  });
+
+  const arrow = figures.pointer;
+  const check = figures.tick;
+  const renderBool = (val) => val ? chalk.green(check + ' Yes') : chalk.dim('No');
+  const renderText = (val, placeholder) => val ? chalk.yellow(val) : chalk.dim(placeholder);
+
+  const variantLabel = variant === 'find' ? 'All Agents' :
+                       variant === 'find-claude' ? 'Claude' : 'Codex';
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(Text, null, chalk.inverse.bold(` Find Sessions (${variantLabel}) `)),
+    h(Text, {dimColor: true}, '↑/↓: navigate  Enter: next  Space/y/n: toggle  Ctrl+S: submit  Esc: cancel'),
+    h(Box, {marginBottom: 1}),
+
+    // Keywords
+    h(Box, null,
+      h(Text, null, field === 'keywords' ? chalk.cyan(arrow) : ' ', ' Keywords: '),
+      h(Text, null, renderText(keywords, '(comma-separated, optional)'))
+    ),
+
+    // Global search
+    h(Box, null,
+      h(Text, null, field === 'global' ? chalk.cyan(arrow) : ' ', ' Global search (-g): '),
+      h(Text, null, renderBool(globalSearch))
+    ),
+
+    // Num matches
+    h(Box, null,
+      h(Text, null, field === 'num_matches' ? chalk.cyan(arrow) : ' ', ' Max results (-n): '),
+      h(Text, null, renderText(numMatches, '10'))
+    ),
+
+    // Agents (only for unified find)
+    showAgents ? h(Box, null,
+      h(Text, null, field === 'agents' ? chalk.cyan(arrow) : ' ', ' Agents (1=claude, 2=codex): '),
+      h(Text, null, agents.length > 0 ? chalk.yellow(agents.join(', ')) : chalk.dim('all'))
+    ) : null,
+
+    // Original only
+    h(Box, null,
+      h(Text, null, field === 'original' ? chalk.cyan(arrow) : ' ', ' Original only (--original): '),
+      h(Text, null, renderBool(original))
+    ),
+
+    // No sub-agent (not for codex)
+    showNoSub ? h(Box, null,
+      h(Text, null, field === 'no_sub' ? chalk.cyan(arrow) : ' ', ' Exclude sub-agents (--no-sub): '),
+      h(Text, null, renderBool(noSub))
+    ) : null,
+
+    // No trim
+    h(Box, null,
+      h(Text, null, field === 'no_trim' ? chalk.cyan(arrow) : ' ', ' Exclude trimmed (--no-trim): '),
+      h(Text, null, renderBool(noTrim))
+    ),
+
+    // No cont
+    h(Box, null,
+      h(Text, null, field === 'no_cont' ? chalk.cyan(arrow) : ' ', ' Exclude continued (--no-cont): '),
+      h(Text, null, renderBool(noCont))
+    ),
+
+    // Min lines
+    h(Box, null,
+      h(Text, null, field === 'min_lines' ? chalk.cyan(arrow) : ' ', ' Min lines (--min-lines): '),
+      h(Text, null, renderText(minLines, '(no minimum)'))
+    ),
+
+    // Before
+    h(Box, null,
+      h(Text, null, field === 'before' ? chalk.cyan(arrow) : ' ', ' Before (--before): '),
+      h(Text, null, renderText(before, '(no limit)'))
+    ),
+
+    // After
+    h(Box, null,
+      h(Text, null, field === 'after' ? chalk.cyan(arrow) : ' ', ' After (--after): '),
+      h(Text, null, renderText(after, '(no limit)'))
+    ),
+
+    h(Box, {marginTop: 1},
+      h(Text, {dimColor: true}, 'Timestamps: YYYYMMDD, MM/DD/YY, YYYY-MM-DD with optional T or space + HH:MM:SS')
+    )
+  );
+}
+
 function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) {
   const {exit} = useApp();
   const needsDest = action === 'copy' || action === 'export';
@@ -996,6 +1190,19 @@ function App() {
     writeResult(session.session_id, action, kwargs);
     exit({exitCode: 0});
   };
+
+  // Handle find_options screen first (doesn't need sessions)
+  if (screen === 'find_options') {
+    return h(FindOptionsForm, {
+      initialOptions: findOptions,
+      variant: findVariant,
+      onSubmit: (opts) => {
+        fs.writeFileSync(outPath, JSON.stringify({find_options: opts}));
+        exit({exitCode: 0});
+      },
+      onCancel: () => exit({exitCode: 0}),
+    });
+  }
 
   if (!sessions.length) {
     exit({exitCode: 0});

@@ -58,18 +58,61 @@ def main():
     pass
 
 
-@main.command("find", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+# Shared help text for find commands
+_FIND_OPTIONS_COMMON = """
+Options:
+  KEYWORDS              Comma-separated keywords to search (AND logic)
+  -g, --global          Search across all projects
+  -n, --num-matches N   Number of matches to display (default: 10)
+  --original            Show only original sessions
+  --no-sub              Exclude sub-agent sessions
+  --no-trim             Exclude trimmed sessions
+  --no-cont             Exclude continued sessions
+  --min-lines N         Only sessions with at least N lines
+  --before TIMESTAMP    Sessions modified before (inclusive)
+  --after TIMESTAMP     Sessions modified after (inclusive)
+  --no-ui               Skip options menu, run search with CLI args directly
+  --simple-ui           Use Rich table UI instead of Node UI"""
+
+_FIND_OPTIONS_CODEX = _FIND_OPTIONS_COMMON.replace(
+    "  --no-sub              Exclude sub-agent sessions\n", ""
+)
+
+_FIND_TIMESTAMP_HELP = """
+Timestamp formats: YYYYMMDD, YYYY-MM-DD, MM/DD/YY, MM/DD/YYYY
+                   Optional time: T16:45:23, T16:45, T16"""
+
+_FIND_CTX_SETTINGS = {
+    "ignore_unknown_options": True,
+    "allow_extra_args": True,
+    "allow_interspersed_args": False,
+}
+
+
+@main.command("find", context_settings=_FIND_CTX_SETTINGS, add_help_option=False)
 @click.pass_context
 def find(ctx):
     """Find sessions across all agents (Claude Code, Codex, etc.)."""
     import sys
-    # Replace 'find' with 'find-session' in argv for the actual command
     sys.argv = [sys.argv[0].replace('aichat', 'find-session')] + ctx.args
     from claude_code_tools.find_session import main as find_main
     find_main()
 
 
-@main.command("find-claude", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+find.__doc__ = f"""Find sessions across all agents (Claude Code, Codex, etc.).
+{_FIND_OPTIONS_COMMON}
+  --agents AGENT [...]  Limit to one or more agents (e.g., --agents claude,
+                        --agents claude codex). Default: all.
+{_FIND_TIMESTAMP_HELP}
+
+Examples:
+  aichat find "langroid,MCP"
+  aichat find -g --min-lines 50 --agents claude
+  aichat find --after 11/20/25 --before 11/25/25
+"""
+
+
+@main.command("find-claude", context_settings=_FIND_CTX_SETTINGS, add_help_option=False)
 @click.pass_context
 def find_claude(ctx):
     """Find Claude Code sessions by keywords."""
@@ -79,7 +122,18 @@ def find_claude(ctx):
     find_claude_main()
 
 
-@main.command("find-codex", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+find_claude.__doc__ = f"""Find Claude Code sessions by keywords.
+{_FIND_OPTIONS_COMMON}
+{_FIND_TIMESTAMP_HELP}
+
+Examples:
+  aichat find-claude "bug fix"
+  aichat find-claude -g --min-lines 100
+  aichat find-claude --after 2025-11-01
+"""
+
+
+@main.command("find-codex", context_settings=_FIND_CTX_SETTINGS, add_help_option=False)
 @click.pass_context
 def find_codex(ctx):
     """Find Codex sessions by keywords."""
@@ -87,6 +141,16 @@ def find_codex(ctx):
     sys.argv = [sys.argv[0].replace('aichat', 'find-codex-session')] + ctx.args
     from claude_code_tools.find_codex_session import main as find_codex_main
     find_codex_main()
+
+
+find_codex.__doc__ = f"""Find Codex sessions by keywords.
+{_FIND_OPTIONS_CODEX}
+{_FIND_TIMESTAMP_HELP}
+
+Examples:
+  aichat find-codex "error"
+  aichat find-codex -g --after 11/15/25
+"""
 
 
 @main.command("find-original", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})

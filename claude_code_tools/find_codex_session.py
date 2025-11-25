@@ -60,7 +60,12 @@ from claude_code_tools.trim_session import (
 )
 from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
-from claude_code_tools.session_utils import get_codex_home, format_session_id_display
+from claude_code_tools.session_utils import (
+    get_codex_home,
+    format_session_id_display,
+    filter_sessions_by_time,
+)
+from claude_code_tools.node_menu_ui import run_find_options_ui
 
 try:
     from rich.console import Console
@@ -952,7 +957,12 @@ Examples:
   find-codex-session "langroid,MCP"           # Current project only
   find-codex-session "error,debugging" -g     # All projects
   find-codex-session "keywords" -n 5          # Limit results
-  fcs-codex "keywords" --shell                # Via shell wrapper
+
+To persist directory changes when resuming sessions:
+    Add this to your shell config (.bashrc/.zshrc):
+    fcs-codex() { eval $(find-codex-session --shell "$@"); }
+
+    Then use: fcs-codex "keyword" -g
         """,
     )
 
@@ -1011,8 +1021,81 @@ Examples:
         action="store_true",
         help="Use simple Rich table UI instead of Node interactive UI",
     )
+    parser.add_argument(
+        "--min-lines",
+        type=int,
+        default=0,
+        help="Only show sessions with at least this many lines (default: 0 = no minimum)",
+    )
+    parser.add_argument(
+        "--before",
+        type=str,
+        help="Only show sessions modified before this time (inclusive). "
+             "Formats: YYYYMMDD, YYYY-MM-DD, MM/DD/YY, with optional T or space + HH:MM:SS",
+    )
+    parser.add_argument(
+        "--after",
+        type=str,
+        help="Only show sessions modified after this time (inclusive). "
+             "Formats: YYYYMMDD, YYYY-MM-DD, MM/DD/YY, with optional T or space + HH:MM:SS",
+    )
+    parser.add_argument(
+        "--no-ui",
+        action="store_true",
+        help="Skip interactive options menu and run search directly with CLI args",
+    )
 
     args = parser.parse_args()
+
+    # Show interactive options UI unless --no-ui or --simple-ui
+    if not args.no_ui and not args.simple_ui:
+        initial_options = {
+            "keywords": args.keywords or "",
+            "global": args.global_search,
+            "num_matches": args.num_matches,
+            "original": args.original,
+            "no_trim": args.no_trim,
+            "no_cont": args.no_cont,
+            "min_lines": args.min_lines or "",
+            "before": args.before or "",
+            "after": args.after or "",
+        }
+        opts = run_find_options_ui(initial_options, variant="find-codex")
+        if opts is None:
+            sys.exit(0)
+        # Update args with user's selections
+        args.keywords = opts.get("keywords") or ""
+        args.global_search = opts.get("global", False)
+        args.num_matches = opts.get("num_matches", 10)
+        args.original = opts.get("original", False)
+        args.no_trim = opts.get("no_trim", False)
+        args.no_cont = opts.get("no_cont", False)
+        args.min_lines = opts.get("min_lines") or 0
+        args.before = opts.get("before")
+        args.after = opts.get("after")
+
+        # Build and display equivalent CLI command
+        cmd_parts = ["aichat find-codex"]
+        if args.keywords:
+            cmd_parts.append(f'"{args.keywords}"')
+        if args.global_search:
+            cmd_parts.append("-g")
+        if args.num_matches != 10:
+            cmd_parts.append(f"-n {args.num_matches}")
+        if args.original:
+            cmd_parts.append("--original")
+        if args.no_trim:
+            cmd_parts.append("--no-trim")
+        if args.no_cont:
+            cmd_parts.append("--no-cont")
+        if args.min_lines:
+            cmd_parts.append(f"--min-lines {args.min_lines}")
+        if args.before:
+            cmd_parts.append(f"--before {args.before}")
+        if args.after:
+            cmd_parts.append(f"--after {args.after}")
+        cmd_parts.append("--no-ui")
+        print(f"\n→ {' '.join(cmd_parts)}\n", file=sys.stderr)
 
     # Parse keywords
     keywords = [k.strip() for k in args.keywords.split(",") if k.strip()] if args.keywords else []
@@ -1053,6 +1136,16 @@ Examples:
         args.no_trim,
         args.no_cont,
     )
+
+    # Filter by minimum lines if specified
+    if args.min_lines > 0:
+        matches = [m for m in matches if m.get("lines", 0) >= args.min_lines]
+
+    # Filter by time bounds if specified
+    if args.before or args.after:
+        matches = filter_sessions_by_time(
+            matches, before=args.before, after=args.after
+        )
 
     # Display UI and handle actions
     # ============================================================

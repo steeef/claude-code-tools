@@ -2,10 +2,146 @@
 
 import json
 import os
+import re
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple
+
+
+def parse_flexible_timestamp(ts_str: str, is_upper_bound: bool = False) -> float:
+    """
+    Parse a flexible timestamp string into a Unix timestamp.
+
+    Supports date formats:
+        20251120           - YYYYMMDD
+        2025-11-20         - YYYY-MM-DD (ISO)
+        11/20/25           - MM/DD/YY
+        11/20/2025         - MM/DD/YYYY
+
+    Supports optional time suffix (T or space separator):
+        ...T16:45:23 or ... 16:45:23  - full time
+        ...T16:45 or ... 16:45        - without seconds
+        ...T16 or ... 16              - hour only
+
+    Args:
+        ts_str: Timestamp string in one of the supported formats
+        is_upper_bound: If True (for --before), fill missing parts with max values
+                       (23:59:59). If False (for --after), fill with min values
+                       (00:00:00).
+
+    Returns:
+        Unix timestamp (float)
+
+    Raises:
+        ValueError: If the timestamp format is invalid
+    """
+    ts_str = ts_str.strip()
+
+    # Split date and time parts (separator: T or space)
+    time_part = None
+    if 'T' in ts_str:
+        date_str, time_part = ts_str.split('T', 1)
+    elif ' ' in ts_str:
+        date_str, time_part = ts_str.split(' ', 1)
+    else:
+        date_str = ts_str
+
+    # Parse date part - try multiple formats
+    year, month, day = None, None, None
+
+    # YYYYMMDD
+    if re.match(r'^\d{8}$', date_str):
+        year = int(date_str[:4])
+        month = int(date_str[4:6])
+        day = int(date_str[6:8])
+    # YYYY-MM-DD (ISO)
+    elif re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', date_str):
+        parts = date_str.split('-')
+        year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+    # MM/DD/YY or MM/DD/YYYY
+    elif re.match(r'^\d{1,2}/\d{1,2}/\d{2,4}$', date_str):
+        parts = date_str.split('/')
+        month, day, year = int(parts[0]), int(parts[1]), int(parts[2])
+        if year < 100:
+            year += 2000  # 25 -> 2025
+    else:
+        raise ValueError(
+            f"Invalid date format: {date_str}. "
+            "Expected: YYYYMMDD, YYYY-MM-DD, MM/DD/YY, or MM/DD/YYYY"
+        )
+
+    # Parse time part if present
+    hour, minute, second = None, None, None
+    if time_part:
+        time_match = re.match(r'^(\d{1,2})(?::(\d{2})(?::(\d{2}))?)?$', time_part)
+        if not time_match:
+            raise ValueError(
+                f"Invalid time format: {time_part}. "
+                "Expected: HH, HH:MM, or HH:MM:SS"
+            )
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2)) if time_match.group(2) else None
+        second = int(time_match.group(3)) if time_match.group(3) else None
+
+    # Fill missing time components based on bound type
+    if hour is None:
+        hour = 23 if is_upper_bound else 0
+        minute = 59 if is_upper_bound else 0
+        second = 59 if is_upper_bound else 0
+    else:
+        if minute is None:
+            minute = 59 if is_upper_bound else 0
+            second = 59 if is_upper_bound else 0
+        elif second is None:
+            second = 59 if is_upper_bound else 0
+
+    dt = datetime(year, month, day, hour, minute, second)
+    return dt.timestamp()
+
+
+def filter_sessions_by_time(
+    sessions: list,
+    before: Optional[str] = None,
+    after: Optional[str] = None,
+    time_key: str = "mod_time",
+    time_index: Optional[int] = None,
+) -> list:
+    """
+    Filter sessions by time bounds.
+
+    Args:
+        sessions: List of sessions (dicts or tuples)
+        before: Upper bound timestamp string (inclusive)
+        after: Lower bound timestamp string (inclusive)
+        time_key: Key to use for dict sessions (default: "mod_time")
+        time_index: Index to use for tuple sessions (if None, uses time_key for dicts)
+
+    Returns:
+        Filtered list of sessions
+    """
+    if not before and not after:
+        return sessions
+
+    before_ts = parse_flexible_timestamp(before, is_upper_bound=True) if before else None
+    after_ts = parse_flexible_timestamp(after, is_upper_bound=False) if after else None
+
+    def get_time(session):
+        if time_index is not None:
+            return session[time_index]
+        return session.get(time_key, 0)
+
+    result = []
+    for s in sessions:
+        t = get_time(s)
+        if before_ts is not None and t > before_ts:
+            continue
+        if after_ts is not None and t < after_ts:
+            continue
+        result.append(s)
+
+    return result
 
 
 def is_agent_available(agent: str) -> bool:
