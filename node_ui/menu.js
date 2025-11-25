@@ -821,6 +821,9 @@ function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
     'no_trim', 'no_cont', 'min_lines', 'before', 'after'
   ];
 
+  // Mode: 'action' (top menu) or 'edit' (form editing)
+  const [mode, setMode] = useState('action');
+  const [actionIdx, setActionIdx] = useState(0); // 0=Submit, 1=Edit
   const [fieldIdx, setFieldIdx] = useState(0);
   const field = allFields[fieldIdx];
 
@@ -837,75 +840,90 @@ function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
   const [before, setBefore] = useState(initialOptions.before || '');
   const [after, setAfter] = useState(initialOptions.after || '');
 
+  const doSubmit = () => onSubmit({
+    keywords: keywords || null,
+    global: globalSearch,
+    num_matches: parseInt(numMatches, 10) || 10,
+    agents: agents.length > 0 ? agents : null,
+    original,
+    no_sub: noSub,
+    no_trim: noTrim,
+    no_cont: noCont,
+    min_lines: minLines ? parseInt(minLines, 10) : null,
+    before: before || null,
+    after: after || null,
+  });
+
   useInput((input, key) => {
-    if (key.escape) {
-      return onCancel();
-    }
-
-    // Submit on Ctrl+S or when pressing Enter on last field
-    const isCtrlS = key.ctrl && input.toLowerCase() === 's';
-    if (isCtrlS || (key.return && fieldIdx === allFields.length - 1)) {
-      return onSubmit({
-        keywords: keywords || null,
-        global: globalSearch,
-        num_matches: parseInt(numMatches, 10) || 10,
-        agents: agents.length > 0 ? agents : null,
-        original,
-        no_sub: noSub,
-        no_trim: noTrim,
-        no_cont: noCont,
-        min_lines: minLines ? parseInt(minLines, 10) : null,
-        before: before || null,
-        after: after || null,
-      });
-    }
-
-    // Navigate between fields
-    if (key.return || key.downArrow || (key.tab && !key.shift)) {
-      setFieldIdx((i) => Math.min(allFields.length - 1, i + 1));
-      return;
-    }
-    if (key.upArrow || (key.tab && key.shift)) {
-      setFieldIdx((i) => Math.max(0, i - 1));
-      return;
-    }
-
-    // Handle input based on field type
-    const booleanFields = ['global', 'original', 'no_sub', 'no_trim', 'no_cont'];
-    const textFields = ['keywords', 'num_matches', 'min_lines', 'before', 'after'];
-
-    if (booleanFields.includes(field)) {
-      // Toggle with space, y/n, or 1/0
-      if (input === ' ' || input === 'y' || input === 'n' || input === '1' || input === '0') {
-        const newVal = input === ' ' ? undefined : (input === 'y' || input === '1');
-        if (field === 'global') setGlobalSearch(newVal !== undefined ? newVal : !globalSearch);
-        if (field === 'original') setOriginal(newVal !== undefined ? newVal : !original);
-        if (field === 'no_sub') setNoSub(newVal !== undefined ? newVal : !noSub);
-        if (field === 'no_trim') setNoTrim(newVal !== undefined ? newVal : !noTrim);
-        if (field === 'no_cont') setNoCont(newVal !== undefined ? newVal : !noCont);
+    if (mode === 'action') {
+      // Action menu mode
+      if (key.escape) return onCancel();
+      if (key.upArrow) { setActionIdx(0); return; }
+      if (key.downArrow) { setActionIdx(1); return; }
+      if (key.return) {
+        if (actionIdx === 0) return doSubmit(); // Submit
+        setMode('edit'); // Edit options
+        return;
       }
-    } else if (field === 'agents') {
-      // Toggle agent selection with 1/2 or c/x
-      if (input === '1' || input.toLowerCase() === 'c') {
-        setAgents((a) => a.includes('claude') ? a.filter(x => x !== 'claude') : [...a, 'claude']);
+    } else {
+      // Edit mode
+      if (key.escape) {
+        setMode('action'); // Return to action menu
+        return;
       }
-      if (input === '2' || input.toLowerCase() === 'x') {
-        setAgents((a) => a.includes('codex') ? a.filter(x => x !== 'codex') : [...a, 'codex']);
+
+      // Navigate between fields
+      if (key.return || key.downArrow || (key.tab && !key.shift)) {
+        if (fieldIdx === allFields.length - 1) {
+          setMode('action'); // Done editing, return to action menu
+        } else {
+          setFieldIdx((i) => i + 1);
+        }
+        return;
       }
-    } else if (textFields.includes(field)) {
-      // Text input
-      if (key.backspace || key.delete) {
-        if (field === 'keywords') setKeywords((t) => t.slice(0, -1));
-        if (field === 'num_matches') setNumMatches((t) => t.slice(0, -1));
-        if (field === 'min_lines') setMinLines((t) => t.slice(0, -1));
-        if (field === 'before') setBefore((t) => t.slice(0, -1));
-        if (field === 'after') setAfter((t) => t.slice(0, -1));
-      } else if (input && !key.ctrl) {
-        if (field === 'keywords') setKeywords((t) => t + input);
-        if (field === 'num_matches') setNumMatches((t) => t + input);
-        if (field === 'min_lines') setMinLines((t) => t + input);
-        if (field === 'before') setBefore((t) => t + input);
-        if (field === 'after') setAfter((t) => t + input);
+      if (key.upArrow || (key.tab && key.shift)) {
+        if (fieldIdx === 0) {
+          setMode('action'); // Go back to action menu
+        } else {
+          setFieldIdx((i) => i - 1);
+        }
+        return;
+      }
+
+      // Handle input based on field type
+      const booleanFields = ['global', 'original', 'no_sub', 'no_trim', 'no_cont'];
+      const textFields = ['keywords', 'num_matches', 'min_lines', 'before', 'after'];
+
+      if (booleanFields.includes(field)) {
+        if (input === ' ' || input === 'y' || input === 'n' || input === '1' || input === '0') {
+          const newVal = input === ' ' ? undefined : (input === 'y' || input === '1');
+          if (field === 'global') setGlobalSearch(newVal !== undefined ? newVal : !globalSearch);
+          if (field === 'original') setOriginal(newVal !== undefined ? newVal : !original);
+          if (field === 'no_sub') setNoSub(newVal !== undefined ? newVal : !noSub);
+          if (field === 'no_trim') setNoTrim(newVal !== undefined ? newVal : !noTrim);
+          if (field === 'no_cont') setNoCont(newVal !== undefined ? newVal : !noCont);
+        }
+      } else if (field === 'agents') {
+        if (input === '1' || input.toLowerCase() === 'c') {
+          setAgents((a) => a.includes('claude') ? a.filter(x => x !== 'claude') : [...a, 'claude']);
+        }
+        if (input === '2' || input.toLowerCase() === 'x') {
+          setAgents((a) => a.includes('codex') ? a.filter(x => x !== 'codex') : [...a, 'codex']);
+        }
+      } else if (textFields.includes(field)) {
+        if (key.backspace || key.delete) {
+          if (field === 'keywords') setKeywords((t) => t.slice(0, -1));
+          if (field === 'num_matches') setNumMatches((t) => t.slice(0, -1));
+          if (field === 'min_lines') setMinLines((t) => t.slice(0, -1));
+          if (field === 'before') setBefore((t) => t.slice(0, -1));
+          if (field === 'after') setAfter((t) => t.slice(0, -1));
+        } else if (input && !key.ctrl) {
+          if (field === 'keywords') setKeywords((t) => t + input);
+          if (field === 'num_matches') setNumMatches((t) => t + input);
+          if (field === 'min_lines') setMinLines((t) => t + input);
+          if (field === 'before') setBefore((t) => t + input);
+          if (field === 'after') setAfter((t) => t + input);
+        }
       }
     }
   });
@@ -914,6 +932,7 @@ function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
   const check = figures.tick;
   const renderBool = (val) => val ? chalk.green(check + ' Yes') : chalk.dim('No');
   const renderText = (val, placeholder) => val ? chalk.yellow(val) : chalk.dim(placeholder);
+  const inEdit = mode === 'edit';
 
   const variantLabel = variant === 'find' ? 'All Agents' :
                        variant === 'find-claude' ? 'Claude' : 'Codex';
@@ -922,77 +941,96 @@ function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
     Box,
     {flexDirection: 'column'},
     h(Text, null, chalk.inverse.bold(` Find Sessions (${variantLabel}) `)),
-    h(Text, {dimColor: true}, '↑/↓: navigate  Enter: next  Space/y/n: toggle  Ctrl+S: submit  Esc: cancel'),
-    h(Box, {marginBottom: 1}),
 
-    // Keywords
-    h(Box, null,
-      h(Text, null, field === 'keywords' ? chalk.cyan(arrow) : ' ', ' Keywords: '),
-      h(Text, null, renderText(keywords, '(comma-separated, optional)'))
+    // Action menu (top)
+    h(Box, {marginTop: 1, marginBottom: 1, flexDirection: 'column'},
+      h(Box, null,
+        h(Text, null, !inEdit && actionIdx === 0 ? chalk.cyan(arrow) : ' ', ' '),
+        h(Text, {color: !inEdit && actionIdx === 0 ? 'cyan' : 'white'}, 'Submit search')
+      ),
+      h(Box, null,
+        h(Text, null, !inEdit && actionIdx === 1 ? chalk.cyan(arrow) : ' ', ' '),
+        h(Text, {color: !inEdit && actionIdx === 1 ? 'cyan' : 'white'}, 'Edit options...')
+      )
     ),
 
-    // Global search
-    h(Box, null,
-      h(Text, null, field === 'global' ? chalk.cyan(arrow) : ' ', ' Global search (-g): '),
-      h(Text, null, renderBool(globalSearch))
-    ),
+    // Separator
+    h(Text, {dimColor: true}, '─'.repeat(50)),
 
-    // Num matches
-    h(Box, null,
-      h(Text, null, field === 'num_matches' ? chalk.cyan(arrow) : ' ', ' Max results (-n): '),
-      h(Text, null, renderText(numMatches, '10'))
-    ),
+    // Options form (bottom) - always visible
+    h(Box, {marginTop: 1, flexDirection: 'column'},
+      h(Text, {dimColor: !inEdit}, inEdit ? '↑/↓: navigate  Enter: next  Space/y/n: toggle  Esc: done' : 'Options:'),
+      h(Box, {marginTop: 1}),
 
-    // Agents (only for unified find)
-    showAgents ? h(Box, null,
-      h(Text, null, field === 'agents' ? chalk.cyan(arrow) : ' ', ' Agents (1=claude, 2=codex): '),
-      h(Text, null, agents.length > 0 ? chalk.yellow(agents.join(', ')) : chalk.dim('all'))
-    ) : null,
+      // Keywords
+      h(Box, null,
+        h(Text, null, inEdit && field === 'keywords' ? chalk.cyan(arrow) : ' ', ' Keywords: '),
+        h(Text, null, renderText(keywords, '(comma-separated, optional)'))
+      ),
 
-    // Original only
-    h(Box, null,
-      h(Text, null, field === 'original' ? chalk.cyan(arrow) : ' ', ' Original only (--original): '),
-      h(Text, null, renderBool(original))
-    ),
+      // Global search
+      h(Box, null,
+        h(Text, null, inEdit && field === 'global' ? chalk.cyan(arrow) : ' ', ' Global search (-g): '),
+        h(Text, null, renderBool(globalSearch))
+      ),
 
-    // No sub-agent (not for codex)
-    showNoSub ? h(Box, null,
-      h(Text, null, field === 'no_sub' ? chalk.cyan(arrow) : ' ', ' Exclude sub-agents (--no-sub): '),
-      h(Text, null, renderBool(noSub))
-    ) : null,
+      // Num matches
+      h(Box, null,
+        h(Text, null, inEdit && field === 'num_matches' ? chalk.cyan(arrow) : ' ', ' Max results (-n): '),
+        h(Text, null, renderText(numMatches, '10'))
+      ),
 
-    // No trim
-    h(Box, null,
-      h(Text, null, field === 'no_trim' ? chalk.cyan(arrow) : ' ', ' Exclude trimmed (--no-trim): '),
-      h(Text, null, renderBool(noTrim))
-    ),
+      // Agents (only for unified find)
+      showAgents ? h(Box, null,
+        h(Text, null, inEdit && field === 'agents' ? chalk.cyan(arrow) : ' ', ' Agents (1=claude, 2=codex): '),
+        h(Text, null, agents.length > 0 ? chalk.yellow(agents.join(', ')) : chalk.dim('all'))
+      ) : null,
 
-    // No cont
-    h(Box, null,
-      h(Text, null, field === 'no_cont' ? chalk.cyan(arrow) : ' ', ' Exclude continued (--no-cont): '),
-      h(Text, null, renderBool(noCont))
-    ),
+      // Original only
+      h(Box, null,
+        h(Text, null, inEdit && field === 'original' ? chalk.cyan(arrow) : ' ', ' Original only (--original): '),
+        h(Text, null, renderBool(original))
+      ),
 
-    // Min lines
-    h(Box, null,
-      h(Text, null, field === 'min_lines' ? chalk.cyan(arrow) : ' ', ' Min lines (--min-lines): '),
-      h(Text, null, renderText(minLines, '(no minimum)'))
-    ),
+      // No sub-agent (not for codex)
+      showNoSub ? h(Box, null,
+        h(Text, null, inEdit && field === 'no_sub' ? chalk.cyan(arrow) : ' ', ' Exclude sub-agents (--no-sub): '),
+        h(Text, null, renderBool(noSub))
+      ) : null,
 
-    // Before
-    h(Box, null,
-      h(Text, null, field === 'before' ? chalk.cyan(arrow) : ' ', ' Before (--before): '),
-      h(Text, null, renderText(before, '(no limit)'))
-    ),
+      // No trim
+      h(Box, null,
+        h(Text, null, inEdit && field === 'no_trim' ? chalk.cyan(arrow) : ' ', ' Exclude trimmed (--no-trim): '),
+        h(Text, null, renderBool(noTrim))
+      ),
 
-    // After
-    h(Box, null,
-      h(Text, null, field === 'after' ? chalk.cyan(arrow) : ' ', ' After (--after): '),
-      h(Text, null, renderText(after, '(no limit)'))
-    ),
+      // No cont
+      h(Box, null,
+        h(Text, null, inEdit && field === 'no_cont' ? chalk.cyan(arrow) : ' ', ' Exclude continued (--no-cont): '),
+        h(Text, null, renderBool(noCont))
+      ),
 
-    h(Box, {marginTop: 1},
-      h(Text, {dimColor: true}, 'Timestamps: YYYYMMDD, MM/DD/YY, YYYY-MM-DD with optional T or space + HH:MM:SS')
+      // Min lines
+      h(Box, null,
+        h(Text, null, inEdit && field === 'min_lines' ? chalk.cyan(arrow) : ' ', ' Min lines (--min-lines): '),
+        h(Text, null, renderText(minLines, '(no minimum)'))
+      ),
+
+      // Before
+      h(Box, null,
+        h(Text, null, inEdit && field === 'before' ? chalk.cyan(arrow) : ' ', ' Before (--before): '),
+        h(Text, null, renderText(before, '(no limit)'))
+      ),
+
+      // After
+      h(Box, null,
+        h(Text, null, inEdit && field === 'after' ? chalk.cyan(arrow) : ' ', ' After (--after): '),
+        h(Text, null, renderText(after, '(no limit)'))
+      ),
+
+      h(Box, {marginTop: 1},
+        h(Text, {dimColor: true}, 'Timestamps: YYYYMMDD, MM/DD/YY, YYYY-MM-DD with optional T or space + HH:MM:SS')
+      )
     )
   );
 }
