@@ -1250,9 +1250,10 @@ To persist directory changes when resuming sessions:
         help="Exclude continued sessions from results"
     )
     parser.add_argument(
-        "--altui",
+        "--simple-ui",
+        dest="simple_ui",
         action="store_true",
-        help="Use alternative UI (switches between Rich table and Textual TUI)"
+        help="Use simple Rich table UI instead of Node interactive UI"
     )
 
     args = parser.parse_args()
@@ -1311,17 +1312,14 @@ To persist directory changes when resuming sessions:
         sys.exit(0)
     
     # ============================================================
-    # UI Selection: Change DEFAULT_UI to switch the default interface
-    # Options: 'tui' (Textual) or 'rich' (Rich table)
+    # Default: Node UI (rich interactive interface)
+    # --simple-ui: Falls back to Rich table UI
     # ============================================================
-    DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
-
-    use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
     nonlaunch_flag = {"done": False}
     action_handler = create_action_handler(args.claude_home, nonlaunch_flag=nonlaunch_flag)
     rpc_path = str(Path(__file__).parent / "action_rpc.py")
 
-    if args.altui:
+    if not args.simple_ui:
         limited = [
             {
                 "agent": "claude",
@@ -1334,6 +1332,7 @@ To persist directory changes when resuming sessions:
                 "preview": s[5],
                 "cwd": s[6],
                 "branch": s[7] if len(s) > 7 else "",
+                "file_path": get_session_file_path(s[0], s[6], args.claude_home),
                 "claude_home": args.claude_home,
                 "is_trimmed": s[8] if len(s) > 8 else False,
                 "derivation_type": None,
@@ -1362,10 +1361,6 @@ To persist directory changes when resuming sessions:
                     start_action = True
                     continue
             break
-    elif TUI_AVAILABLE and use_tui and not args.shell:
-        # Use Textual TUI for interactive arrow-key navigation (default)
-        # Limit to num_matches, same as simple UI
-        run_session_tui(matching_sessions[:args.num_matches], keywords, action_handler)
     elif RICH_AVAILABLE and console:
         # Use Rich-based interactive UI
         selected_session = display_interactive_ui(matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches)

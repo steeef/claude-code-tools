@@ -1006,9 +1006,10 @@ Examples:
         help="Exclude continued sessions from results",
     )
     parser.add_argument(
-        "--altui",
+        "--simple-ui",
+        dest="simple_ui",
         action="store_true",
-        help="Use alternative UI (switches between Rich table and Textual TUI)",
+        help="Use simple Rich table UI instead of Node interactive UI",
     )
 
     args = parser.parse_args()
@@ -1055,19 +1056,16 @@ Examples:
 
     # Display UI and handle actions
     # ============================================================
-    # UI Selection: Change DEFAULT_UI to switch the default interface
-    # Options: 'tui' (Textual) or 'rich' (Rich table)
+    # Default: Node UI (rich interactive interface)
+    # --simple-ui: Falls back to Rich table UI
     # ============================================================
-    DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
-
-    use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
     nonlaunch_flag = {"done": False}
     action_handler = create_action_handler(
         shell_mode=args.shell, codex_home=codex_home, nonlaunch_flag=nonlaunch_flag
     )
     rpc_path = str(Path(__file__).parent / "action_rpc.py")
 
-    if args.altui:
+    if not args.simple_ui:
         limited = [
             {
                 "agent": "codex",
@@ -1107,9 +1105,6 @@ Examples:
                     start_action = True
                     continue
             break
-    elif TUI_AVAILABLE and use_tui and not args.shell:
-        # Use Textual TUI for interactive arrow-key navigation (default)
-        run_session_tui(matches, keywords, action_handler)
     else:
         # Fallback to Rich-based UI
         selected_match = display_interactive_ui(matches, keywords)

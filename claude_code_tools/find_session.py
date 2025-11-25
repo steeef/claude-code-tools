@@ -31,6 +31,7 @@ from claude_code_tools.find_claude_session import (
     copy_session_file as copy_claude_session_file,
     clone_session as clone_claude_session,
     handle_export_session as handle_export_claude_session,
+    handle_smart_trim_resume_claude,
     is_sidechain_session,
     is_malformed_session,
 )
@@ -41,6 +42,7 @@ from claude_code_tools.find_codex_session import (
     copy_session_file as copy_codex_session_file,
     clone_session as clone_codex_session,
     handle_export_session as handle_export_codex_session,
+    handle_smart_trim_resume_codex,
 )
 from claude_code_tools.session_menu import (
     show_action_menu as menu_show_action_menu,
@@ -658,6 +660,18 @@ def handle_action(
             session, tools, threshold or 500, trim_assistant, shell_mode
         )
 
+    elif action == "smart_trim_resume":
+        if agent == "claude":
+            handle_smart_trim_resume_claude(
+                session["session_id"],
+                session["cwd"],
+                session.get("claude_home"),
+            )
+        elif agent == "codex":
+            # Get file path for codex
+            file_path = session.get("file_path", "")
+            handle_smart_trim_resume_codex(file_path)
+
     elif action == "path":
         if agent == "claude":
             file_path = get_claude_session_file_path(
@@ -802,9 +816,10 @@ Examples:
         help="Exclude continued sessions from results",
     )
     parser.add_argument(
-        "--altui",
+        "--simple-ui",
+        dest="simple_ui",
         action="store_true",
-        help="Use alternative UI (switches between Rich table and Textual TUI)",
+        help="Use simple Rich table UI instead of Node interactive UI",
     )
 
     args = parser.parse_args()
@@ -850,20 +865,15 @@ Examples:
 
     # Display interactive UI
     # ============================================================
-    # UI Selection: Change DEFAULT_UI to switch the default interface
-    # Options: 'tui' (Textual) or 'rich' (Rich table)
-    # Alt UI (--altui) forces the Node UI runner
+    # Default: Node UI (rich interactive interface)
+    # --simple-ui: Falls back to Rich table UI
     # ============================================================
-    DEFAULT_UI = 'rich'  # Change to 'tui' to make Textual TUI the default
-
-    use_tui = (DEFAULT_UI == 'tui' and not args.altui) or (DEFAULT_UI == 'rich' and args.altui)
-
     nonlaunch_flag = {"done": False}
     action_handler = create_action_handler(shell_mode=args.shell, nonlaunch_flag=nonlaunch_flag)
     limited_sessions = matching_sessions[: args.num_matches]
     rpc_path = str(Path(__file__).parent / "action_rpc.py")
 
-    if args.altui:
+    if not args.simple_ui:
         focus_id = None
         start_action = False
         while True:
@@ -886,9 +896,6 @@ Examples:
                     start_action = True
                     continue
             break
-    elif TUI_AVAILABLE and use_tui and not args.shell:
-        # Use Textual TUI for interactive arrow-key navigation (default)
-        run_session_tui(limited_sessions, keywords, action_handler)
     elif RICH_AVAILABLE:
         selected_session = display_interactive_ui(
             matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches

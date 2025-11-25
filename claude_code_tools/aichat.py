@@ -20,7 +20,18 @@ etc.) are still available.
 import click
 
 
-@click.group()
+class SessionIDGroup(click.Group):
+    """Custom group that treats unknown commands as session IDs for menu."""
+
+    def parse_args(self, ctx, args):
+        # If the first arg looks like a session ID (not a known command), route to menu
+        if args and args[0] not in self.commands and not args[0].startswith('-'):
+            # Treat as session ID - prepend 'menu' to make it a menu command
+            args = ['menu'] + args
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=SessionIDGroup)
 @click.version_option()
 def main():
     """
@@ -38,6 +49,7 @@ def main():
     Examples:
 
     \b
+        aichat abc123-def456          # Shortcut for: aichat menu abc123-def456
         aichat find "langroid"
         aichat find-claude "bug fix"
         aichat menu abc123-def456

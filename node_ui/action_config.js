@@ -32,26 +32,21 @@ export const ACTIONS = [
     hint: 'Leave blank to use default exported-sessions/<date>-session-<id>.txt',
   },
   {
-    value: 'resume',
-    label: 'Resume session',
+    value: 'resume_menu',
+    label: 'Resume/trim session...',
     group: ACTION_GROUPS.launch,
     requiresPath: false,
     hint: null,
   },
-  {
-    value: 'clone',
-    label: 'Clone session and resume clone',
-    group: ACTION_GROUPS.launch,
-    requiresPath: false,
-    hint: null,
-  },
-  {
-    value: 'continue',
-    label: 'Continue with context in fresh session',
-    group: ACTION_GROUPS.launch,
-    requiresPath: false,
-    hint: null,
-  },
+];
+
+// Resume submenu options (shown when 'resume_menu' is selected)
+export const RESUME_SUBMENU = [
+  {value: 'resume', label: 'Resume as-is'},
+  {value: 'clone', label: 'Clone session and resume clone'},
+  {value: 'suppress_resume', label: 'Trim + resume...'},
+  {value: 'smart_trim_resume', label: 'Smart trim + resume'},
+  {value: 'continue', label: 'Continue with context in fresh session'},
 ];
 
 export function filteredActions(isSidechain = false) {
@@ -62,9 +57,19 @@ export function filteredActions(isSidechain = false) {
 }
 
 export function defaultExportPath(session) {
-  const today = new Date();
-  const yyyymmdd = today.toISOString().slice(0, 10).replace(/-/g, '');
   const base = path.join(process.cwd(), 'exported-sessions');
-  const id = (session?.session_id || 'session').replace(/[^a-zA-Z0-9_-]/g, '');
-  return path.join(base, `${yyyymmdd}-claude-session-${id}.txt`);
+  const agentDir = session?.agent === 'codex' ? 'codex' : 'claude';
+
+  // Get original filename from file_path or reconstruct from session_id
+  let filename;
+  if (session?.file_path) {
+    // Session with file_path: extract basename, change extension to .txt
+    filename = path.basename(session.file_path, '.jsonl') + '.txt';
+  } else {
+    // Fallback: use session_id
+    const id = (session?.session_id || 'session').replace(/[^a-zA-Z0-9_-]/g, '');
+    filename = `${id}.txt`;
+  }
+
+  return path.join(base, agentDir, filename);
 }

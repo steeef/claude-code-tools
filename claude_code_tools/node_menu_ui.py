@@ -65,12 +65,21 @@ def _run_node(data_path: Path, out_path: Path, stderr_mode: bool = False) -> int
 
 def _read_result(out_path: Path) -> Dict[str, Any]:
     """Read the result file if it exists, else return empty dict."""
-    if not out_path.exists():
-        return {}
-    try:
-        return json.loads(out_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    import time
+
+    # Small retry loop in case file isn't fully synced yet
+    for _ in range(3):
+        if not out_path.exists():
+            time.sleep(0.05)
+            continue
+        try:
+            content = out_path.read_text(encoding="utf-8").strip()
+            if content:
+                return json.loads(content)
+        except (json.JSONDecodeError, IOError):
+            pass
+        time.sleep(0.05)
+    return {}
 
 
 def run_node_menu_ui(
@@ -116,11 +125,16 @@ def run_node_menu_ui(
         action = result.get("action")
         kwargs = result.get("kwargs", {})
         if not session_id or not action:
+            # Empty result means user cancelled (Escape) - silently return
+            if result:
+                # Non-empty but malformed result is an actual error
+                print(f"Error: Missing session_id or action in result: {result}")
             return
 
         # Locate matching session
         session = next((s for s in sessions if s.get("session_id") == session_id), None)
         if not session:
+            print(f"Error: Session {session_id} not found in {len(sessions)} sessions")
             return
 
         action_handler(session, action, kwargs)

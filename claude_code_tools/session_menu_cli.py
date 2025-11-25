@@ -182,11 +182,15 @@ def execute_action(
     elif action == "continue":
         # Continue with context in fresh session
         from claude_code_tools.session_utils import continue_with_options
+        preset_agent = action_kwargs.get("agent") if action_kwargs else None
+        preset_prompt = action_kwargs.get("prompt") if action_kwargs else None
         continue_with_options(
             str(session_file),
             agent,
             claude_home=claude_home,
-            codex_home=codex_home
+            codex_home=codex_home,
+            preset_agent=preset_agent,
+            preset_prompt=preset_prompt,
         )
 
 
@@ -225,9 +229,10 @@ Examples:
         help="Shell mode for persistent directory changes",
     )
     parser.add_argument(
-        "--altui",
+        "--simple-ui",
+        dest="simple_ui",
         action="store_true",
-        help="Use Node-based alternative UI for menus",
+        help="Use simple Rich menu instead of Node interactive UI",
     )
 
     args = parser.parse_args()
@@ -309,14 +314,42 @@ Examples:
     # Check if sidechain
     is_sidechain = is_sidechain_session(session_file)
 
-    if args.altui:
+    if args.simple_ui:
+        # Simple Rich menu UI
+        action = show_action_menu(
+            session_id=session_id,
+            agent=agent,
+            project_name=project_name,
+            git_branch=git_branch,
+            is_sidechain=is_sidechain,
+            stderr_mode=args.shell,
+        )
+
+        if action:
+            execute_action(
+                action,
+                agent,
+                session_file,
+                project_path,
+                args.claude_home,
+                args.codex_home,
+            )
+    else:
+        # Default: Node interactive UI
+        line_count = 0
+        try:
+            with open(session_file, "r", encoding="utf-8") as f:
+                line_count = sum(1 for _ in f)
+        except Exception:
+            pass
+
         session_dict = {
             "agent": agent,
             "agent_display": agent.title(),
             "session_id": session_id,
             "mod_time": session_file.stat().st_mtime,
             "create_time": session_file.stat().st_ctime,
-            "lines": 0,
+            "lines": line_count,
             "project": project_name,
             "preview": "",
             "cwd": project_path,
@@ -339,27 +372,12 @@ Examples:
                 action_kwargs=kwargs,
             )
 
-        run_node_menu_ui([session_dict], [session_id], handler, stderr_mode=args.shell)
-    else:
-        # Show action menu
-        action = show_action_menu(
-            session_id=session_id,
-            agent=agent,
-            project_name=project_name,
-            git_branch=git_branch,
-            is_sidechain=is_sidechain,
+        rpc_path = str(Path(__file__).parent / "action_rpc.py")
+        run_node_menu_ui(
+            [session_dict], [session_id], handler,
             stderr_mode=args.shell,
+            rpc_path=rpc_path
         )
-
-        if action:
-            execute_action(
-                action,
-                agent,
-                session_file,
-                project_path,
-                args.claude_home,
-                args.codex_home,
-            )
 
 
 if __name__ == "__main__":

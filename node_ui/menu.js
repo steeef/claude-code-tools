@@ -7,7 +7,7 @@ import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import figures from 'figures';
 import {spawnSync} from 'child_process';
-import {ACTIONS, filteredActions, defaultExportPath} from './action_config.js';
+import {ACTIONS, filteredActions, defaultExportPath, RESUME_SUBMENU} from './action_config.js';
 
 const h = React.createElement;
 
@@ -93,7 +93,11 @@ if (!process.stdout.isTTY) {
 }
 
 function writeResult(sessionId, action, kwargs = {}) {
-  fs.writeFileSync(outPath, JSON.stringify({session_id: sessionId, action, kwargs}), 'utf8');
+  const data = JSON.stringify({session_id: sessionId, action, kwargs});
+  const fd = fs.openSync(outPath, 'w');
+  fs.writeSync(fd, data);
+  fs.fsyncSync(fd);
+  fs.closeSync(fd);
 }
 
 function SessionRow({session, active, index, width, pad}) {
@@ -159,7 +163,14 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   }, [initialIndex, maxItems]);
 
   useInput((input, key) => {
-    if (key.escape) return onQuit();
+    if (key.escape) {
+      // If typing a number, clear the buffer instead of quitting
+      if (numBuffer) {
+        setNumBuffer('');
+        return;
+      }
+      return onQuit();
+    }
     if (key.return) {
       if (numBuffer) {
         const target = Math.min(
@@ -302,28 +313,34 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   );
 }
 
-const resumeOptions = [
-  {label: 'Resume as-is', value: 'resume'},
-  {label: 'Trim + resume', value: 'suppress_resume'},
-  {label: 'Smart trim + resume', value: 'smart_trim_resume'},
-];
-
 function ConfirmView({session, actionLabel, onConfirm, onBack}) {
   useInput((input, key) => {
     if (key.escape) return onBack();
     if (key.return) return onConfirm();
   });
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
   return h(
     Box,
     {flexDirection: 'column'},
-    h(Text, null, chalk.bgBlue.black(' Confirm action '), ' ', actionLabel),
+    h(Text, null,
+      chalk.bgBlue.black(' Confirm action '), ' ', actionLabel, ' ',
+      colorize.project(session.project || ''), ' ',
+      colorize.branch(branchDisplay)
+    ),
     h(
       Text,
-      {dimColor: true},
-      `${(session.session_id || '').slice(0, 8)} ${toAnno(session)} ${formatLines(session.lines)} ${session.branch || ''}`
+      null,
+      colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+      chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+      colorize.lines(formatLines(session.lines)), ' | ',
+      colorize.date(date)
     ),
-    session.preview ? h(Text, {dimColor: true}, session.preview.slice(0, 80)) : null,
-    h(Box, {marginTop: 1}, h(Text, {dimColor: true}, 'Enter: run action & exit  Esc: back'))
+    session.preview ? h(Box, {marginBottom: 1}, h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80))) : h(Box, {marginBottom: 1}),
+    h(Text, {dimColor: true}, 'Enter: run action & exit  Esc: back')
   );
 }
 
@@ -351,6 +368,11 @@ function ActionView({session, onBack, onDone, clearScreen}) {
     }
   });
 
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
   return h(
     Box,
     {flexDirection: 'column'},
@@ -358,14 +380,22 @@ function ActionView({session, onBack, onDone, clearScreen}) {
     h(
       Box,
       {flexDirection: 'column'},
-      h(Text, null, chalk.bgCyan.black(' Actions '), ' ', session.project),
+      h(Text, null,
+        chalk.bgCyan.black(' Actions '), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
       h(
         Text,
-        {dimColor: true},
-        `${(session.session_id || '').slice(0, 8)} ${toAnno(session)} ${formatLines(session.lines)} ${session.branch || ''}`
+        null,
+        colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+        chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+        colorize.lines(formatLines(session.lines)), ' | ',
+        colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, session.preview.slice(0, 80)) : null
+      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
     ),
+    h(Box, {marginBottom: 1}),
     h(SelectInput, {
       items,
       onSelect: handleSelect,
@@ -394,26 +424,39 @@ function ResumeView({onBack, onDone, session, clearScreen}) {
       onBack();
     }
     const num = Number(input);
-    if (!Number.isNaN(num) && num >= 1 && num <= resumeOptions.length) {
-      onDone(resumeOptions[num - 1].value);
+    if (!Number.isNaN(num) && num >= 1 && num <= RESUME_SUBMENU.length) {
+      onDone(RESUME_SUBMENU[num - 1].value);
     }
   });
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
   return h(
     Box,
     {flexDirection: 'column'},
     h(
       Box,
       {flexDirection: 'column'},
-      h(Text, null, chalk.bgGreen.black(' Resume options ')),
+      h(Text, null,
+        chalk.bgGreen.black(' Resume/Trim '), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
       h(
         Text,
-        {dimColor: true},
-        `${(session.session_id || '').slice(0, 8)} ${toAnno(session)} ${formatLines(session.lines)} ${session.branch || ''}`
+        null,
+        colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+        chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+        colorize.lines(formatLines(session.lines)), ' | ',
+        colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, session.preview.slice(0, 80)) : null
+      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
     ),
+    h(Box, {marginBottom: 1}),
     h(SelectInput, {
-      items: resumeOptions,
+      items: RESUME_SUBMENU.map((opt, idx) => ({...opt, label: `${idx + 1}. ${opt.label}`})),
       onSelect: (item) => onDone(item.value),
       itemComponent: ({isHighlighted, label}) =>
         h(
@@ -428,12 +471,12 @@ function ResumeView({onBack, onDone, session, clearScreen}) {
     h(
       Box,
       {marginTop: 1},
-      h(Text, {dimColor: true}, 'Enter: select  Esc: back')
+      h(Text, {dimColor: true}, 'Enter: select  Esc: back  number: jump')
     )
   );
 }
 
-function TrimForm({onSubmit, onBack, clearScreen}) {
+function TrimForm({onSubmit, onBack, clearScreen, session}) {
   const [field, setField] = useState('tools');
   const [tools, setTools] = useState('');
   const [threshold, setThreshold] = useState('500');
@@ -469,28 +512,198 @@ function TrimForm({onSubmit, onBack, clearScreen}) {
     }
   });
 
+  const arrow = figures.pointer;
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
   return h(
     Box,
     {flexDirection: 'column'},
     h(
       Box,
       {flexDirection: 'column'},
-      h(Text, null, chalk.bgYellow.black(' Trim options ')),
+      h(Text, null,
+        chalk.bgYellow.black(' Trim options '), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
       h(
         Text,
-        {dimColor: true},
-        `${(session.session_id || '').slice(0, 8)} ${toAnno(session)} ${formatLines(session.lines)} ${session.branch || ''}`
+        null,
+        colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+        chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+        colorize.lines(formatLines(session.lines)), ' | ',
+        colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, session.preview.slice(0, 80)) : null
+      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
     ),
-    h(Text, {dimColor: true}, 'Enter moves to next; Esc goes back; blank = default'),
-    h(Text, null, 'Tools: ', h(Text, {color: field === 'tools' ? 'yellow' : undefined}, tools || 'all')),
-    h(Text, null, 'Threshold: ', h(Text, {color: field === 'threshold' ? 'yellow' : undefined}, threshold || '500')),
+    h(Box, {marginBottom: 1}),
+    h(Text, {dimColor: true}, 'Enter: next field | Esc: back | Submit on last field'),
+    h(Box, {marginBottom: 1}),
+    // Tools field
     h(
-      Text,
-      null,
-      'Assistant msgs: ',
-      h(Text, {color: field === 'assistant' ? 'yellow' : undefined}, assistant || 'skip')
+      Box,
+      {flexDirection: 'column'},
+      h(
+        Text,
+        null,
+        field === 'tools' ? chalk.cyan(arrow) : ' ',
+        ' Tools to trim ',
+        h(Text, {dimColor: true}, "(comma-separated, e.g., 'bash,read,edit')")
+      ),
+      h(
+        Text,
+        null,
+        '  > ',
+        h(Text, {color: field === 'tools' ? 'yellow' : undefined}, tools || chalk.dim('(all tools)'))
+      )
+    ),
+    h(Text, null, ''),
+    // Threshold field
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(
+        Text,
+        null,
+        field === 'threshold' ? chalk.cyan(arrow) : ' ',
+        ' Length threshold in characters ',
+        h(Text, {dimColor: true}, '(tool results longer than this get trimmed)')
+      ),
+      h(
+        Text,
+        null,
+        '  > ',
+        h(Text, {color: field === 'threshold' ? 'yellow' : undefined}, threshold || '500')
+      )
+    ),
+    h(Text, null, ''),
+    // Assistant messages field
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(
+        Text,
+        null,
+        field === 'assistant' ? chalk.cyan(arrow) : ' ',
+        ' Trim assistant messages ',
+        h(Text, {dimColor: true}, '(optional)')
+      ),
+      h(Text, {dimColor: true}, '    Positive (e.g., 10): Trim first N messages exceeding threshold'),
+      h(Text, {dimColor: true}, '    Negative (e.g., -5): Keep only last N messages'),
+      h(Text, {dimColor: true}, '    Blank: Skip (no assistant message trimming)'),
+      h(
+        Text,
+        null,
+        '  > ',
+        h(Text, {color: field === 'assistant' ? 'yellow' : undefined}, assistant || chalk.dim('(skip)'))
+      )
+    )
+  );
+}
+
+function ContinueForm({onSubmit, onBack, clearScreen, session}) {
+  const [field, setField] = useState('agent');
+  const [agent, setAgent] = useState(session.agent || 'claude');
+  const [prompt, setPrompt] = useState('');
+
+  useInput((input, key) => {
+    if (key.escape) {
+      clearScreen();
+      return onBack();
+    }
+    if (key.return) {
+      if (field === 'agent') setField('prompt');
+      else if (field === 'prompt') {
+        onSubmit({agent, prompt: prompt || null});
+      }
+      return;
+    }
+    if (key.backspace || key.delete) {
+      if (field === 'agent') return; // Can't backspace on selection
+      if (field === 'prompt') setPrompt((t) => t.slice(0, -1));
+      return;
+    }
+    if (input) {
+      if (field === 'agent') {
+        if (input === '1') setAgent('claude');
+        else if (input === '2') setAgent('codex');
+      }
+      if (field === 'prompt') setPrompt((t) => t + input);
+    }
+  });
+
+  const arrow = figures.pointer;
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(Text, null,
+        chalk.bgCyan.black(' Continue options '), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
+      h(
+        Text,
+        null,
+        colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+        chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+        colorize.lines(formatLines(session.lines)), ' | ',
+        colorize.date(date)
+      ),
+      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
+    ),
+    h(Box, {marginBottom: 1}),
+    h(Text, {dimColor: true}, 'Enter: next field | Esc: back | Submit on last field'),
+    h(Box, {marginBottom: 1}),
+    // Agent field
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(
+        Text,
+        null,
+        field === 'agent' ? chalk.cyan(arrow) : ' ',
+        ' Agent to continue with'
+      ),
+      h(Text, {dimColor: true}, '    Type 1 for Claude, 2 for Codex'),
+      h(
+        Text,
+        null,
+        '  > ',
+        h(Text, {color: field === 'agent' ? 'yellow' : undefined},
+          agent === 'claude' ? 'Claude (1)' : 'Codex (2)'
+        )
+      )
+    ),
+    h(Text, null, ''),
+    // Custom instructions field
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(
+        Text,
+        null,
+        field === 'prompt' ? chalk.cyan(arrow) : ' ',
+        ' Custom instructions ',
+        h(Text, {dimColor: true}, '(optional)')
+      ),
+      h(Text, {dimColor: true}, '    Enter any context or instructions for the new session'),
+      h(
+        Text,
+        null,
+        '  > ',
+        h(Text, {color: field === 'prompt' ? 'yellow' : undefined}, prompt || chalk.dim('(none)'))
+      )
     )
   );
 }
@@ -587,16 +800,28 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
     }
   });
 
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
   return h(
     Box,
     {flexDirection: 'column'},
-    h(Text, null, chalk.bgBlue.black(` ${action.toUpperCase()} `), ' ', session.project),
+    h(Text, null,
+      chalk.bgBlue.black(` ${action.toUpperCase()} `), ' ',
+      colorize.project(session.project || ''), ' ',
+      colorize.branch(branchDisplay)
+    ),
     h(
       Text,
-      {dimColor: true},
-      `${(session.session_id || '').slice(0, 8)} ${toAnno(session)} ${formatLines(session.lines)} ${session.branch || ''}`
+      null,
+      colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+      chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+      colorize.lines(formatLines(session.lines)), ' | ',
+      colorize.date(date)
     ),
-    session.preview ? h(Text, {dimColor: true}, session.preview.slice(0, 80)) : null,
+    session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null,
     stage === 'prompt'
       ? (() => {
           const defaultPathHint = action === 'export' ? defaultExportPath(session) : null;
@@ -610,8 +835,8 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
                 ? 'Enter path to export (blank = default below). Must end in .txt.'
                 : 'Enter destination file or directory path:'
             ),
-            h(Text, null, '>', ' ', dest || chalk.dim(defaultPathHint || 'type path...')),
-            defaultPathHint ? h(Text, {dimColor: true}, `Default: ${defaultPathHint}`) : null,
+            h(Text, null, '>', ' ', dest || chalk.dim('type path...')),
+            defaultPathHint ? h(Text, {dimColor: true}, `Default (blank = use): ${defaultPathHint}`) : null,
             h(Text, {dimColor: true}, 'Enter: run  Esc: back')
           );
         })()
@@ -624,7 +849,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
             Box,
             {flexDirection: 'column'},
             h(Text, {color: 'green'}, message || 'Done'),
-            resultPath && h(Text, {dimColor: true}, resultPath)
+            resultPath && resultPath !== message && h(Text, {dimColor: true}, resultPath)
           ),
           h(Text, {dimColor: true}, 'Enter: exit  Esc: back')
         )
@@ -634,7 +859,10 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
 function App() {
   const {exit} = useApp();
   const {stdout} = useStdout();
-  const [screen, setScreen] = useState(startAction ? 'action' : 'results');
+  // Skip results screen if only 1 session - go directly to action menu
+  const [screen, setScreen] = useState(
+    startAction || sessions.length === 1 ? 'action' : 'results'
+  );
   const [current, setCurrent] = useState(
     focusId ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId)) : 0
   );
@@ -694,8 +922,7 @@ function App() {
         if (['path', 'copy', 'export'].includes(action)) {
           setNonLaunch({action});
           switchScreen('nonlaunch');
-        } else if (action === 'resume') switchScreen('resume');
-        else if (action === 'suppress_resume') switchScreen('trim');
+        } else if (action === 'resume_menu') switchScreen('resume');
         else finish(action);
       },
       clearScreen,
@@ -706,8 +933,16 @@ function App() {
       onBack: () => switchScreen('action'),
       onDone: (value) => {
         if (value === 'suppress_resume') switchScreen('trim');
+        else if (value === 'continue') switchScreen('continue_form');
         else finish(value);
       },
+      clearScreen,
+    });
+  } else if (screen === 'continue_form') {
+    view = h(ContinueForm, {
+      onBack: () => switchScreen('resume'),
+      onSubmit: (opts) => finish('continue', opts),
+      session,
       clearScreen,
     });
   } else if (screen === 'trim') {
