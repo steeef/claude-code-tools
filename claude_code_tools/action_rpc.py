@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from datetime import datetime
 from typing import Any, Dict
 
 import contextlib
@@ -114,7 +115,20 @@ def main() -> None:
 
         elif action == "export":
             if not dest:
-                _error("Missing dest")
+                today = datetime.now().strftime("%Y%m%d")
+                session_stem = None
+                if file_path:
+                    session_stem = Path(file_path).stem
+                elif session_id:
+                    session_stem = session_id
+                if not session_stem:
+                    _error("Missing dest and session info")
+                prefix = "codex" if agent == "codex" else "claude"
+                dest = str(
+                    Path.cwd()
+                    / "exported-sessions"
+                    / f"{today}-{prefix}-session-{session_stem}.txt"
+                )
             if agent == "claude":
                 from claude_code_tools.export_claude_session import (
                     export_session_to_markdown,
@@ -129,6 +143,8 @@ def main() -> None:
                         session_id, cwd, claude_home=claude_home
                     )
                 dest_path = Path(dest)
+                if dest_path.suffix != ".txt":
+                    dest_path = dest_path.with_suffix(".txt")
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(dest_path, "w") as fh:
                     _quiet_call(export_session_to_markdown, Path(file_path), fh, verbose=False)

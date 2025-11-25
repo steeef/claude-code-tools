@@ -7,6 +7,7 @@ import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import figures from 'figures';
 import {spawnSync} from 'child_process';
+import {ACTIONS, filteredActions, defaultExportPath} from './action_config.js';
 
 const h = React.createElement;
 
@@ -301,15 +302,6 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   );
 }
 
-const mainActions = [
-  {label: 'Resume session', value: 'resume'},
-  {label: 'Show session file path', value: 'path'},
-  {label: 'Copy session file', value: 'copy'},
-  {label: 'Clone session and resume clone', value: 'clone'},
-  {label: 'Export to text file (.txt)', value: 'export'},
-  {label: 'Continue with context in fresh session', value: 'continue'},
-];
-
 const resumeOptions = [
   {label: 'Resume as-is', value: 'resume'},
   {label: 'Trim + resume', value: 'suppress_resume'},
@@ -336,9 +328,7 @@ function ConfirmView({session, actionLabel, onConfirm, onBack}) {
 }
 
 function ActionView({session, onBack, onDone, clearScreen}) {
-  const baseItems = session.is_sidechain
-    ? mainActions.filter((a) => ['path', 'copy', 'export'].includes(a.value))
-    : mainActions;
+  const baseItems = filteredActions(session.is_sidechain);
 
   const items = baseItems.map((item, idx) => ({
     ...item,
@@ -512,6 +502,8 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
   const [stage, setStage] = useState(needsDest ? 'prompt' : 'running');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [resultPath, setResultPath] = useState('');
+  const startedRef = React.useRef(false);
 
   const runRpc = (destArg) => {
     if (!rpcPath) {
@@ -540,7 +532,9 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
     try {
       const out = JSON.parse(proc.stdout || '{}');
       if (out.status === 'ok') {
-        setMessage(out.message || 'Done');
+        const rawMsg = out.message || 'Done';
+        setMessage(rawMsg);
+        if (out.path) setResultPath(out.path);
       } else {
         setError(out.message || 'Error');
       }
@@ -551,10 +545,11 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
   };
 
   React.useEffect(() => {
-    if (stage === 'running') {
-      runRpc(dest);
+    if (!needsDest && stage === 'running' && !startedRef.current) {
+      startedRef.current = true;
+      runRpc('');
     }
-  }, [stage]);
+  }, [needsDest, stage]);
 
   useInput((input, key) => {
     if (stage === 'prompt') {
@@ -563,7 +558,16 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
         return onBack();
       }
       if (key.return) {
+        const submittedDest = dest.trim();
+        const finalDest = submittedDest || (action === 'export' ? defaultExportPath(session) : '');
+        if (needsDest && !finalDest) {
+          setError('Destination required');
+          setStage('result');
+          return;
+        }
+        setDest(finalDest);
         setStage('running');
+        runRpc(finalDest);
         return;
       }
       if (key.backspace || key.delete) {
@@ -594,16 +598,34 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
     ),
     session.preview ? h(Text, {dimColor: true}, session.preview.slice(0, 80)) : null,
     stage === 'prompt'
-      ? h(
-          Box,
-          {flexDirection: 'column', marginTop: 1},
-          h(Text, null, 'Destination: ', dest || chalk.dim('type path...')),
-          h(Text, {dimColor: true}, 'Enter: run  Esc: back')
-        )
+      ? (() => {
+          const defaultPathHint = action === 'export' ? defaultExportPath(session) : null;
+          return h(
+            Box,
+            {flexDirection: 'column', marginTop: 1},
+            h(
+              Text,
+              null,
+              action === 'export'
+                ? 'Enter path to export (blank = default below). Must end in .txt.'
+                : 'Enter destination file or directory path:'
+            ),
+            h(Text, null, '>', ' ', dest || chalk.dim(defaultPathHint || 'type path...')),
+            defaultPathHint ? h(Text, {dimColor: true}, `Default: ${defaultPathHint}`) : null,
+            h(Text, {dimColor: true}, 'Enter: run  Esc: back')
+          );
+        })()
       : h(
           Box,
           {flexDirection: 'column', marginTop: 1},
-          error ? h(Text, {color: 'red'}, error) : h(Text, {color: 'green'}, message || 'Done'),
+          error
+        ? h(Text, {color: 'red'}, error)
+        : h(
+            Box,
+            {flexDirection: 'column'},
+            h(Text, {color: 'green'}, message || 'Done'),
+            resultPath && h(Text, {dimColor: true}, resultPath)
+          ),
           h(Text, {dimColor: true}, 'Enter: exit  Esc: back')
         )
   );
