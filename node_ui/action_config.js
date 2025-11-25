@@ -49,6 +49,12 @@ export const RESUME_SUBMENU = [
   {value: 'continue', label: 'Continue with context in fresh session'},
 ];
 
+// Trim-only submenu (for aichat trim command)
+export const TRIM_SUBMENU = [
+  {value: 'suppress_resume', label: 'Trim + resume...'},
+  {value: 'smart_trim_resume', label: 'Smart trim + resume'},
+];
+
 export function filteredActions(isSidechain = false) {
   if (isSidechain) {
     return ACTIONS.filter((a) => a.group === ACTION_GROUPS.nonlaunch);

@@ -7,7 +7,7 @@ import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import figures from 'figures';
 import {spawnSync} from 'child_process';
-import {ACTIONS, filteredActions, defaultExportPath, RESUME_SUBMENU} from './action_config.js';
+import {ACTIONS, filteredActions, defaultExportPath, RESUME_SUBMENU, TRIM_SUBMENU} from './action_config.js';
 
 const h = React.createElement;
 
@@ -28,6 +28,7 @@ const keywords = payload.keywords || [];
 const outPath = cli.flags.out;
 const focusId = payload.focus_id || null;
 const startAction = payload.start_action || false;
+const startScreen = payload.start_screen || null;
 const rpcPath = payload.rpc_path || null;
 const scopeLine = payload.scope_line || '';
 const tipLine = payload.tip_line || '';
@@ -346,6 +347,7 @@ function ConfirmView({session, actionLabel, onConfirm, onBack}) {
 
 function ActionView({session, onBack, onDone, clearScreen}) {
   const baseItems = filteredActions(session.is_sidechain);
+  const [index, setIndex] = useState(0);
 
   const items = baseItems.map((item, idx) => ({
     ...item,
@@ -353,18 +355,24 @@ function ActionView({session, onBack, onDone, clearScreen}) {
     number: idx + 1,
   }));
 
-  const handleSelect = (item) => {
-    onDone(item.value);
-  };
-
   useInput((input, key) => {
     if (key.escape) {
       clearScreen();
       onBack();
     }
+    if (key.return) {
+      onDone(items[index].value);
+      return;
+    }
+    if (key.upArrow || input === 'k') {
+      setIndex((i) => Math.max(0, i - 1));
+    }
+    if (key.downArrow || input === 'j') {
+      setIndex((i) => Math.min(items.length - 1, i + 1));
+    }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
-        onDone(items[num - 1].value);
+      setIndex(num - 1);
     }
   });
 
@@ -396,38 +404,52 @@ function ActionView({session, onBack, onDone, clearScreen}) {
       session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
     ),
     h(Box, {marginBottom: 1}),
-    h(SelectInput, {
-      items,
-      onSelect: handleSelect,
-      itemComponent: ({isHighlighted, label}) =>
-        h(
+    h(Box, {flexDirection: 'column'},
+      ...items.map((item, idx) => {
+        const isHighlighted = idx === index;
+        return h(
           Text,
           {
-            color: isHighlighted ? 'black' : 'white',
-            backgroundColor: isHighlighted ? 'cyan' : undefined,
+            key: item.value,
+            color: isHighlighted ? 'blue' : 'white',
           },
-          `${isHighlighted ? figures.pointer : ' '} ${label}`
-        ),
-    }),
+          `${isHighlighted ? figures.pointer : ' '} ${item.label}`
+        );
+      })
+    ),
     h(
       Box,
       {marginTop: 1},
-      h(Text, {dimColor: true}, 'Enter: select  Esc: back  number: jump')
+      h(Text, {dimColor: true}, 'Enter: select  Esc: back  ↑/↓: move  number: jump')
     )
   );
 }
 
 function ResumeView({onBack, onDone, session, clearScreen}) {
+  const [index, setIndex] = useState(0);
+  const items = RESUME_SUBMENU.map((opt, idx) => ({...opt, label: `${idx + 1}. ${opt.label}`}));
+
   useInput((input, key) => {
     if (key.escape) {
       clearScreen();
       onBack();
     }
+    if (key.return) {
+      onDone(items[index].value);
+      return;
+    }
+    if (key.upArrow || input === 'k') {
+      setIndex((i) => Math.max(0, i - 1));
+    }
+    if (key.downArrow || input === 'j') {
+      setIndex((i) => Math.min(items.length - 1, i + 1));
+    }
     const num = Number(input);
-    if (!Number.isNaN(num) && num >= 1 && num <= RESUME_SUBMENU.length) {
-      onDone(RESUME_SUBMENU[num - 1].value);
+    if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
+      setIndex(num - 1);
     }
   });
+
   const id = (session.session_id || '').slice(0, 8);
   const anno = toAnno(session);
   const date = formatDateRange(session.create_time, session.mod_time);
@@ -455,23 +477,96 @@ function ResumeView({onBack, onDone, session, clearScreen}) {
       session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
     ),
     h(Box, {marginBottom: 1}),
-    h(SelectInput, {
-      items: RESUME_SUBMENU.map((opt, idx) => ({...opt, label: `${idx + 1}. ${opt.label}`})),
-      onSelect: (item) => onDone(item.value),
-      itemComponent: ({isHighlighted, label}) =>
-        h(
+    h(Box, {flexDirection: 'column'},
+      ...items.map((item, idx) => {
+        const isHighlighted = idx === index;
+        return h(
           Text,
           {
-            color: isHighlighted ? 'black' : 'white',
-            backgroundColor: isHighlighted ? 'green' : undefined,
+            key: item.value,
+            color: isHighlighted ? 'blue' : 'white',
           },
-          `${isHighlighted ? figures.pointer : ' '} ${label}`
-        ),
-    }),
+          `${isHighlighted ? figures.pointer : ' '} ${item.label}`
+        );
+      })
+    ),
     h(
       Box,
       {marginTop: 1},
-      h(Text, {dimColor: true}, 'Enter: select  Esc: back  number: jump')
+      h(Text, {dimColor: true}, 'Enter: select  Esc: back  ↑/↓: move  number: jump')
+    )
+  );
+}
+
+function TrimView({onBack, onDone, session, clearScreen}) {
+  const [index, setIndex] = useState(0);
+  const items = TRIM_SUBMENU.map((opt, idx) => ({...opt, label: `${idx + 1}. ${opt.label}`}));
+
+  useInput((input, key) => {
+    if (key.escape) {
+      clearScreen();
+      onBack();
+    }
+    if (key.return) {
+      onDone(items[index].value);
+      return;
+    }
+    if (key.upArrow || input === 'k') {
+      setIndex((i) => Math.max(0, i - 1));
+    }
+    if (key.downArrow || input === 'j') {
+      setIndex((i) => Math.min(items.length - 1, i + 1));
+    }
+    const num = Number(input);
+    if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
+      setIndex(num - 1);
+    }
+  });
+
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(Text, null,
+        chalk.bgYellow.black(' Trim Session '), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
+      h(
+        Text,
+        null,
+        colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+        chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+        colorize.lines(formatLines(session.lines)), ' | ',
+        colorize.date(date)
+      ),
+      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
+    ),
+    h(Box, {marginBottom: 1}),
+    h(Box, {flexDirection: 'column'},
+      ...items.map((item, idx) => {
+        const isHighlighted = idx === index;
+        return h(
+          Text,
+          {
+            key: item.value,
+            color: isHighlighted ? 'blue' : 'white',
+          },
+          `${isHighlighted ? figures.pointer : ' '} ${item.label}`
+        );
+      })
+    ),
+    h(
+      Box,
+      {marginTop: 1},
+      h(Text, {dimColor: true}, 'Enter: select  Esc: back  ↑/↓: move  number: jump')
     )
   );
 }
@@ -859,14 +954,18 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
 function App() {
   const {exit} = useApp();
   const {stdout} = useStdout();
-  // Skip results screen if only 1 session - go directly to action menu
+  // Determine initial screen:
+  // 1. startScreen param takes priority (e.g., 'resume' for aichat trim)
+  // 2. startAction or single session -> 'action'
+  // 3. Otherwise -> 'results'
   const [screen, setScreen] = useState(
-    startAction || sessions.length === 1 ? 'action' : 'results'
+    startScreen || (startAction || sessions.length === 1 ? 'action' : 'results')
   );
   const [current, setCurrent] = useState(
     focusId ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId)) : 0
   );
   const [nonLaunch, setNonLaunch] = useState(null);
+  const [trimSource, setTrimSource] = useState(null); // Track where we entered trim from
 
   const safeCurrent = React.useMemo(() => {
     if (!sessions.length) return 0;
@@ -917,7 +1016,11 @@ function App() {
   } else if (screen === 'action') {
     view = h(ActionView, {
       session,
-      onBack: () => switchScreen('results'),
+      onBack: () => {
+        // If only 1 session, exit to shell; otherwise go to results
+        if (sessions.length === 1) quit();
+        else switchScreen('results');
+      },
       onDone: (action) => {
         if (['path', 'copy', 'export'].includes(action)) {
           setNonLaunch({action});
@@ -932,8 +1035,10 @@ function App() {
       session,
       onBack: () => switchScreen('action'),
       onDone: (value) => {
-        if (value === 'suppress_resume') switchScreen('trim');
-        else if (value === 'continue') switchScreen('continue_form');
+        if (value === 'suppress_resume') {
+          setTrimSource('resume');
+          switchScreen('trim');
+        } else if (value === 'continue') switchScreen('continue_form');
         else finish(value);
       },
       clearScreen,
@@ -947,9 +1052,22 @@ function App() {
     });
   } else if (screen === 'trim') {
     view = h(TrimForm, {
-      onBack: () => switchScreen('resume'),
+      onBack: () => switchScreen(trimSource || 'resume'),
       onSubmit: (opts) => finish('suppress_resume', opts),
       session,
+      clearScreen,
+    });
+  } else if (screen === 'trim_menu') {
+    // Trim-only menu (for aichat trim command)
+    view = h(TrimView, {
+      session,
+      onBack: () => exit({exitCode: 0}),
+      onDone: (value) => {
+        if (value === 'suppress_resume') {
+          setTrimSource('trim_menu');
+          switchScreen('trim');
+        } else finish(value);
+      },
       clearScreen,
     });
   } else if (screen === 'nonlaunch') {

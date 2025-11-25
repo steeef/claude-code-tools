@@ -123,14 +123,94 @@ def menu(ctx):
     menu_main()
 
 
-@main.command("trim", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
-@click.pass_context
-def trim(ctx):
-    """Trim tool results and/or assistant messages from a session."""
+@main.command("trim")
+@click.argument("session", required=True)
+@click.option("--simple-ui", is_flag=True, help="Use simple CLI trim instead of Node UI")
+def trim(session, simple_ui):
+    """Trim/resume session - shows menu of trim options.
+
+    Opens Node UI with trim/resume options (resume, clone, trim+resume,
+    smart-trim, continue). Use --simple-ui for direct CLI trim.
+    """
     import sys
-    sys.argv = [sys.argv[0].replace('aichat', 'trim-session')] + ctx.args
-    from claude_code_tools.trim_session import main as trim_main
-    trim_main()
+    from pathlib import Path
+    from claude_code_tools.session_utils import detect_agent_from_path, find_session_file
+    from claude_code_tools.node_menu_ui import run_node_menu_ui
+    from claude_code_tools.session_menu_cli import execute_action
+
+    if simple_ui:
+        # Fall back to old trim-session CLI
+        sys.argv = [sys.argv[0].replace('aichat', 'trim-session'), session]
+        from claude_code_tools.trim_session import main as trim_main
+        trim_main()
+        return
+
+    # Resolve session
+    detected_agent = None
+    session_file = None
+    project_path = None
+
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = detect_agent_from_path(session_file)
+    else:
+        result = find_session_file(session)
+        if result:
+            detected_agent, session_file, project_path, _ = result
+
+    if not session_file:
+        print(f"Error: Could not find session: {session}", file=sys.stderr)
+        sys.exit(1)
+
+    agent = detected_agent or "claude"
+    session_id = session_file.stem
+
+    # Build session dict for Node UI
+    line_count = 0
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            line_count = sum(1 for _ in f)
+    except Exception:
+        pass
+
+    # Extract project info if not already set
+    if not project_path:
+        if agent == "claude":
+            from claude_code_tools.session_utils import extract_cwd_from_session
+            project_path = extract_cwd_from_session(session_file) or str(Path.cwd())
+        else:
+            project_path = str(Path.cwd())
+
+    session_dict = {
+        "agent": agent,
+        "agent_display": agent.title(),
+        "session_id": session_id,
+        "mod_time": session_file.stat().st_mtime,
+        "create_time": session_file.stat().st_ctime,
+        "lines": line_count,
+        "project": Path(project_path).name,
+        "preview": "",
+        "cwd": project_path,
+        "branch": "",
+        "file_path": str(session_file),
+        "is_trimmed": False,
+        "derivation_type": None,
+        "is_sidechain": False,
+    }
+
+    def handler(sess, action, kwargs=None):
+        execute_action(
+            action, agent, session_file, project_path,
+            action_kwargs=kwargs,
+        )
+
+    rpc_path = str(Path(__file__).parent / "action_rpc.py")
+    run_node_menu_ui(
+        [session_dict], [session_id], handler,
+        start_screen="trim_menu",
+        rpc_path=rpc_path,
+    )
 
 
 @main.command("smart-trim", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})

@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, TextIO
 
+from claude_code_tools.session_utils import default_export_path
+
 
 def export_session_programmatic(
     session_id_or_path: str,
@@ -41,11 +43,7 @@ def export_session_programmatic(
 
     # Generate default output path if not provided
     if output_path is None:
-        today = datetime.now().strftime("%Y%m%d")
-        session_id = session_file.stem
-        output_dir = Path.cwd() / "exported-sessions"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"{today}-codex-session-{session_id}.txt"
+        output_path = default_export_path(session_file, "codex")
 
     # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -367,7 +365,7 @@ def main():
         "--output",
         "-o",
         type=Path,
-        help="Output text file path (.txt) - defaults to exported-sessions/YYYYMMDD-codex-session-<id>.txt"
+        help="Output text file path (.txt) - defaults to exported-sessions/codex/<session-id>.txt"
     )
     parser.add_argument(
         "--codex-home",
@@ -398,11 +396,7 @@ def main():
 
     # Generate default output path if not provided
     if args.output is None:
-        today = datetime.now().strftime("%Y%m%d")
-        session_id = session_file.stem  # Get filename without extension
-        output_dir = Path.cwd() / "exported-sessions"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        args.output = output_dir / f"{today}-codex-session-{session_id}.txt"
+        args.output = default_export_path(session_file, "codex")
 
     # Ensure output directory exists
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -29,6 +29,7 @@ def _write_payload(
     keywords: List[str],
     focus_id: str | None = None,
     start_action: bool = False,
+    start_screen: str | None = None,
     rpc_path: str | None = None,
     scope_line: str | None = None,
     tip_line: str | None = None,
@@ -39,6 +40,7 @@ def _write_payload(
         "keywords": keywords,
         "focus_id": focus_id,
         "start_action": start_action,
+        "start_screen": start_screen,
         "rpc_path": rpc_path,
         "scope_line": scope_line,
         "tip_line": tip_line,
@@ -89,6 +91,7 @@ def run_node_menu_ui(
     stderr_mode: bool = False,
     focus_session_id: str | None = None,
     start_action: bool = False,
+    start_screen: str | None = None,
     rpc_path: str | None = None,
     scope_line: str | None = None,
     tip_line: str | None = None,
@@ -100,12 +103,14 @@ def run_node_menu_ui(
         keywords: List of search keywords
         action_handler: Callback invoked with (session_dict, action)
         stderr_mode: If True, Node may log to stderr instead of stdout
+        start_screen: Optional screen to start on ('action', 'resume', etc.)
     """
     data_path = _write_payload(
         sessions,
         keywords,
         focus_id=focus_session_id,
         start_action=start_action,
+        start_screen=start_screen,
         rpc_path=rpc_path,
         scope_line=scope_line,
         tip_line=tip_line,

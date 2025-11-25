@@ -708,3 +708,30 @@ def format_session_id_display(
         display += " (sub)"
 
     return display
+
+
+def default_export_path(
+    session_file: Path,
+    agent: str,
+    base_dir: Optional[Path] = None,
+) -> Path:
+    """
+    Generate default export path for a session.
+
+    Path format: {base_dir}/exported-sessions/{agent}/{session_filename}.txt
+
+    Args:
+        session_file: Path to the session file
+        agent: Agent type ('claude' or 'codex')
+        base_dir: Base directory (defaults to cwd)
+
+    Returns:
+        Path to the export file
+    """
+    if base_dir is None:
+        base_dir = Path.cwd()
+
+    agent_dir = "codex" if agent == "codex" else "claude"
+    filename = session_file.stem + ".txt"
+
+    return base_dir / "exported-sessions" / agent_dir / filename
