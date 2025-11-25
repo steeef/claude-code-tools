@@ -95,8 +95,11 @@ def run_node_menu_ui(
     rpc_path: str | None = None,
     scope_line: str | None = None,
     tip_line: str | None = None,
-) -> None:
+) -> str | None:
     """Launch Node UI and dispatch selected action.
+
+    Returns:
+        "back_to_options" if user wants to go back to options menu, None otherwise.
 
     Args:
         sessions: List of session dicts (same shape as find_session results)
@@ -129,12 +132,17 @@ def run_node_menu_ui(
         session_id = result.get("session_id")
         action = result.get("action")
         kwargs = result.get("kwargs", {})
+
+        # Special case: back_to_options signal (no session needed)
+        if action == "back_to_options":
+            return "back_to_options"
+
         if not session_id or not action:
             # Empty result means user cancelled (Escape) - silently return
             if result:
                 # Non-empty but malformed result is an actual error
                 print(f"Error: Missing session_id or action in result: {result}")
-            return
+            return None
 
         # Locate matching session
         session = next((s for s in sessions if s.get("session_id") == session_id), None)
@@ -143,6 +151,7 @@ def run_node_menu_ui(
             return
 
         action_handler(session, action, kwargs)
+        return None
     finally:
         try:
             data_path.unlink(missing_ok=True)  # type: ignore[arg-type]

@@ -1186,6 +1186,11 @@ function App() {
 
   const quit = () => exit({exitCode: 0});
 
+  const backToOptions = () => {
+    fs.writeFileSync(outPath, JSON.stringify({action: 'back_to_options'}));
+    exit({exitCode: 0});
+  };
+
   const finish = (action, kwargs = {}) => {
     writeResult(session.session_id, action, kwargs);
     exit({exitCode: 0});
@@ -1217,7 +1222,7 @@ function App() {
         setCurrent(idx);
         switchScreen('action');
       },
-      onQuit: quit,
+      onQuit: backToOptions,
       clearScreen,
     });
   } else if (screen === 'action') {

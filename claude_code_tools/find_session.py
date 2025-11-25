@@ -749,6 +749,113 @@ def handle_action(
         )
 
 
+def _run_search_and_display(args) -> bool:
+    """Run search and display results. Returns True if user wants back to options."""
+    # Parse keywords
+    keywords = (
+        [k.strip() for k in args.keywords.split(",") if k.strip()]
+        if args.keywords
+        else []
+    )
+
+    scope_line, tip_line = build_scope_lines(args)
+    print(scope_line, file=sys.stderr)
+    if tip_line:
+        print(tip_line, file=sys.stderr)
+    print(file=sys.stderr)
+
+    # Search all agents
+    matching_sessions = search_all_agents(
+        keywords,
+        global_search=args.global_search,
+        num_matches=args.num_matches,
+        agents=args.agents,
+        claude_home=args.claude_home,
+        codex_home=args.codex_home,
+        original_only=args.original,
+        no_sub=args.no_sub,
+        no_trim=args.no_trim,
+        no_cont=args.no_cont,
+    )
+
+    # Filter by minimum lines if specified
+    if args.min_lines > 0:
+        matching_sessions = [
+            s for s in matching_sessions if s.get("lines", 0) >= args.min_lines
+        ]
+
+    # Filter by time bounds if specified
+    if args.before or args.after:
+        matching_sessions = filter_sessions_by_time(
+            matching_sessions, before=args.before, after=args.after
+        )
+
+    if not matching_sessions:
+        scope = "all projects" if args.global_search else "current project"
+        keyword_msg = (
+            f" containing all keywords: {', '.join(keywords)}" if keywords else ""
+        )
+        if RICH_AVAILABLE:
+            console = Console()
+            console.print(f"[yellow]No sessions found{keyword_msg} in {scope}[/yellow]")
+        else:
+            print(f"No sessions found{keyword_msg} in {scope}", file=sys.stderr)
+        return False  # Don't go back to options on empty results
+
+    # Display interactive UI
+    nonlaunch_flag = {"done": False}
+    action_handler = create_action_handler(
+        shell_mode=args.shell, nonlaunch_flag=nonlaunch_flag
+    )
+    limited_sessions = matching_sessions[: args.num_matches]
+    rpc_path = str(Path(__file__).parent / "action_rpc.py")
+
+    if not args.simple_ui:
+        focus_id = None
+        start_action = False
+        while True:
+            nonlaunch_flag["done"] = False
+            result = run_node_menu_ui(
+                limited_sessions,
+                keywords,
+                action_handler,
+                stderr_mode=args.shell,
+                focus_session_id=focus_id,
+                start_action=start_action,
+                rpc_path=rpc_path,
+                scope_line=scope_line,
+                tip_line=tip_line,
+            )
+            # Check for back_to_options signal
+            if result == "back_to_options":
+                return True
+            if nonlaunch_flag["done"]:
+                choice = prompt_post_action()
+                if choice == "back":
+                    focus_id = nonlaunch_flag.get("session_id")
+                    start_action = True
+                    continue
+            break
+    elif RICH_AVAILABLE:
+        selected_session = display_interactive_ui(
+            matching_sessions, keywords, stderr_mode=args.shell,
+            num_matches=args.num_matches
+        )
+        if selected_session:
+            action = show_action_menu(selected_session, stderr_mode=args.shell)
+            if action:
+                handle_action(selected_session, action, shell_mode=args.shell)
+    else:
+        # Fallback without rich
+        print("\nMatching sessions:")
+        for idx, session in enumerate(matching_sessions[: args.num_matches], 1):
+            print(
+                f"{idx}. [{session['agent_display']}] {session['session_id'][:16]}... | "
+                f"{session['project']} | {session.get('branch', 'N/A')}"
+            )
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Unified session finder - search across multiple coding agents",
@@ -856,165 +963,74 @@ To persist directory changes when resuming sessions:
     )
 
     args = parser.parse_args()
+    use_options_ui = not args.no_ui and not args.simple_ui
 
-    # Show interactive options UI unless --no-ui or --simple-ui
-    if not args.no_ui and not args.simple_ui:
-        initial_options = {
-            "keywords": args.keywords or "",
-            "global": args.global_search,
-            "num_matches": args.num_matches,
-            "agents": args.agents or [],
-            "original": args.original,
-            "no_sub": args.no_sub,
-            "no_trim": args.no_trim,
-            "no_cont": args.no_cont,
-            "min_lines": args.min_lines or "",
-            "before": args.before or "",
-            "after": args.after or "",
-        }
-        opts = run_find_options_ui(initial_options, variant="find")
-        if opts is None:
-            # User cancelled
-            sys.exit(0)
-        # Update args with user's selections
-        args.keywords = opts.get("keywords") or ""
-        args.global_search = opts.get("global", False)
-        args.num_matches = opts.get("num_matches", 10)
-        args.agents = opts.get("agents")
-        args.original = opts.get("original", False)
-        args.no_sub = opts.get("no_sub", False)
-        args.no_trim = opts.get("no_trim", False)
-        args.no_cont = opts.get("no_cont", False)
-        args.min_lines = opts.get("min_lines") or 0
-        args.before = opts.get("before")
-        args.after = opts.get("after")
+    # Loop to allow returning to options from results
+    while True:
+        # Show interactive options UI unless --no-ui or --simple-ui
+        if use_options_ui:
+            initial_options = {
+                "keywords": args.keywords or "",
+                "global": args.global_search,
+                "num_matches": args.num_matches,
+                "agents": args.agents or [],
+                "original": args.original,
+                "no_sub": args.no_sub,
+                "no_trim": args.no_trim,
+                "no_cont": args.no_cont,
+                "min_lines": args.min_lines or "",
+                "before": args.before or "",
+                "after": args.after or "",
+            }
+            opts = run_find_options_ui(initial_options, variant="find")
+            if opts is None:
+                # User cancelled
+                sys.exit(0)
+            # Update args with user's selections
+            args.keywords = opts.get("keywords") or ""
+            args.global_search = opts.get("global", False)
+            args.num_matches = opts.get("num_matches", 10)
+            args.agents = opts.get("agents")
+            args.original = opts.get("original", False)
+            args.no_sub = opts.get("no_sub", False)
+            args.no_trim = opts.get("no_trim", False)
+            args.no_cont = opts.get("no_cont", False)
+            args.min_lines = opts.get("min_lines") or 0
+            args.before = opts.get("before")
+            args.after = opts.get("after")
 
-        # Build and display equivalent CLI command
-        cmd_parts = ["aichat find"]
-        if args.keywords:
-            cmd_parts.append(f'"{args.keywords}"')
-        if args.global_search:
-            cmd_parts.append("-g")
-        if args.num_matches != 10:
-            cmd_parts.append(f"-n {args.num_matches}")
-        if args.agents:
-            cmd_parts.append(f"--agents {' '.join(args.agents)}")
-        if args.original:
-            cmd_parts.append("--original")
-        if args.no_sub:
-            cmd_parts.append("--no-sub")
-        if args.no_trim:
-            cmd_parts.append("--no-trim")
-        if args.no_cont:
-            cmd_parts.append("--no-cont")
-        if args.min_lines:
-            cmd_parts.append(f"--min-lines {args.min_lines}")
-        if args.before:
-            cmd_parts.append(f"--before {args.before}")
-        if args.after:
-            cmd_parts.append(f"--after {args.after}")
-        cmd_parts.append("--no-ui")  # Add --no-ui so they can re-run directly
-        print(f"\n→ {' '.join(cmd_parts)}\n", file=sys.stderr)
+            # Build and display equivalent CLI command
+            cmd_parts = ["aichat find"]
+            if args.keywords:
+                cmd_parts.append(f'"{args.keywords}"')
+            if args.global_search:
+                cmd_parts.append("-g")
+            if args.num_matches != 10:
+                cmd_parts.append(f"-n {args.num_matches}")
+            if args.agents:
+                cmd_parts.append(f"--agents {' '.join(args.agents)}")
+            if args.original:
+                cmd_parts.append("--original")
+            if args.no_sub:
+                cmd_parts.append("--no-sub")
+            if args.no_trim:
+                cmd_parts.append("--no-trim")
+            if args.no_cont:
+                cmd_parts.append("--no-cont")
+            if args.min_lines:
+                cmd_parts.append(f"--min-lines {args.min_lines}")
+            if args.before:
+                cmd_parts.append(f"--before {args.before}")
+            if args.after:
+                cmd_parts.append(f"--after {args.after}")
+            cmd_parts.append("--no-ui")
+            print(f"\n→ {' '.join(cmd_parts)}\n", file=sys.stderr)
 
-    # Parse keywords
-    keywords = (
-        [k.strip() for k in args.keywords.split(",") if k.strip()]
-        if args.keywords
-        else []
-    )
-
-    scope_line, tip_line = build_scope_lines(args)
-    print(scope_line, file=sys.stderr)
-    if tip_line:
-        print(tip_line, file=sys.stderr)
-    print(file=sys.stderr)  # Blank line for readability
-
-    # Search all agents
-    matching_sessions = search_all_agents(
-        keywords,
-        global_search=args.global_search,
-        num_matches=args.num_matches,
-        agents=args.agents,
-        claude_home=args.claude_home,
-        codex_home=args.codex_home,
-        original_only=args.original,
-        no_sub=args.no_sub,
-        no_trim=args.no_trim,
-        no_cont=args.no_cont,
-    )
-
-    # Filter by minimum lines if specified
-    if args.min_lines > 0:
-        matching_sessions = [s for s in matching_sessions if s.get("lines", 0) >= args.min_lines]
-
-    # Filter by time bounds if specified
-    if args.before or args.after:
-        matching_sessions = filter_sessions_by_time(
-            matching_sessions, before=args.before, after=args.after
-        )
-
-    if not matching_sessions:
-        scope = "all projects" if args.global_search else "current project"
-        keyword_msg = (
-            f" containing all keywords: {', '.join(keywords)}" if keywords else ""
-        )
-        if RICH_AVAILABLE:
-            console = Console()
-            console.print(f"[yellow]No sessions found{keyword_msg} in {scope}[/yellow]")
-        else:
-            print(f"No sessions found{keyword_msg} in {scope}", file=sys.stderr)
-        sys.exit(0)
-
-    # Display interactive UI
-    # ============================================================
-    # Default: Node UI (rich interactive interface)
-    # --simple-ui: Falls back to Rich table UI
-    # ============================================================
-    nonlaunch_flag = {"done": False}
-    action_handler = create_action_handler(shell_mode=args.shell, nonlaunch_flag=nonlaunch_flag)
-    limited_sessions = matching_sessions[: args.num_matches]
-    rpc_path = str(Path(__file__).parent / "action_rpc.py")
-
-    if not args.simple_ui:
-        focus_id = None
-        start_action = False
-        while True:
-            nonlaunch_flag["done"] = False
-            run_node_menu_ui(
-                limited_sessions,
-                keywords,
-                action_handler,
-                stderr_mode=args.shell,
-                focus_session_id=focus_id,
-                start_action=start_action,
-                rpc_path=rpc_path,
-                scope_line=scope_line,
-                tip_line=tip_line,
-            )
-            if nonlaunch_flag["done"]:
-                choice = prompt_post_action()
-                if choice == "back":
-                    focus_id = nonlaunch_flag.get("session_id")
-                    start_action = True
-                    continue
-            break
-    elif RICH_AVAILABLE:
-        selected_session = display_interactive_ui(
-            matching_sessions, keywords, stderr_mode=args.shell, num_matches=args.num_matches
-        )
-        if selected_session:
-            # Show action menu
-            action = show_action_menu(selected_session, stderr_mode=args.shell)
-            if action:
-                handle_action(selected_session, action, shell_mode=args.shell)
-    else:
-        # Fallback without rich
-        print("\nMatching sessions:")
-        for idx, session in enumerate(matching_sessions[: args.num_matches], 1):
-            print(
-                f"{idx}. [{session['agent_display']}] {session['session_id'][:16]}... | "
-                f"{session['project']} | {session.get('branch', 'N/A')}"
-            )
+        # Run search and display results
+        back_to_options = _run_search_and_display(args)
+        if back_to_options and use_options_ui:
+            continue  # Go back to options UI
+        break  # Exit
 
 
 if __name__ == "__main__":
