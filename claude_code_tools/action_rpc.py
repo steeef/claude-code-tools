@@ -70,7 +70,7 @@ def main() -> None:
     claude_home = request.get("claude_home")
     dest = request.get("dest")
 
-    if action not in {"path", "copy", "export"}:
+    if action not in {"path", "copy", "export", "lineage"}:
         _error("Unsupported action")
     if agent not in {"claude", "codex"}:
         _error("Unsupported agent")
@@ -156,6 +156,38 @@ def main() -> None:
                     _error("Missing file_path")
                 _quiet_call(handle_export_session, file_path, dest_override=dest)
                 _ok(f"Exported to {dest}", dest)
+
+        elif action == "lineage":
+            # Get continuation lineage for a session
+            from claude_code_tools.session_lineage import get_continuation_lineage
+
+            # Prefer file_path if provided, otherwise compute for claude
+            if file_path:
+                session_path = Path(file_path)
+            elif agent == "claude":
+                from claude_code_tools.find_claude_session import get_session_file_path
+
+                if not session_id or not cwd:
+                    _error("Missing session_id or cwd")
+                session_path = Path(get_session_file_path(session_id, cwd, claude_home=claude_home))
+            else:
+                _error("Missing file_path")
+
+            try:
+                lineage = get_continuation_lineage(session_path, export_missing=False)
+                lineage_data = []
+                for node in lineage:
+                    lineage_data.append({
+                        "session_file": str(node.session_file.name),
+                        "derivation_type": node.derivation_type,
+                        "exported_file": str(node.exported_file) if node.exported_file else None,
+                    })
+                # Return lineage as JSON in message field
+                payload = {"status": "ok", "message": "Lineage retrieved", "lineage": lineage_data}
+                sys.stdout.write(json.dumps(payload) + "\n")
+                sys.exit(0)
+            except Exception as e:
+                _ok("No lineage found", None)  # Not an error, just no history
 
     except Exception as exc:  # noqa: BLE001
         _error(str(exc))

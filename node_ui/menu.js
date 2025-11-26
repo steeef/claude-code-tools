@@ -864,6 +864,124 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
   );
 }
 
+function LineageView({session, rpcPath, onContinue, onBack, clearScreen}) {
+  const [stage, setStage] = useState('loading');
+  const [lineage, setLineage] = useState([]);
+  const [error, setError] = useState('');
+  const startedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (stage === 'loading' && !startedRef.current) {
+      startedRef.current = true;
+      if (!rpcPath) {
+        setError('RPC path missing');
+        setStage('done');
+        return;
+      }
+      const req = {
+        action: 'lineage',
+        agent: session.agent,
+        session_id: session.session_id,
+        file_path: session.file_path,
+        cwd: session.cwd,
+        claude_home: session.claude_home,
+      };
+      const proc = spawnSync('python3', [rpcPath], {
+        input: JSON.stringify(req),
+        encoding: 'utf8',
+      });
+      if (proc.error) {
+        setError(proc.error.message);
+        setStage('done');
+        return;
+      }
+      try {
+        const out = JSON.parse(proc.stdout || '{}');
+        if (out.status === 'ok' && out.lineage) {
+          setLineage(out.lineage);
+        }
+      } catch (e) {
+        // Ignore parse errors, just show empty lineage
+      }
+      setStage('done');
+    }
+  }, [stage, rpcPath, session]);
+
+  useInput((input, key) => {
+    if (stage !== 'done') return;
+    if (key.escape) {
+      clearScreen();
+      return onBack();
+    }
+    if (key.return) {
+      clearScreen();
+      return onContinue();
+    }
+  });
+
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(Text, null,
+        chalk.bgYellow.black(' Session Lineage '), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
+      h(
+        Text,
+        null,
+        colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+        chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+        colorize.lines(formatLines(session.lines)), ' | ',
+        colorize.date(date)
+      )
+    ),
+    h(Box, {marginTop: 1}),
+    stage === 'loading'
+      ? h(Text, {dimColor: true}, 'Loading session lineage...')
+      : error
+        ? h(Text, {color: 'red'}, error)
+        : h(
+            Box,
+            {flexDirection: 'column'},
+            lineage.length === 0
+              ? h(Text, {dimColor: true}, 'This is the original session (no continuation history)')
+              : h(
+                  Box,
+                  {flexDirection: 'column'},
+                  h(Text, null, chalk.cyan(`Found ${lineage.length} session(s) in continuation chain:`)),
+                  h(Box, {marginTop: 1}),
+                  ...lineage.map((node, i) =>
+                    h(
+                      Box,
+                      {key: i, flexDirection: 'column'},
+                      h(Text, null,
+                        `  ${i + 1}. `,
+                        chalk.white(node.session_file),
+                        node.derivation_type ? chalk.dim(` (${node.derivation_type})`) : ''
+                      ),
+                      node.exported_file
+                        ? h(Text, {dimColor: true}, `     Export: ${node.exported_file}`)
+                        : null
+                    )
+                  )
+                )
+          ),
+    h(Box, {marginTop: 1}),
+    stage === 'done'
+      ? h(Text, {dimColor: true}, 'Enter: continue to options  Esc: back')
+      : null
+  );
+}
+
 function ContinueForm({onSubmit, onBack, clearScreen, session}) {
   const [field, setField] = useState('agent');
   const [agent, setAgent] = useState(session.agent || 'claude');
@@ -1450,14 +1568,22 @@ function App() {
         if (value === 'suppress_resume') {
           setTrimSource('resume');
           switchScreen('trim');
-        } else if (value === 'continue') switchScreen('continue_form');
+        } else if (value === 'continue') switchScreen('lineage');
         else finish(value);
       },
       clearScreen,
     });
+  } else if (screen === 'lineage') {
+    view = h(LineageView, {
+      session,
+      rpcPath,
+      onContinue: () => switchScreen('continue_form'),
+      onBack: () => switchScreen('resume'),
+      clearScreen,
+    });
   } else if (screen === 'continue_form') {
     view = h(ContinueForm, {
-      onBack: () => switchScreen('resume'),
+      onBack: () => switchScreen('lineage'),
       onSubmit: (opts) => finish('continue', opts),
       session,
       clearScreen,

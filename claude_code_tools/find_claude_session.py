@@ -884,13 +884,58 @@ def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, 
     )
 
 
-def get_session_file_path(session_id: str, project_path: str, claude_home: Optional[str] = None) -> str:
-    """Get the full file path for a session."""
-    # Convert project path to Claude directory format
+def get_session_file_path(
+    session_id: str, project_path: str, claude_home: Optional[str] = None
+) -> str:
+    """Get the full file path for a session.
+
+    Supports both full and partial session IDs. If an exact match isn't found,
+    searches for sessions containing the given ID string.
+
+    Args:
+        session_id: Full or partial session UUID
+        project_path: Project working directory path
+        claude_home: Optional custom Claude home directory
+
+    Returns:
+        Full path to the session file
+
+    Raises:
+        FileNotFoundError: If session cannot be found
+        ValueError: If partial ID matches multiple sessions
+    """
     base_dir = get_claude_home(claude_home)
     encoded_path = project_path.replace("/", "-")
     claude_project_dir = base_dir / "projects" / encoded_path
-    return str(claude_project_dir / f"{session_id}.jsonl")
+
+    # Try exact match first (fast path)
+    exact_path = claude_project_dir / f"{session_id}.jsonl"
+    if exact_path.exists():
+        return str(exact_path)
+
+    # If exact match doesn't exist, search for partial matches
+    if not claude_project_dir.exists():
+        raise FileNotFoundError(
+            f"Claude project directory not found: {claude_project_dir}"
+        )
+
+    matches = []
+    for jsonl_file in claude_project_dir.glob("*.jsonl"):
+        if session_id in jsonl_file.stem:
+            matches.append(jsonl_file)
+
+    if len(matches) == 0:
+        raise FileNotFoundError(
+            f"Session '{session_id}' not found in {claude_project_dir}"
+        )
+    elif len(matches) == 1:
+        return str(matches[0])
+    else:
+        match_list = "\n  ".join(str(m.name) for m in matches)
+        raise ValueError(
+            f"Multiple sessions match '{session_id}':\n  {match_list}\n"
+            f"Please use a more specific session ID."
+        )
 
 
 def handle_export_session(session_file_path: str, dest_override: str | None = None, silent: bool = False) -> None:
