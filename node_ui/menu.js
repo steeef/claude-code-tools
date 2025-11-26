@@ -177,6 +177,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   const [numBuffer, setNumBuffer] = useState('');
   const [expanded, setExpanded] = useState({});  // { [session_id]: true | false }
   const [zoomAll, setZoomAll] = useState(false);  // global zoom state
+  const [resetting, setResetting] = useState(false);  // "blink" state for clean re-render
   const {stdout} = useStdout();
   const width = stdout?.columns || 80;
   const height = stdout?.rows || 24;
@@ -197,6 +198,15 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
     setScroll(nextScroll);
     setNumBuffer('');
   }, [initialIndex, maxItems]);
+
+  // "Blink" effect: after rendering minimal content, immediately render actual content
+  // This forces Ink to do a clean re-render instead of confused incremental update
+  React.useEffect(() => {
+    if (resetting) {
+      const timer = setTimeout(() => setResetting(false), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [resetting]);
 
   useInput((input, key) => {
     if (key.escape) {
@@ -250,10 +260,15 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
       }));
       return;
     }
-    // 'z' toggles zoom mode (expand all rows) - unconventional fix:
-    // clear screen + reset position to avoid Ink rendering artifacts
+    // 'z' toggles zoom mode (expand all rows)
+    // "Blink" approach: clearScreen + render minimal content first,
+    // then useEffect triggers second render with actual content.
+    // clearScreen() alone corrupted Ink's state; blink alone didn't clear old content.
+    // Combined: clearScreen clears terminal, minimal render resets Ink's state,
+    // then actual content renders fresh.
     if (input === 'z' || input === 'Z') {
       clearScreen();
+      setResetting(true);
       setIndex(0);
       setScroll(0);
       setExpanded({});  // clear individual expansions
@@ -266,6 +281,11 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
       setNumBuffer(candidate);
     }
   });
+
+  // "Blink" render: show minimal content to reset Ink's state, then actual content renders next tick
+  if (resetting) {
+    return h(Box, {flexDirection: 'column'}, h(Text, null, ' '));
+  }
 
   const kw = keywords.join(', ');
   const kwTrim = kw.length > width - 15 ? kw.slice(0, width - 18) + '…' : kw;
