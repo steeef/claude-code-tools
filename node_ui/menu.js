@@ -104,7 +104,7 @@ function writeResult(sessionId, action, kwargs = {}) {
   fs.closeSync(fd);
 }
 
-function SessionRow({session, active, index, width, pad}) {
+function SessionRow({session, active, index, width, pad, isExpanded}) {
   const id = (session.session_id || '').slice(0, 8);
   const anno = toAnno(session);
   const lines = formatLines(session.lines);
@@ -122,7 +122,35 @@ function SessionRow({session, active, index, width, pad}) {
   const branchPart = colorize.branch(branchRaw.padEnd(pad.branch));
   const linesPart = colorize.lines((lines || '').padEnd(pad.lines));
   const datePart = colorize.date((date || '').padEnd(pad.date));
-  const header = `${(index + 1).toString().padEnd(2)} ${agentIdPart} | ${projPart} | ${branchPart} | ${linesPart} | ${datePart}`;
+  // Show [−] when expanded, [+] when collapsed (dimmed to match line brightness)
+  const expandIcon = chalk.dim(isExpanded ? '[−]' : '[+]');
+  const header = `${(index + 1).toString().padEnd(2)} ${agentIdPart} | ${projPart} | ${branchPart} | ${linesPart} | ${datePart} ${expandIcon}`;
+
+  // When expanded, show up to 4 lines of preview; when collapsed, show 1 line
+  const previewLines = [];
+  if (preview) {
+    if (isExpanded) {
+      // Split preview into multiple lines, up to 4
+      const words = preview.split(/\s+/);
+      let currentLine = '';
+      for (const word of words) {
+        if ((currentLine + ' ' + word).length > maxPreview) {
+          if (currentLine) previewLines.push(currentLine);
+          currentLine = word;
+          if (previewLines.length >= 4) break;
+        } else {
+          currentLine = currentLine ? currentLine + ' ' + word : word;
+        }
+      }
+      if (currentLine && previewLines.length < 4) previewLines.push(currentLine);
+      if (previewLines.length === 0) previewLines.push(trimmedPreview);
+    } else {
+      previewLines.push(trimmedPreview);
+    }
+  } else {
+    previewLines.push('No preview available');
+  }
+
   return h(
     Box,
     {flexDirection: 'column'},
@@ -134,9 +162,9 @@ function SessionRow({session, active, index, width, pad}) {
       },
       `${active ? figures.pointer : ' '} ${header}`
     ),
-    preview
-      ? h(Text, {dimColor: true}, trimmedPreview)
-      : h(Text, {dimColor: true}, 'No preview available')
+    ...previewLines.map((line, i) =>
+      h(Text, {key: i, dimColor: true}, '  ' + line)
+    )
   );
 }
 
@@ -147,6 +175,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   const [index, setIndex] = useState(initialIndex);
   const [scroll, setScroll] = useState(0);
   const [numBuffer, setNumBuffer] = useState('');
+  const [expanded, setExpanded] = useState({});  // { [session_id]: true | false }
   const {stdout} = useStdout();
   const width = stdout?.columns || 80;
   const height = stdout?.rows || 24;
@@ -208,6 +237,15 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         setNumBuffer('');
         return next;
       });
+    }
+    // SPACE toggles expansion for the currently selected row
+    if (input === ' ') {
+      const row = sessions[index];
+      setExpanded(prev => ({
+        ...prev,
+        [row.session_id]: !prev[row.session_id]
+      }));
+      return;
     }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 0 && num <= 9) {
@@ -281,6 +319,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
           index: clampedScroll + i,
           width,
           pad,
+          isExpanded: !!expanded[s.session_id],
         })
       )
     ),
@@ -290,7 +329,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
       h(
         Text,
         {dimColor: true},
-        `Enter: select  Esc: quit  ↑/↓ or j/k: move  number+Enter: jump ${numBuffer ? '[typing ' + numBuffer + ']' : ''}`
+        `Enter: select  Esc: quit  ↑/↓ or j/k: move  Space: expand/collapse  number+Enter: jump ${numBuffer ? '[typing ' + numBuffer + ']' : ''}`
       )
     ),
     scopeLine
