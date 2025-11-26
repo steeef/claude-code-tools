@@ -251,6 +251,33 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         return next;
       });
     }
+    // Page up with 'u' - move by maxItems
+    if (input === 'u') {
+      setIndex((i) => {
+        const next = Math.max(0, i - maxItems);
+        // Adjust scroll: if new index is above viewport, scroll to show it
+        setScroll((prev) => (next < prev ? next : prev));
+        setNumBuffer('');
+        return next;
+      });
+      return;
+    }
+    // Page down with 'd' - move by maxItems
+    if (input === 'd') {
+      setIndex((i) => {
+        const next = Math.min(sessions.length - 1, i + maxItems);
+        // Adjust scroll: if new index is below viewport, scroll to show it
+        setScroll((prev) => {
+          if (next >= prev + maxItems) {
+            return Math.min(next, Math.max(0, sessions.length - maxItems));
+          }
+          return prev;
+        });
+        setNumBuffer('');
+        return next;
+      });
+      return;
+    }
     // SPACE toggles expansion for the currently selected row
     if (input === ' ') {
       const row = sessions[index];
@@ -363,7 +390,13 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
       h(
         Text,
         {dimColor: true},
-        `Enter: select  Esc: quit  ↑/↓ or j/k: move  Space: expand  z: zoom all  ${numBuffer ? '[' + numBuffer + ']' : ''}`
+        (() => {
+          const currentRowExpanded = zoomAll || !!expanded[sessions[index]?.session_id];
+          const spaceLabel = currentRowExpanded ? 'Space: collapse row' : 'Space: expand row';
+          const zoomLabel = zoomAll ? 'z: unzoom' : 'z: zoom all';
+          const numLabel = numBuffer ? ` [${numBuffer}]` : '';
+          return `Enter: select  Esc: quit  ↑/↓/j/k: move  u/d: page  ${spaceLabel}  ${zoomLabel}  num+Enter: jump${numLabel}`;
+        })()
       )
     ),
     scopeLine
