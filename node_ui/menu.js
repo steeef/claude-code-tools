@@ -163,7 +163,7 @@ function SessionRow({session, active, index, width, pad, isExpanded}) {
       `${active ? figures.pointer : ' '} ${header}`
     ),
     ...previewLines.map((line, i) =>
-      h(Text, {key: i, dimColor: true}, '  ' + line)
+      h(Text, {key: i, dimColor: true}, '     ' + line)  // 5 spaces to align with agent name column
     )
   );
 }
