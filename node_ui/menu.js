@@ -168,6 +168,26 @@ function SessionRow({session, active, index, width, pad, isExpanded}) {
   );
 }
 
+// Calculate actual line count for a session when expanded (1 header + N preview lines)
+function calcExpandedLines(session, maxPreview) {
+  const preview = session.preview || '';
+  if (!preview) return 2; // header + "No preview available"
+  const words = preview.split(/\s+/);
+  let lineCount = 0;
+  let currentLine = '';
+  for (const word of words) {
+    if ((currentLine + ' ' + word).length > maxPreview) {
+      if (currentLine) lineCount++;
+      currentLine = word;
+      if (lineCount >= 4) break; // max 4 preview lines
+    } else {
+      currentLine = currentLine ? currentLine + ' ' + word : word;
+    }
+  }
+  if (currentLine && lineCount < 4) lineCount++;
+  return 1 + Math.max(1, lineCount); // header + at least 1 preview line
+}
+
 function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   const initialIndex = focusId
     ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId))
@@ -184,20 +204,57 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   const headerRows = 3; // title + blank + maybe kw
   const footerRows = 2; // instruction line + spacing
   const availableRows = Math.max(1, height - headerRows - footerRows);
-  // Lines per item: 2 when normal (header + 1 preview), 5 when zoomed (header + 4 preview)
-  const linesPerItem = zoomAll ? 5 : 2;
-  const maxItems = Math.max(1, Math.floor(availableRows / linesPerItem));
+  const maxPreview = Math.max(0, width - 30);
+
+  // Pre-compute actual expanded line counts for all sessions (memoized)
+  const expandedLineCounts = React.useMemo(
+    () => sessions.map(s => calcExpandedLines(s, maxPreview)),
+    [maxPreview]
+  );
+
+  // In normal mode: fixed 2 lines per item
+  // In zoom mode: use actual line counts, computed dynamically from scroll position
+  const normalMaxItems = Math.max(1, Math.floor(availableRows / 2));
+
+  // Compute visible rows, effective maxItems, and clampedScroll based on zoom state
+  const {visible, maxItems, clampedScroll} = React.useMemo(() => {
+    if (!zoomAll) {
+      // Normal mode: fixed height per row
+      const clamped = Math.max(0, Math.min(scroll, Math.max(0, sessions.length - normalMaxItems)));
+      return {
+        visible: sessions.slice(clamped, clamped + normalMaxItems),
+        maxItems: normalMaxItems,
+        clampedScroll: clamped
+      };
+    }
+    // Zoom mode: greedily fill viewport based on actual heights
+    let totalLines = 0;
+    let count = 0;
+    const clamped = Math.max(0, Math.min(scroll, sessions.length - 1));
+    for (let i = clamped; i < sessions.length; i++) {
+      const rowLines = expandedLineCounts[i];
+      if (totalLines + rowLines > availableRows && count > 0) break;
+      totalLines += rowLines;
+      count++;
+    }
+    return {
+      visible: sessions.slice(clamped, clamped + count),
+      maxItems: Math.max(1, count),
+      clampedScroll: clamped
+    };
+  }, [zoomAll, scroll, normalMaxItems, availableRows, expandedLineCounts]);
 
   // Ensure scroll starts at top, unless focused row is below viewport
+  // Use normalMaxItems (not dynamic maxItems) to avoid dependency cycle
   React.useEffect(() => {
     const top = 0;
     let nextScroll = top;
-    if (initialIndex >= maxItems) {
+    if (initialIndex >= normalMaxItems) {
       nextScroll = Math.max(0, initialIndex - 1);
     }
     setScroll(nextScroll);
     setNumBuffer('');
-  }, [initialIndex, maxItems]);
+  }, [initialIndex, normalMaxItems]);
 
   // "Blink" effect: after rendering minimal content, immediately render actual content
   // This forces Ink to do a clean re-render instead of confused incremental update
@@ -316,8 +373,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
 
   const kw = keywords.join(', ');
   const kwTrim = kw.length > width - 15 ? kw.slice(0, width - 18) + '…' : kw;
-  const clampedScroll = Math.max(0, Math.min(scroll, Math.max(0, sessions.length - maxItems)));
-  const visible = sessions.slice(clampedScroll, clampedScroll + maxItems);
+  // visible and clampedScroll now computed in useMemo above
 
   const pad = (() => {
     const proj = Math.max(...sessions.map((s) => (s.project || '').length), 0);
