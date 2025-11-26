@@ -394,7 +394,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
           const currentRowExpanded = zoomAll || !!expanded[sessions[index]?.session_id];
           const spaceLabel = currentRowExpanded ? 'Space: collapse row' : 'Space: expand row';
           const zoomLabel = zoomAll ? 'z: unzoom' : 'z: zoom all';
-          const numLabel = numBuffer ? ` [${numBuffer}]` : '';
+          const numLabel = numBuffer ? ` [typing ${numBuffer}]` : '';
           return `Enter: select  Esc: quit  ↑/↓/j/k: move  u/d: page  ${spaceLabel}  ${zoomLabel}  num+Enter: jump${numLabel}`;
         })()
       )
