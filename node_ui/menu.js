@@ -176,13 +176,16 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   const [scroll, setScroll] = useState(0);
   const [numBuffer, setNumBuffer] = useState('');
   const [expanded, setExpanded] = useState({});  // { [session_id]: true | false }
+  const [zoomAll, setZoomAll] = useState(false);  // global zoom state
   const {stdout} = useStdout();
   const width = stdout?.columns || 80;
   const height = stdout?.rows || 24;
   const headerRows = 3; // title + blank + maybe kw
   const footerRows = 2; // instruction line + spacing
   const availableRows = Math.max(1, height - headerRows - footerRows);
-  const maxItems = Math.max(1, Math.floor(availableRows / 2)); // 2 lines per item
+  // Lines per item: 2 when normal (header + 1 preview), 5 when zoomed (header + 4 preview)
+  const linesPerItem = zoomAll ? 5 : 2;
+  const maxItems = Math.max(1, Math.floor(availableRows / linesPerItem));
 
   // Ensure scroll starts at top, unless focused row is below viewport
   React.useEffect(() => {
@@ -245,6 +248,16 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         ...prev,
         [row.session_id]: !prev[row.session_id]
       }));
+      return;
+    }
+    // 'z' toggles zoom mode (expand all rows) - unconventional fix:
+    // clear screen + reset position to avoid Ink rendering artifacts
+    if (input === 'z' || input === 'Z') {
+      clearScreen();
+      setIndex(0);
+      setScroll(0);
+      setExpanded({});  // clear individual expansions
+      setZoomAll(prev => !prev);
       return;
     }
     const num = Number(input);
@@ -310,7 +323,8 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
     ),
     h(
       Box,
-      {flexDirection: 'column', gap: 0},
+      // React key changes with zoomAll to force full remount, avoiding Ink render artifacts
+      {key: zoomAll ? 'zoomed' : 'normal', flexDirection: 'column', gap: 0},
       visible.map((s, i) =>
         h(SessionRow, {
           key: s.session_id,
@@ -319,7 +333,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
           index: clampedScroll + i,
           width,
           pad,
-          isExpanded: !!expanded[s.session_id],
+          isExpanded: zoomAll || !!expanded[s.session_id],
         })
       )
     ),
@@ -329,7 +343,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
       h(
         Text,
         {dimColor: true},
-        `Enter: select  Esc: quit  ↑/↓ or j/k: move  Space: expand/collapse  number+Enter: jump ${numBuffer ? '[typing ' + numBuffer + ']' : ''}`
+        `Enter: select  Esc: quit  ↑/↓ or j/k: move  Space: expand  z: zoom all  ${numBuffer ? '[' + numBuffer + ']' : ''}`
       )
     ),
     scopeLine
