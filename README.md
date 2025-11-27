@@ -3,33 +3,19 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
-## ⚠️ Breaking Change Notice (v0.3.0)
+## ⚠️ Breaking Change (v0.3.0)
 
-**All session management commands are now consolidated under the `aichat` command group.**
+All session management commands are now consolidated under `aichat`. Previous flat
+commands (`claude-continue`, `find-claude-session`, etc.) have been removed.
 
-Flat commands (`claude-continue`, `find-claude-session`, etc.) have been **removed**.
-All functionality is now accessed via `aichat` subcommands:
-
-| Old Command | New Command |
-|-------------|-------------|
-| `claude-continue <session>` | `aichat resume <session>` |
-| `codex-continue <session>` | `aichat resume <session>` |
-| `find-claude-session <keywords>` | `aichat find-claude <keywords>` |
-| `find-codex-session <keywords>` | `aichat find-codex <keywords>` |
-| `find-session <keywords>` | `aichat find <keywords>` |
-| `export-claude-session <session>` | `aichat export <session>` |
-| `export-codex-session <session>` | `aichat export <session>` |
-| `session-menu <session>` | `aichat menu <session>` |
-| `trim-session <session>` | `aichat trim <session>` |
-| `smart-trim <session>` | `aichat smart-trim <session>` |
-| `find-original-session <session>` | `aichat find-original <session>` |
-| `find-derived-sessions <session>` | `aichat find-derived <session>` |
-| `delete-session <session>` | `aichat delete <session>` |
-
-**Key improvements:**
-- `aichat resume` and `aichat export` now **auto-detect session type** (Claude or Codex)
-- Support for **cross-agent continuation** (continue a Claude session with Codex, or vice versa)
-- Cleaner, more intuitive command structure
+| Old | New |
+|-----|-----|
+| `claude-continue`, `codex-continue` | `aichat resume` |
+| `find-claude-session`, `find-codex-session`, `find-session` | `aichat find`, `aichat find-claude`, `aichat find-codex` |
+| `export-claude-session`, `export-codex-session` | `aichat export` |
+| `session-menu` | `aichat menu` or just `aichat <session-id>` |
+| `trim-session`, `smart-trim` | `aichat trim`, `aichat smart-trim` |
+| `delete-session` | `aichat delete` |
 
 ## Table of Contents
 
@@ -186,9 +172,12 @@ The `aichat` command is your unified interface for managing Claude Code and Code
 sessions. It provides search, resume, export, trim, query, and navigation tools
 through an interactive Node.js-based UI.
 
-**Key principle:** Wherever a session ID is expected, you can omit it—the command
-will find the latest Claude and Codex sessions for the current project/branch and
-let you choose.
+**Key principles:**
+
+- **Session ID optional:** Wherever a session ID is expected, you can omit it—the
+  command will find the latest sessions for the current project/branch and let you choose.
+- **No extra API costs:** Features that use AI agents (smart-trim, query, continue)
+  leverage your existing Claude or Codex subscriptions—no additional API charges.
 
 ```bash
 aichat --help              # See all subcommands
@@ -247,22 +236,20 @@ aichat                         # Same as: aichat resume (no args)
 aichat <session-id>            # Same as: aichat resume <session-id>
 ```
 
-**Variants:** `aichat resume-claude`, `aichat resume-codex`
-
 **Action menu options:**
 
 - **Show path** — Display session file location
 - **Copy** — Copy session file to another location
 - **Export** — Export to readable text file (.txt)
-- **Query** — Ask any question about the session (uses agent in non-interactive mode with parallel sub-agents)
+- **Query** — Ask any question about the session (uses agent in non-interactive mode with sub-agents or other strategies)
 
 **Resume submenu options:**
 
 - **Resume as-is** — Continue the session directly
 - **Clone and resume** — Create a copy and resume the copy
-- **Trim + resume** — Compress large tool results, then resume
-- **Smart trim + resume** — AI-powered trimming (EXPERIMENTAL)
-- **Continue with context** — Transfer context to a fresh session using sub-agents (useful when running out of context)
+- **Trim + resume** — Truncate large tool results and assistant messages, then resume
+- **Smart trim + resume** — AI-powered trimming using Claude Agent SDK (EXPERIMENTAL)
+- **Continue with context** — Transfer context to a fresh session using sub-agents or other strategies (useful when running out of context)
 
 ---
 
