@@ -35,24 +35,13 @@ All functionality is now accessed via `aichat` subcommands:
 
 - [🚀 Quick Start](#quick-start)
 - [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
-  - [Overview](#tmux-cli-bridging-claude-code-and-interactive-clis)
-  - [Deep Dive](#tmux-cli-deep-dive)
 - [💬 aichat — Session Management](#aichat-session-management)
-  - [aichat find — unified search across agents](#aichat-find)
-  - [aichat find-claude — search Claude sessions](#aichat-find-claude)
-  - [aichat find-codex — search Codex sessions](#aichat-find-codex)
-  - [aichat menu — direct session access](#aichat-menu)
-  - [aichat trim — compress sessions](#aichat-trim)
-  - [aichat smart-trim — intelligent AI-powered trimming](#aichat-smart-trim-experimental)
-  - [aichat export — export sessions](#aichat-export)
-  - [aichat find-original — trace session lineage](#aichat-find-original)
-  - [aichat find-derived — find derived sessions](#aichat-find-derived)
-  - [aichat delete — safely delete sessions](#aichat-delete)
-  - [aichat continue — continue when out of context](#aichat-continue)
+  - [Quick Reference](#quick-reference)
+  - [Interactive Node UI](#interactive-node-ui)
+  - [Subcommands Overview](#subcommands)
+  - [Detailed Documentation](#detailed-documentation)
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
 - [🔐 Utilities](#utilities)
-  - [vault — encrypted .env backup](#vault)
-  - [env-safe — safe .env inspection](#env-safe)
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
 - [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
 - [📚 Documentation](#documentation)
@@ -198,8 +187,147 @@ all CLI coding sessions inside tmux sessions.
 <a id="aichat-session-management"></a>
 # 💬 aichat — Session Management
 
-The `aichat` command provides a unified interface for all session-related tools. All subcommands work with both Claude Code and Codex sessions where applicable.
+The `aichat` command is your unified interface for managing Claude Code and Codex
+sessions. It provides search, resume, export, trim, query, and navigation tools
+through an interactive Node.js-based UI.
 
+## Quick Reference
+
+```bash
+aichat --help              # See all subcommands
+aichat <subcommand> --help # Help for specific subcommand
+
+# Common patterns - most commands accept:
+#   - Full session file path: ~/.claude/projects/.../abc123.jsonl
+#   - Full session ID: abc123-def456-789-...
+#   - Partial session ID: abc123 (if unique match)
+```
+
+## Interactive Node UI
+
+All session tools feature a modern interactive UI built with
+[Ink](https://github.com/vadimdemedes/ink) (React for CLIs).
+
+**Features:**
+- Keyboard navigation (arrows, vim-like j/k)
+- Session preview expand/collapse (Space)
+- Zoom mode for detailed view (z)
+- Page navigation (u/d)
+- Number+Enter for direct selection
+- Interactive find options with time filters
+
+**Fallback:** Use `--simple-ui` for the simpler Rich-based UI.
+
+---
+
+## Subcommands
+
+### aichat find — unified search
+
+Search across both Claude Code and Codex sessions.
+
+```bash
+aichat find                    # All sessions in current project
+aichat find "keywords"         # Search by keywords
+aichat find -g                 # Global (all projects)
+aichat find --agents claude    # Filter by agent
+```
+
+### aichat find-claude / find-codex — agent-specific search
+
+```bash
+aichat find-claude "keywords"  # Claude sessions only
+aichat find-codex "keywords"   # Codex sessions only
+```
+
+### aichat resume — quick session resumption
+
+Resume sessions without searching. Finds latest sessions for current
+project/branch.
+
+```bash
+aichat resume                  # Shows recent sessions for current project
+aichat resume-claude           # Claude sessions only
+aichat resume-codex            # Codex sessions only
+aichat resume <session-id>     # Resume specific session
+```
+
+### aichat menu — direct session access
+
+Access a specific session's action menu directly.
+
+```bash
+aichat menu <session-id>       # By ID (partial OK)
+aichat menu /path/to/session   # By file path
+aichat <session-id>            # Shortcut for: aichat menu
+```
+
+### aichat export — export to text
+
+Export sessions to readable text format.
+
+```bash
+aichat export                  # Export latest session for current project
+aichat export <session-id>     # Export specific session
+aichat export-claude           # Claude sessions only
+aichat export-codex            # Codex sessions only
+```
+
+### aichat trim — compress sessions
+
+Trim large tool results and assistant messages to reduce context usage.
+
+```bash
+aichat trim <session-id>       # Interactive trim options
+aichat smart-trim <session-id> # AI-powered intelligent trimming (EXPERIMENTAL)
+```
+
+### aichat continue — continue out-of-context sessions
+
+Transfer context from an old session to a fresh one using parallel sub-agents.
+
+```bash
+aichat continue <session-id>           # Auto-detect agent
+aichat continue <session-id> --agent codex  # Cross-agent continuation
+```
+
+### aichat query — ask questions about sessions
+
+Query a session using the agent in non-interactive mode.
+
+From the action menu, select "Query this session..." to ask any question.
+The session is exported and analyzed using parallel sub-agents (Claude) or
+smart reading strategies (Codex).
+
+**Example questions:**
+- "Summarize what was accomplished"
+- "What files were modified?"
+- "What was the last task being worked on?"
+
+### aichat find-original / find-derived — session lineage
+
+Trace session derivation chains.
+
+```bash
+aichat find-original <session-id>  # Find original from derived
+aichat find-derived <session-id>   # Find all derived sessions
+```
+
+### aichat delete — safely delete sessions
+
+```bash
+aichat delete <session-id>     # Delete with confirmation
+aichat delete <session-id> --force  # Skip confirmation
+```
+
+---
+
+## Detailed Documentation
+
+For comprehensive documentation on each subcommand, see the sections below or
+run `aichat <subcommand> --help`.
+
+<a id="aichat-continue-detail"></a>
 ## 🔄 aichat continue — seamlessly continue sessions running out of context
 
 When your coding agent session is running out of context, instead of manually
@@ -1294,6 +1422,7 @@ each using a different LLM.
 
 - Python 3.11+
 - uv (for installation)
+- **Node.js 16+** (for interactive UI - typically already installed with Claude Code)
 - tmux (for tmux-cli functionality)
 - SOPS (for vault functionality)
 
