@@ -747,9 +747,10 @@ def extract_session_metadata_codex(session_file: Path) -> Optional[dict]:
                     entry = json.loads(line)
                     if entry.get("type") == "session_meta":
                         payload = entry.get("payload", {})
+                        git_info = payload.get("git", {})
                         return {
                             "cwd": payload.get("cwd"),
-                            "branch": payload.get("branch"),
+                            "branch": git_info.get("branch"),
                         }
                 except json.JSONDecodeError:
                     continue

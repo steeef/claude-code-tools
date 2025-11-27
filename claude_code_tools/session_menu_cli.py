@@ -33,6 +33,7 @@ from claude_code_tools.session_utils import (
     find_session_file,
     is_malformed_session,
 )
+from claude_code_tools.find_session import extract_first_user_message
 
 
 def is_sidechain_session(session_file: Path) -> bool:
@@ -343,6 +344,15 @@ Examples:
         except Exception:
             pass
 
+        # Extract preview (first user message), clean for single-line display
+        preview = ""
+        try:
+            raw_preview = extract_first_user_message(session_file, agent) or ""
+            # Replace newlines with spaces for single-line display
+            preview = raw_preview.replace('\n', ' ').strip()
+        except Exception:
+            pass
+
         session_dict = {
             "agent": agent,
             "agent_display": agent.title(),
@@ -351,7 +361,7 @@ Examples:
             "create_time": session_file.stat().st_ctime,
             "lines": line_count,
             "project": project_name,
-            "preview": "",
+            "preview": preview,
             "cwd": project_path,
             "branch": git_branch or "",
             "file_path": str(session_file),
