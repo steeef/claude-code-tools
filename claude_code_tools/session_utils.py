@@ -216,6 +216,29 @@ def get_codex_home(cli_arg: Optional[str] = None) -> Path:
     return Path.home() / ".codex"
 
 
+def encode_claude_project_path(project_path: str) -> str:
+    """
+    Encode a project path to Claude's directory naming format.
+
+    Claude Code replaces certain characters when creating project directories.
+    This function replicates that encoding to ensure path reconstruction matches.
+
+    Known character replacements:
+    - '/' → '-' (path separators)
+    - '_' → '-' (underscores, common in temp directories)
+    - '.' → '-' (dots, e.g., .claude-trace directories)
+
+    Args:
+        project_path: Absolute path to project directory
+            (e.g., /Users/foo/Git/my_project)
+
+    Returns:
+        Encoded path suitable for Claude's projects directory
+            (e.g., -Users-foo-Git-my-project)
+    """
+    return project_path.replace("/", "-").replace("_", "-").replace(".", "-")
+
+
 def resolve_session_path(
     session_id_or_path: str, claude_home: Optional[str] = None
 ) -> Path:
@@ -251,7 +274,7 @@ def resolve_session_path(
     # Try Claude Code path first
     cwd = os.getcwd()
     base_dir = get_claude_home(claude_home)
-    encoded_path = cwd.replace("/", "-")
+    encoded_path = encode_claude_project_path(cwd)
     claude_project_dir = base_dir / "projects" / encoded_path
 
     claude_matches: List[Path] = []
@@ -341,7 +364,7 @@ def _get_claude_session_id(
     """Get Claude Code session ID for current directory."""
     # Convert path to Claude directory format
     base_dir = get_claude_home(claude_home)
-    encoded_path = cwd.replace("/", "-")
+    encoded_path = encode_claude_project_path(cwd)
     claude_project_dir = base_dir / "projects" / encoded_path
 
     if not claude_project_dir.exists():

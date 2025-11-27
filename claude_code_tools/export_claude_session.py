@@ -11,6 +11,7 @@ from typing import Optional, TextIO
 
 from claude_code_tools.session_utils import (
     get_claude_home,
+    encode_claude_project_path,
     resolve_session_path,
     default_export_path,
 )
@@ -389,7 +390,7 @@ def main():
         # Reconstruct Claude Code session file path
         cwd = os.getcwd()
         base_dir = get_claude_home(args.claude_home)
-        encoded_path = cwd.replace("/", "-")
+        encoded_path = encode_claude_project_path(cwd)
         claude_project_dir = base_dir / "projects" / encoded_path
         session_file = claude_project_dir / f"{session_id}.jsonl"
 

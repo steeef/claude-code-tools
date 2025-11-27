@@ -70,6 +70,7 @@ from claude_code_tools.smart_trim_core import identify_trimmable_lines
 from claude_code_tools.smart_trim import trim_lines
 from claude_code_tools.session_utils import (
     get_claude_home,
+    encode_claude_project_path,
     is_valid_session,
     is_malformed_session,
     extract_cwd_from_session,
@@ -97,8 +98,8 @@ def get_claude_project_dir(claude_home: Optional[str] = None) -> Path:
     # Use provided claude_home, CLAUDE_CONFIG_DIR env var, or default to ~/.claude
     base_dir = get_claude_home(claude_home)
 
-    # Replace / with - to match Claude's directory naming convention
-    project_path = cwd.replace("/", "-")
+    # Encode path to match Claude's directory naming convention
+    project_path = encode_claude_project_path(cwd)
     claude_dir = base_dir / "projects" / project_path
     return claude_dir
 
@@ -905,7 +906,7 @@ def get_session_file_path(
         ValueError: If partial ID matches multiple sessions
     """
     base_dir = get_claude_home(claude_home)
-    encoded_path = project_path.replace("/", "-")
+    encoded_path = encode_claude_project_path(project_path)
     claude_project_dir = base_dir / "projects" / encoded_path
 
     # Try exact match first (fast path)
