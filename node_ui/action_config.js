@@ -63,7 +63,9 @@ export function filteredActions(isSidechain = false) {
 }
 
 export function defaultExportPath(session) {
-  const base = path.join(process.cwd(), 'exported-sessions');
+  // Use session's project directory if available, fallback to cwd
+  const projectDir = session?.cwd || process.cwd();
+  const base = path.join(projectDir, 'exported-sessions');
   const agentDir = session?.agent === 'codex' ? 'codex' : 'claude';
 
   // Get original filename from file_path or reconstruct from session_id

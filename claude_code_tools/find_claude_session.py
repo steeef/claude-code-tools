@@ -944,10 +944,18 @@ def handle_export_session(session_file_path: str, dest_override: str | None = No
     from datetime import datetime
 
     try:
-        # Generate default export path
-        session_id = Path(session_file_path).stem
+        # Generate default export path using session's project directory
+        session_file = Path(session_file_path)
+        session_id = session_file.stem
         today = datetime.now().strftime("%Y%m%d")
-        output_dir = Path.cwd() / "exported-sessions"
+
+        # Infer project directory from session metadata
+        project_dir = extract_cwd_from_session(session_file)
+        if project_dir:
+            output_dir = Path(project_dir) / "exported-sessions"
+        else:
+            output_dir = Path.cwd() / "exported-sessions"
+
         default_path = output_dir / f"{today}-claude-session-{session_id}.txt"
 
         if dest_override is None:

@@ -22,7 +22,11 @@ from datetime import timezone
 from pathlib import Path
 from typing import List, Optional
 
-from claude_code_tools.session_utils import get_claude_home, resolve_session_path
+from claude_code_tools.session_utils import (
+    get_claude_home,
+    resolve_session_path,
+    encode_claude_project_path,
+)
 
 
 def strip_ansi_codes(text: str) -> str:
@@ -229,7 +233,7 @@ Below are some special instructions from the user. Prioritize these in combinati
         # Construct new session file path
         home_dir = get_claude_home(claude_home)
         cwd = Path.cwd()
-        encoded_path = str(cwd).replace("/", "-")
+        encoded_path = encode_claude_project_path(str(cwd))
         new_session_file = home_dir / "projects" / encoded_path / f"{new_session_id}.jsonl"
 
         # Determine path format for exported chat log (relative if in cwd, absolute otherwise)

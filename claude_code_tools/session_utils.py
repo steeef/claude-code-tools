@@ -882,13 +882,25 @@ def default_export_path(
     Args:
         session_file: Path to the session file
         agent: Agent type ('claude' or 'codex')
-        base_dir: Base directory (defaults to cwd)
+        base_dir: Base directory (defaults to session's project dir, then cwd)
 
     Returns:
         Path to the export file
     """
     if base_dir is None:
-        base_dir = Path.cwd()
+        # Infer base_dir from session file metadata
+        if agent == "codex":
+            metadata = extract_session_metadata_codex(session_file)
+            if metadata and metadata.get("cwd"):
+                base_dir = Path(metadata["cwd"])
+        else:  # claude
+            cwd = extract_cwd_from_session(session_file)
+            if cwd:
+                base_dir = Path(cwd)
+
+        # Fall back to cwd if inference fails
+        if base_dir is None:
+            base_dir = Path.cwd()
 
     agent_dir = "codex" if agent == "codex" else "claude"
     filename = session_file.stem + ".txt"

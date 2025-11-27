@@ -678,10 +678,18 @@ def handle_export_session(session_file_path: str, dest_override: str | None = No
     from claude_code_tools.export_codex_session import export_session_to_markdown as do_export
     from datetime import datetime
 
-    # Generate default export path
-    session_id = Path(session_file_path).stem
+    # Generate default export path using session's project directory
+    session_file = Path(session_file_path)
+    session_id = session_file.stem
     today = datetime.now().strftime("%Y%m%d")
-    output_dir = Path.cwd() / "exported-sessions"
+
+    # Infer project directory from session metadata
+    metadata = extract_session_metadata(session_file)
+    if metadata and metadata.get("cwd"):
+        output_dir = Path(metadata["cwd"]) / "exported-sessions"
+    else:
+        output_dir = Path.cwd() / "exported-sessions"
+
     default_path = output_dir / f"{today}-codex-session-{session_id}.txt"
 
     print(f"\nDefault export path: {default_path}")

@@ -124,8 +124,10 @@ def main() -> None:
                 if not session_stem:
                     _error("Missing dest and session info")
                 prefix = "codex" if agent == "codex" else "claude"
+                # Use session's project directory if available, fallback to cwd
+                base_dir = Path(cwd) if cwd else Path.cwd()
                 dest = str(
-                    Path.cwd()
+                    base_dir
                     / "exported-sessions"
                     / f"{today}-{prefix}-session-{session_stem}.txt"
                 )
