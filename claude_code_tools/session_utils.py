@@ -271,23 +271,23 @@ def resolve_session_path(
     # Otherwise, treat it as a session ID (full or partial) and try to find it
     session_id = session_id_or_path.strip()
 
-    # Try Claude Code path first
-    cwd = os.getcwd()
+    # Search ALL Claude project directories globally
     base_dir = get_claude_home(claude_home)
-    encoded_path = encode_claude_project_path(cwd)
-    claude_project_dir = base_dir / "projects" / encoded_path
+    projects_dir = base_dir / "projects"
 
     claude_matches: List[Path] = []
-    if claude_project_dir.exists():
-        # Look for exact match first
-        exact_path = claude_project_dir / f"{session_id}.jsonl"
-        if exact_path.exists():
-            return exact_path
-
-        # Look for partial matches
-        for jsonl_file in claude_project_dir.glob("*.jsonl"):
-            if session_id in jsonl_file.stem:
-                claude_matches.append(jsonl_file)
+    if projects_dir.exists():
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            # Look for exact match first (fast path)
+            exact_path = project_dir / f"{session_id}.jsonl"
+            if exact_path.exists():
+                return exact_path
+            # Collect partial matches
+            for jsonl_file in project_dir.glob("*.jsonl"):
+                if session_id in jsonl_file.stem:
+                    claude_matches.append(jsonl_file)
 
     # Try Codex path - search through sessions directory
     codex_home = Path.home() / ".codex"
@@ -307,7 +307,7 @@ def resolve_session_path(
         # Not found anywhere
         raise FileNotFoundError(
             f"Session '{session_id}' not found in Claude Code "
-            f"({claude_project_dir}) or Codex ({sessions_dir}) directories"
+            f"({projects_dir}) or Codex ({sessions_dir}) directories"
         )
     elif len(all_matches) == 1:
         # Single match - perfect!

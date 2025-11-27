@@ -914,21 +914,20 @@ def get_session_file_path(
     if exact_path.exists():
         return str(exact_path)
 
-    # If exact match doesn't exist, search for partial matches
+    # If project directory doesn't exist, return constructed path
+    # (maintains backward compatibility - caller can handle non-existent path)
     if not claude_project_dir.exists():
-        raise FileNotFoundError(
-            f"Claude project directory not found: {claude_project_dir}"
-        )
+        return str(exact_path)
 
+    # Search for partial matches in the project directory
     matches = []
     for jsonl_file in claude_project_dir.glob("*.jsonl"):
         if session_id in jsonl_file.stem:
             matches.append(jsonl_file)
 
     if len(matches) == 0:
-        raise FileNotFoundError(
-            f"Session '{session_id}' not found in {claude_project_dir}"
-        )
+        # No partial matches found, return constructed path
+        return str(exact_path)
     elif len(matches) == 1:
         return str(matches[0])
     else:
