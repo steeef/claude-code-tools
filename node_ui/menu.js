@@ -36,6 +36,7 @@ const selectTarget = payload.select_target || 'action'; // screen after selectio
 const resultsTitle = payload.results_title || null; // custom title for results
 const startZoomed = payload.start_zoomed || false; // start with all rows expanded
 const lineageBackTarget = payload.lineage_back_target || 'resume'; // where lineage goes back to
+const directAction = payload.direct_action || null; // if set, execute this action immediately after selection
 // Find options form data
 const findOptions = payload.find_options || {};
 const findVariant = payload.find_variant || 'find'; // 'find', 'find-claude', 'find-codex'
@@ -234,16 +235,19 @@ function calcExpandedLines(session, maxPreview) {
   return 1 + Math.max(1, lineCount); // header + at least 1 preview line
 }
 
-function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
-  const initialIndex = focusId
-    ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId))
-    : 0;
+function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, onChangeIndex}) {
+  const clampIndex = React.useCallback(
+    (i) => Math.max(0, Math.min(i, sessions.length - 1)),
+    [sessions.length]
+  );
+  const initialIndex = clampIndex(focusIndex);
   const [index, setIndex] = useState(initialIndex);
   const [scroll, setScroll] = useState(0);
   const [numBuffer, setNumBuffer] = useState('');
   const [expanded, setExpanded] = useState({});  // { [session_id]: true | false }
   const [zoomAll, setZoomAll] = useState(startZoomed);  // global zoom state
   const [resetting, setResetting] = useState(false);  // "blink" state for clean re-render
+
   const {stdout} = useStdout();
   const width = stdout?.columns || 80;
   const height = stdout?.rows || 24;
@@ -261,6 +265,20 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   // In normal mode: fixed 2 lines per item
   // In zoom mode: use actual line counts, computed dynamically from scroll position
   const normalMaxItems = Math.max(1, Math.floor(availableRows / 2));
+
+  // Sync with parent's focusIndex when it changes
+  React.useEffect(() => {
+    const next = clampIndex(focusIndex);
+    if (next !== index) {
+      setIndex(next);
+      const maxScroll = Math.max(0, sessions.length - normalMaxItems);
+      let nextScroll = scroll;
+      if (next < nextScroll) nextScroll = next;
+      else if (next >= nextScroll + normalMaxItems) nextScroll = next - normalMaxItems + 1;
+      nextScroll = Math.max(0, Math.min(nextScroll, maxScroll));
+      setScroll(nextScroll);
+    }
+  }, [focusIndex, clampIndex, index, normalMaxItems, scroll, sessions.length]);
 
   // Compute visible rows, effective maxItems, and clampedScroll based on zoom state
   const {visible, maxItems, clampedScroll} = React.useMemo(() => {
@@ -332,10 +350,12 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
           if (target >= prev + maxItems) return target - maxItems + 1;
           return prev;
         });
+        if (onChangeIndex) onChangeIndex(target);
         setNumBuffer('');
         return;
       }
       clearScreen();
+      if (onChangeIndex) onChangeIndex(index);
       return onSelect(index);
     }
     if (key.upArrow || input === 'k') {
@@ -343,6 +363,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         const next = Math.max(0, i - 1);
         setScroll((prev) => (next < prev ? next : prev));
         setNumBuffer('');
+        if (onChangeIndex) onChangeIndex(next);
         return next;
       });
     }
@@ -351,6 +372,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         const next = Math.min(sessions.length - 1, i + 1);
         setScroll((prev) => (next >= prev + maxItems ? prev + 1 : prev));
         setNumBuffer('');
+        if (onChangeIndex) onChangeIndex(next);
         return next;
       });
     }
@@ -361,6 +383,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         // Adjust scroll: if new index is above viewport, scroll to show it
         setScroll((prev) => (next < prev ? next : prev));
         setNumBuffer('');
+        if (onChangeIndex) onChangeIndex(next);
         return next;
       });
       return;
@@ -377,6 +400,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
           return prev;
         });
         setNumBuffer('');
+        if (onChangeIndex) onChangeIndex(next);
         return next;
       });
       return;
@@ -1537,6 +1561,7 @@ function App() {
   const [current, setCurrent] = useState(
     focusId ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId)) : 0
   );
+  const [selectedSession, setSelectedSession] = useState(null); // Directly store selected session
   const [nonLaunch, setNonLaunch] = useState(null);
   const [trimSource, setTrimSource] = useState(null); // Track where we entered trim from
 
@@ -1545,7 +1570,8 @@ function App() {
     return Math.min(Math.max(current, 0), sessions.length - 1);
   }, [current]);
 
-  const session = sessions[safeCurrent];
+  // Use directly selected session if available, otherwise compute from index
+  const session = selectedSession || sessions[safeCurrent];
 
   const clearScreen = React.useCallback(() => {
     try {
@@ -1597,10 +1623,27 @@ function App() {
 
   if (screen === 'results') {
     view = h(ResultsView, {
+      focusIndex: current,  // Pass parent's index to sync selection
       onSelect: (idx) => {
+        const selected = sessions[idx];
+        setSelectedSession(selected); // Store session directly
         setCurrent(idx);
+        // If directAction is set, route to appropriate screen (same logic as ActionView.onDone)
+        if (directAction) {
+          if (['path', 'copy', 'export'].includes(directAction)) {
+            setNonLaunch({action: directAction});
+            switchScreen('nonlaunch');
+          } else if (directAction === 'resume_menu') {
+            switchScreen('resume');
+          } else {
+            // Actions like smart_trim_resume execute directly
+            finish(directAction);
+          }
+          return;
+        }
         switchScreen(selectTarget);
       },
+      onChangeIndex: (idx) => setCurrent(idx),
       onQuit: backToOptions,
       clearScreen,
     });
@@ -1622,9 +1665,12 @@ function App() {
       clearScreen,
     });
   } else if (screen === 'resume') {
+    // If selectTarget was 'resume', we came directly from results; back goes to results
+    // Otherwise we came from action menu; back goes to action
+    const resumeBackTarget = selectTarget === 'resume' ? 'results' : 'action';
     view = h(ResumeView, {
       session,
-      onBack: () => switchScreen('action'),
+      onBack: () => switchScreen(resumeBackTarget),
       onDone: (value) => {
         if (value === 'suppress_resume') {
           setTrimSource('resume');
@@ -1658,9 +1704,12 @@ function App() {
     });
   } else if (screen === 'trim_menu') {
     // Trim-only menu (for aichat trim command)
+    // If selectTarget was 'trim_menu', we came from results; back goes to results
+    // Otherwise just exit
+    const trimBackTarget = selectTarget === 'trim_menu' ? 'results' : null;
     view = h(TrimView, {
       session,
-      onBack: () => exit({exitCode: 0}),
+      onBack: () => trimBackTarget ? switchScreen(trimBackTarget) : exit({exitCode: 0}),
       onDone: (value) => {
         if (value === 'suppress_resume') {
           setTrimSource('trim_menu');
@@ -1670,11 +1719,13 @@ function App() {
       clearScreen,
     });
   } else if (screen === 'nonlaunch') {
+    // If we came via directAction, back goes to results; otherwise to action menu
+    const nonlaunchBackTarget = directAction ? 'results' : 'action';
     view = h(NonLaunchView, {
       session,
       action: nonLaunch.action,
       rpcPath,
-      onBack: () => switchScreen('action'),
+      onBack: () => switchScreen(nonlaunchBackTarget),
       onExit: quit,
       clearScreen,
     });

@@ -89,6 +89,206 @@ _FIND_CTX_SETTINGS = {
 }
 
 
+def _find_and_run_session_ui(
+    session_id: str | None,
+    agent_constraint: str,  # 'claude', 'codex', or 'both'
+    start_screen: str,
+    select_target: str | None = None,
+    results_title: str | None = None,
+    direct_action: str | None = None,
+    action_kwargs: dict | None = None,
+) -> None:
+    """
+    Find session(s) and run Node UI for the specified action.
+
+    If session_id is provided, routes to session_menu_cli.
+    Otherwise, finds latest sessions for current project/branch and shows UI.
+
+    Args:
+        session_id: Optional explicit session ID or path
+        agent_constraint: 'claude', 'codex', or 'both'
+        start_screen: Screen to show when single session found
+        select_target: Screen to go to after selection (multiple sessions)
+        results_title: Title for selection screen
+        direct_action: If set, execute this action directly instead of showing UI
+        action_kwargs: Optional kwargs to pass to action
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from claude_code_tools.find_claude_session import (
+        find_sessions as find_claude_sessions,
+        get_claude_project_dir,
+    )
+    from claude_code_tools.find_codex_session import (
+        find_sessions as find_codex_sessions,
+        get_codex_home,
+    )
+    from claude_code_tools.node_menu_ui import run_node_menu_ui
+    from claude_code_tools.session_menu_cli import execute_action
+    from claude_code_tools.session_utils import default_export_path
+
+    if session_id:
+        # Route to session_menu_cli with appropriate start screen
+        sys.argv = [
+            sys.argv[0].replace('aichat', 'session-menu'),
+            '--start-screen', start_screen,
+            session_id,
+        ]
+        from claude_code_tools.session_menu_cli import main as menu_main
+        menu_main()
+        return
+
+    # No session provided - find latest sessions for current project and branch
+    current_branch = None
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, check=True
+        )
+        current_branch = result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    candidates = []
+
+    # Find Claude sessions if applicable
+    if agent_constraint in ('claude', 'both'):
+        claude_sessions = find_claude_sessions([], global_search=False)
+        if current_branch and claude_sessions:
+            claude_sessions = [s for s in claude_sessions if s[7] == current_branch]
+
+        if claude_sessions:
+            s = claude_sessions[0]  # Most recent
+            claude_dir = get_claude_project_dir()
+            session_file = claude_dir / f"{s[0]}.jsonl"
+
+            candidates.append({
+                "agent": "claude",
+                "agent_display": "Claude",
+                "session_id": s[0],
+                "mod_time": s[1],
+                "create_time": s[2],
+                "lines": s[3],
+                "project": s[4],
+                "preview": s[5],
+                "cwd": s[6],
+                "branch": s[7] or "",
+                "file_path": str(session_file),
+                "default_export_path": str(default_export_path(session_file, "claude")),
+                "is_trimmed": s[8] if len(s) > 8 else False,
+                "derivation_type": None,
+                "is_sidechain": s[9] if len(s) > 9 else False,
+            })
+
+    # Find Codex sessions if applicable
+    if agent_constraint in ('codex', 'both'):
+        codex_home = get_codex_home()
+        if codex_home.exists():
+            codex_sessions = find_codex_sessions(codex_home, [], global_search=False)
+            if current_branch and codex_sessions:
+                codex_sessions = [
+                    s for s in codex_sessions if s.get("branch") == current_branch
+                ]
+
+            if codex_sessions:
+                s = codex_sessions[0]  # Most recent
+                codex_file = Path(s.get("file_path", ""))
+                candidates.append({
+                    "agent": "codex",
+                    "agent_display": "Codex",
+                    "session_id": s["session_id"],
+                    "mod_time": s.get("mod_time", 0),
+                    "create_time": s.get("mod_time", 0),
+                    "lines": s.get("lines", 0),
+                    "project": s.get("project", ""),
+                    "preview": s.get("preview", ""),
+                    "cwd": s.get("cwd", ""),
+                    "branch": s.get("branch", ""),
+                    "file_path": s.get("file_path", ""),
+                    "default_export_path": str(
+                        default_export_path(codex_file, "codex")
+                    ) if codex_file.exists() else "",
+                    "is_trimmed": s.get("is_trimmed", False),
+                    "derivation_type": None,
+                    "is_sidechain": False,
+                })
+
+    if not candidates:
+        agent_desc = {
+            'claude': 'Claude',
+            'codex': 'Codex',
+            'both': 'Claude/Codex',
+        }.get(agent_constraint, 'any')
+        print(
+            f"No {agent_desc} sessions found for current project/branch.",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+    # Handler for when user selects and acts
+    def handler(sess, action, kwargs=None):
+        session_file = Path(sess["file_path"])
+        merged_kwargs = {**(action_kwargs or {}), **(kwargs or {})}
+        execute_action(
+            action,
+            sess["agent"],
+            session_file,
+            sess["cwd"],
+            action_kwargs=merged_kwargs if merged_kwargs else None,
+        )
+
+    rpc_path = str(Path(__file__).parent / "action_rpc.py")
+
+    # If direct_action specified, execute it immediately for single session
+    if direct_action and len(candidates) == 1:
+        handler(candidates[0], direct_action, action_kwargs)
+        return
+
+    # Create handler that may execute direct_action after selection
+    def selection_handler(sess, action, kwargs=None):
+        if direct_action:
+            # Execute direct_action instead of whatever came from UI
+            handler(sess, direct_action, action_kwargs)
+        else:
+            handler(sess, action, kwargs)
+
+    if len(candidates) == 1:
+        # Single session - go directly to start_screen
+        run_node_menu_ui(
+            candidates,
+            [],
+            selection_handler,
+            start_screen=start_screen,
+            rpc_path=rpc_path,
+            direct_action=direct_action,
+        )
+    else:
+        # Multiple sessions - show selection first
+        branch_info = f" on branch '{current_branch}'" if current_branch else ""
+        agent_desc = {
+            'claude': 'Claude',
+            'codex': 'Codex',
+            'both': 'Claude/Codex',
+        }.get(agent_constraint, 'Claude/Codex')
+        scope_text = (
+            f"Most recent sessions from {agent_desc} in this project{branch_info}"
+        )
+        run_node_menu_ui(
+            candidates,
+            [],
+            selection_handler,
+            start_screen="results",
+            select_target=select_target or start_screen,
+            results_title=results_title or f" Select session for {start_screen} ",
+            start_zoomed=True,
+            scope_line=scope_text,
+            rpc_path=rpc_path,
+            direct_action=direct_action,
+        )
+
+
 @main.command("find", context_settings=_FIND_CTX_SETTINGS, add_help_option=False)
 @click.pass_context
 def find(ctx):
@@ -188,112 +388,72 @@ def menu(ctx):
 
 
 @main.command("trim")
-@click.argument("session", required=True)
+@click.argument("session", required=False)
 @click.option("--simple-ui", is_flag=True, help="Use simple CLI trim instead of Node UI")
 def trim(session, simple_ui):
     """Trim/resume session - shows menu of trim options.
 
-    Opens Node UI with trim/resume options (resume, clone, trim+resume,
-    smart-trim, continue). Use --simple-ui for direct CLI trim.
+    If no session ID provided, finds latest session for current project/branch.
+    Opens Node UI with trim/resume options (trim+resume, smart-trim).
+    Use --simple-ui for direct CLI trim.
     """
     import sys
-    from pathlib import Path
-    from claude_code_tools.session_utils import detect_agent_from_path, find_session_file
-    from claude_code_tools.node_menu_ui import run_node_menu_ui
-    from claude_code_tools.session_menu_cli import execute_action
 
     if simple_ui:
+        if not session:
+            print("Error: --simple-ui requires a session ID", file=sys.stderr)
+            sys.exit(1)
         # Fall back to old trim-session CLI
         sys.argv = [sys.argv[0].replace('aichat', 'trim-session'), session]
         from claude_code_tools.trim_session import main as trim_main
         trim_main()
         return
 
-    # Resolve session
-    detected_agent = None
-    session_file = None
-    project_path = None
-
-    input_path = Path(session).expanduser()
-    if input_path.exists() and input_path.is_file():
-        session_file = input_path
-        detected_agent = detect_agent_from_path(session_file)
-    else:
-        result = find_session_file(session)
-        if result:
-            detected_agent, session_file, project_path, _ = result
-
-    if not session_file:
-        print(f"Error: Could not find session: {session}", file=sys.stderr)
-        sys.exit(1)
-
-    agent = detected_agent or "claude"
-    session_id = session_file.stem
-
-    # Build session dict for Node UI
-    line_count = 0
-    try:
-        with open(session_file, "r", encoding="utf-8") as f:
-            line_count = sum(1 for _ in f)
-    except Exception:
-        pass
-
-    # Extract project info if not already set
-    if not project_path:
-        if agent == "claude":
-            from claude_code_tools.session_utils import extract_cwd_from_session
-            project_path = extract_cwd_from_session(session_file) or str(Path.cwd())
-        else:
-            project_path = str(Path.cwd())
-
-    session_dict = {
-        "agent": agent,
-        "agent_display": agent.title(),
-        "session_id": session_id,
-        "mod_time": session_file.stat().st_mtime,
-        "create_time": session_file.stat().st_ctime,
-        "lines": line_count,
-        "project": Path(project_path).name,
-        "preview": "",
-        "cwd": project_path,
-        "branch": "",
-        "file_path": str(session_file),
-        "is_trimmed": False,
-        "derivation_type": None,
-        "is_sidechain": False,
-    }
-
-    def handler(sess, action, kwargs=None):
-        execute_action(
-            action, agent, session_file, project_path,
-            action_kwargs=kwargs,
-        )
-
-    rpc_path = str(Path(__file__).parent / "action_rpc.py")
-    run_node_menu_ui(
-        [session_dict], [session_id], handler,
-        start_screen="trim_menu",
-        rpc_path=rpc_path,
+    _find_and_run_session_ui(
+        session_id=session,
+        agent_constraint='both',
+        start_screen='trim_menu',
+        select_target='trim_menu',
+        results_title=' Which session to trim? ',
     )
 
 
 @main.command("smart-trim", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
 @click.pass_context
 def smart_trim(ctx):
-    """Smart trim using Claude SDK agents (EXPERIMENTAL)."""
+    """Smart trim using Claude SDK agents (EXPERIMENTAL).
+
+    If no session ID provided, finds latest session for current project/branch.
+    """
     import sys
-    sys.argv = [sys.argv[0].replace('aichat', 'smart-trim')] + ctx.args
-    from claude_code_tools.smart_trim import main as smart_trim_main
-    smart_trim_main()
+    args = ctx.args
+    session_id = args[0] if args and not args[0].startswith('-') else None
+
+    if session_id:
+        # Pass to existing smart_trim CLI
+        sys.argv = [sys.argv[0].replace('aichat', 'smart-trim')] + args
+        from claude_code_tools.smart_trim import main as smart_trim_main
+        smart_trim_main()
+    else:
+        # Find latest session and execute smart_trim_resume directly
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='trim_menu',  # Fallback if multiple sessions
+            select_target='trim_menu',
+            results_title=' Which session to smart-trim? ',
+            direct_action='smart_trim_resume',
+        )
 
 
 @main.command("export", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
 @click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False), help="Force export with specific agent")
-@click.argument("session", required=True)
+@click.argument("session", required=False)
 @click.pass_context
 def export_session(ctx, agent, session):
     """Export session to text/markdown format.
 
+    If no session ID provided, finds latest session for current project/branch.
     Auto-detects session type and uses matching export command.
     Use --agent to override and force export with a specific agent.
     """
@@ -301,6 +461,18 @@ def export_session(ctx, agent, session):
     from pathlib import Path
     from claude_code_tools.session_utils import detect_agent_from_path, find_session_file
 
+    if not session:
+        # No session provided - find latest and export directly
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='action',
+            results_title=' Which session to export? ',
+            direct_action='export',
+        )
+        return
+
+    # Session provided - existing behavior
     # Try to detect session type
     detected_agent = None
     session_file = None
@@ -321,19 +493,19 @@ def export_session(ctx, agent, session):
         # User explicitly specified agent
         export_agent = agent.lower()
         if detected_agent and detected_agent != export_agent:
-            print(f"\nℹ️  Detected {detected_agent.upper()} session")
-            print(f"ℹ️  Exporting with {export_agent.upper()} (user specified)")
+            print(f"\nDetected {detected_agent.upper()} session")
+            print(f"Exporting with {export_agent.upper()} (user specified)")
         else:
-            print(f"\nℹ️  Exporting with {export_agent.upper()} (user specified)")
+            print(f"\nExporting with {export_agent.upper()} (user specified)")
     elif detected_agent:
         # Use detected agent
         export_agent = detected_agent
-        print(f"\nℹ️  Detected {detected_agent.upper()} session")
-        print(f"ℹ️  Exporting with {export_agent.upper()}")
+        print(f"\nDetected {detected_agent.upper()} session")
+        print(f"Exporting with {export_agent.upper()}")
     else:
         # Default to Claude if cannot detect
         export_agent = "claude"
-        print(f"\n⚠️  Could not detect session type, defaulting to CLAUDE")
+        print(f"\nCould not detect session type, defaulting to CLAUDE")
 
     print()
 
@@ -351,25 +523,61 @@ def export_session(ctx, agent, session):
 @main.command("export-claude", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
 @click.pass_context
 def export_claude(ctx):
-    """Export Claude Code session to text/markdown format."""
+    """Export Claude Code session to text/markdown format.
+
+    If no session ID provided, finds latest Claude session for current
+    project/branch.
+    """
     import sys
-    sys.argv = [sys.argv[0].replace('aichat', 'export-claude-session')] + ctx.args
-    from claude_code_tools.export_claude_session import (
-        main as export_claude_main,
-    )
-    export_claude_main()
+    args = ctx.args
+    session_id = args[0] if args and not args[0].startswith('-') else None
+
+    if session_id:
+        # Pass to existing export CLI
+        sys.argv = [sys.argv[0].replace('aichat', 'export-claude-session')] + args
+        from claude_code_tools.export_claude_session import (
+            main as export_claude_main,
+        )
+        export_claude_main()
+    else:
+        # Find latest Claude session and export directly
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='claude',
+            start_screen='action',
+            results_title=' Which Claude session to export? ',
+            direct_action='export',
+        )
 
 
 @main.command("export-codex", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
 @click.pass_context
 def export_codex(ctx):
-    """Export Codex session to text/markdown format."""
+    """Export Codex session to text/markdown format.
+
+    If no session ID provided, finds latest Codex session for current
+    project/branch.
+    """
     import sys
-    sys.argv = [sys.argv[0].replace('aichat', 'export-codex-session')] + ctx.args
-    from claude_code_tools.export_codex_session import (
-        main as export_codex_main,
-    )
-    export_codex_main()
+    args = ctx.args
+    session_id = args[0] if args and not args[0].startswith('-') else None
+
+    if session_id:
+        # Pass to existing export CLI
+        sys.argv = [sys.argv[0].replace('aichat', 'export-codex-session')] + args
+        from claude_code_tools.export_codex_session import (
+            main as export_codex_main,
+        )
+        export_codex_main()
+    else:
+        # Find latest Codex session and export directly
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='codex',
+            start_screen='action',
+            results_title=' Which Codex session to export? ',
+            direct_action='export',
+        )
 
 
 @main.command("delete", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
@@ -391,155 +599,15 @@ def resume_session(ctx):
     Shows resume menu with options: resume as-is, clone, trim+resume,
     smart-trim, or continue with context.
     """
-    import sys
-    from pathlib import Path
-
-    # Check if session argument was provided
     args = ctx.args
-    session_provided = args and not args[0].startswith('-')
-
-    if session_provided:
-        # Route to session_menu_cli with --start-screen resume
-        sys.argv = [sys.argv[0].replace('aichat', 'session-menu'), '--start-screen', 'resume'] + args
-        from claude_code_tools.session_menu_cli import main as menu_main
-        menu_main()
-    else:
-        # No session provided - find latest sessions for current project and branch
-        import subprocess
-        from claude_code_tools.find_claude_session import (
-            find_sessions as find_claude_sessions,
-        )
-        from claude_code_tools.find_codex_session import (
-            find_sessions as find_codex_sessions,
-            get_codex_home,
-        )
-        from claude_code_tools.node_menu_ui import run_node_menu_ui
-        from claude_code_tools.session_menu_cli import execute_action
-
-        # Get current git branch
-        current_branch = None
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True, text=True, check=True
-            )
-            current_branch = result.stdout.strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
-
-        # Find Claude sessions for current project
-        claude_sessions = find_claude_sessions([], global_search=False)
-
-        # Filter by current branch if available
-        if current_branch and claude_sessions:
-            # Claude tuple index 7 is git_branch
-            claude_sessions = [s for s in claude_sessions if s[7] == current_branch]
-
-        # Find Codex sessions for current project
-        codex_home = get_codex_home()
-        codex_sessions = []
-        if codex_home.exists():
-            codex_sessions = find_codex_sessions(codex_home, [], global_search=False)
-            # Filter by current branch if available
-            if current_branch and codex_sessions:
-                codex_sessions = [s for s in codex_sessions if s.get("branch") == current_branch]
-
-        # Build session dicts for Node UI
-        candidates = []
-
-        from claude_code_tools.session_utils import default_export_path
-
-        if claude_sessions:
-            # Claude returns tuple: (session_id, mod_time, create_time, line_count,
-            #                        project_name, preview, project_path, git_branch, is_trimmed, is_sidechain)
-            s = claude_sessions[0]  # Most recent
-            # Get the actual file path
-            from claude_code_tools.find_claude_session import get_claude_project_dir
-            claude_dir = get_claude_project_dir()
-            session_file = claude_dir / f"{s[0]}.jsonl"
-
-            candidates.append({
-                "agent": "claude",
-                "agent_display": "Claude",
-                "session_id": s[0],
-                "mod_time": s[1],
-                "create_time": s[2],
-                "lines": s[3],
-                "project": s[4],
-                "preview": s[5],
-                "cwd": s[6],
-                "branch": s[7] or "",
-                "file_path": str(session_file),
-                "default_export_path": str(default_export_path(session_file, "claude")),
-                "is_trimmed": s[8] if len(s) > 8 else False,
-                "derivation_type": None,
-                "is_sidechain": s[9] if len(s) > 9 else False,
-            })
-
-        if codex_sessions:
-            # Codex returns dict with keys: session_id, project, branch,
-            #                               lines, preview, cwd, file_path, mod_time, is_trimmed
-            s = codex_sessions[0]  # Most recent
-            codex_file = Path(s.get("file_path", ""))
-            candidates.append({
-                "agent": "codex",
-                "agent_display": "Codex",
-                "session_id": s["session_id"],
-                "mod_time": s.get("mod_time", 0),
-                "create_time": s.get("mod_time", 0),
-                "lines": s.get("lines", 0),
-                "project": s.get("project", ""),
-                "preview": s.get("preview", ""),
-                "cwd": s.get("cwd", ""),
-                "branch": s.get("branch", ""),
-                "file_path": s.get("file_path", ""),
-                "default_export_path": str(default_export_path(codex_file, "codex")) if codex_file.exists() else "",
-                "is_trimmed": s.get("is_trimmed", False),
-                "derivation_type": None,
-                "is_sidechain": False,
-            })
-
-        if not candidates:
-            print("No sessions found for current project/branch.", file=sys.stderr)
-            sys.exit(1)
-
-        # Handler for when user selects and resumes
-        def handler(sess, action, kwargs=None):
-            session_file = Path(sess["file_path"])
-            execute_action(
-                action,
-                sess["agent"],
-                session_file,
-                sess["cwd"],
-                action_kwargs=kwargs,
-            )
-
-        rpc_path = str(Path(__file__).parent / "action_rpc.py")
-
-        if len(candidates) == 1:
-            # Single session - go directly to resume menu
-            run_node_menu_ui(
-                candidates,
-                [],
-                handler,
-                start_screen="resume",
-                rpc_path=rpc_path,
-            )
-        else:
-            # Multiple sessions - show selection first
-            branch_info = f" on branch '{current_branch}'" if current_branch else ""
-            scope_text = f"Most recent sessions from Claude/Codex in this project{branch_info}"
-            run_node_menu_ui(
-                candidates,
-                [],
-                handler,
-                start_screen="results",
-                select_target="resume",
-                results_title=" Which session to resume? ",
-                start_zoomed=True,
-                scope_line=scope_text,
-                rpc_path=rpc_path,
-            )
+    session_id = args[0] if args and not args[0].startswith('-') else None
+    _find_and_run_session_ui(
+        session_id=session_id,
+        agent_constraint='both',
+        start_screen='resume',
+        select_target='resume',
+        results_title=' Which session to resume? ',
+    )
 
 
 if __name__ == "__main__":

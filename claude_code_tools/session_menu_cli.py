@@ -179,7 +179,9 @@ def execute_action(
             from claude_code_tools.find_codex_session import (
                 handle_smart_trim_resume_codex,
             )
-            handle_smart_trim_resume_codex(str(session_file), codex_home)
+            handle_smart_trim_resume_codex(
+                {"file_path": str(session_file)}, codex_home
+            )
 
     elif action == "continue":
         # Continue with context in fresh session

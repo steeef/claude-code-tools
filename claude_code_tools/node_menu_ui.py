@@ -37,6 +37,7 @@ def _write_payload(
     results_title: str | None = None,
     start_zoomed: bool = False,
     lineage_back_target: str | None = None,
+    direct_action: str | None = None,
 ) -> Path:
     """Write payload to a temp file and return its path."""
     payload = {
@@ -52,6 +53,7 @@ def _write_payload(
         "results_title": results_title,
         "start_zoomed": start_zoomed,
         "lineage_back_target": lineage_back_target,
+        "direct_action": direct_action,
     }
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix="-node-ui.json")
     Path(tmp.name).write_text(json.dumps(payload), encoding="utf-8")
@@ -107,6 +109,7 @@ def run_node_menu_ui(
     results_title: str | None = None,
     start_zoomed: bool = False,
     lineage_back_target: str | None = None,
+    direct_action: str | None = None,
 ) -> str | None:
     """Launch Node UI and dispatch selected action.
 
@@ -123,6 +126,7 @@ def run_node_menu_ui(
         results_title: Custom title for results view
         start_zoomed: Start with all rows expanded
         lineage_back_target: Screen to go back to from lineage (default 'resume')
+        direct_action: If set, execute this action immediately after selection
     """
     data_path = _write_payload(
         sessions,
@@ -137,6 +141,7 @@ def run_node_menu_ui(
         results_title=results_title,
         start_zoomed=start_zoomed,
         lineage_back_target=lineage_back_target,
+        direct_action=direct_action,
     )
     out_fd, out_path = tempfile.mkstemp(suffix="-node-ui-out.json")
     os.close(out_fd)
