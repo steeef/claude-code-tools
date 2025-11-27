@@ -3,19 +3,10 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
-## ⚠️ Breaking Change (v0.3.0)
+## ⚠️ Breaking Change (v1.0)
 
-All session management commands are now consolidated under `aichat`. Previous flat
-commands (`claude-continue`, `find-claude-session`, etc.) have been removed.
-
-| Old | New |
-|-----|-----|
-| `claude-continue`, `codex-continue` | `aichat resume` |
-| `find-claude-session`, `find-codex-session`, `find-session` | `aichat find`, `aichat find-claude`, `aichat find-codex` |
-| `export-claude-session`, `export-codex-session` | `aichat export` |
-| `session-menu` | `aichat menu` or just `aichat <session-id>` |
-| `trim-session`, `smart-trim` | `aichat trim`, `aichat smart-trim` |
-| `delete-session` | `aichat delete` |
+All session tools are now under `aichat`. Use `aichat find` instead of
+`find-claude-session`/`find-codex-session`, and similarly for other commands.
 
 ## Table of Contents
 
@@ -199,78 +190,87 @@ you through filtering options, so you don't need to memorize CLI flags.
 
 ```bash
 aichat find                    # All sessions in current project (shows UI)
-aichat find "keywords"         # Search by keywords
+aichat find "keywords"         # Search by keywords (comma-separated, AND logic)
 aichat find -g                 # Global search (all projects)
 ```
 
-**Variants:**
+**Variants:** `aichat find-claude`, `aichat find-codex`
 
-- `aichat find-claude` — Claude sessions only
-- `aichat find-codex` — Codex sessions only
-
-**Common CLI options** (or just run `aichat find` and use the UI):
+**CLI options** (run `aichat find --help` for full details):
 
 | Option | Description |
 |--------|-------------|
 | `-g, --global` | Search all projects |
-| `-n N` | Limit to N results |
-| `--original` | Exclude trimmed/continued sessions |
-| `--agents claude` | Filter by agent |
-| `--before`, `--after` | Time filters (YYYYMMDD or MM/DD/YY) |
+| `-n N` | Limit to N results (default: 10) |
+| `--agents claude` | Filter by agent (claude, codex, or both) |
+| `--original` | Only original sessions (excludes trimmed/continued/sub-agent) |
+| `--no-sub` | Exclude sub-agent sessions |
+| `--no-trim` | Exclude trimmed sessions |
+| `--no-cont` | Exclude continued sessions |
+| `--min-lines N` | Only sessions with at least N lines |
+| `--before DATE` | Sessions modified before DATE |
+| `--after DATE` | Sessions modified after DATE |
+| `--simple-ui` | Use Rich table UI instead of Node UI |
+| `--no-ui` | Skip UI, run search directly with CLI args |
 
-After selecting a session, you'll see the **action menu** with options to show
-path, copy, export, query, or access resume options.
+Date formats: `YYYYMMDD`, `YYYY-MM-DD`, `MM/DD/YY`, with optional time `THH:MM:SS`
 
 ![find-claude-session.png](demos/find-claude-session.png)
 
+**Direct access:** You can also access a session's menu directly with
+`aichat menu <session>` or just `aichat <session>`. If session ID is omitted,
+you'll choose from the latest Claude and Codex sessions.
+
 ---
 
-## aichat resume — Resume & Manage Sessions
+## Session Actions
 
-Access a session and choose how to resume or manage it.
-
-```bash
-aichat resume                  # Latest session(s) for current project
-aichat resume <session-id>     # Specific session
-aichat                         # Same as: aichat resume (no args)
-aichat <session-id>            # Same as: aichat resume <session-id>
-```
-
-**Action menu options:**
+After selecting a session (via find or direct access), the action menu offers:
 
 - **Show path** — Display session file location
 - **Copy** — Copy session file to another location
 - **Export** — Export to readable text file (.txt)
-- **Query** — Ask any question about the session (uses agent in non-interactive mode with sub-agents or other strategies)
+- **Query** — Ask any question about the session (uses agent in non-interactive
+  mode with sub-agents or other strategies)
+- **Resume options** — See [aichat resume](#aichat-resume--resume-options) below
 
-**Resume submenu options:**
+---
+
+## aichat resume — Resume Options
+
+Resume or continue a session with various strategies:
+
+```bash
+aichat resume                  # Latest session(s) for current project
+aichat resume <session-id>     # Specific session
+```
+
+**Options:**
 
 - **Resume as-is** — Continue the session directly
 - **Clone and resume** — Create a copy and resume the copy
 - **Trim + resume** — Truncate large tool results and assistant messages, then resume
 - **Smart trim + resume** — AI-powered trimming using Claude Agent SDK (EXPERIMENTAL)
-- **Continue with context** — Transfer context to a fresh session using sub-agents or other strategies (useful when running out of context)
+- **Continue with context** — Transfer context to a fresh session using sub-agents
+  or other strategies (useful when running out of context)
 
 ---
 
-## Direct Actions
+## Direct Commands
 
-Several actions from the menus above are also available as direct commands,
-skipping the multi-stage menus:
+Several actions are available as direct commands, skipping menus:
 
 | Command | Description |
 |---------|-------------|
 | `aichat export [session]` | Export session to text |
-| `aichat trim [session]` | Trim large tool results |
+| `aichat trim [session]` | Trim large tool results and assistant messages |
 | `aichat smart-trim [session]` | AI-powered trimming (EXPERIMENTAL) |
 | `aichat delete [session]` | Delete with confirmation |
 | `aichat find-original [session]` | Trace back to original session |
 | `aichat find-derived [session]` | Find all derived sessions |
 
-All commands accept session ID or file path. If omitted, shows latest sessions
-for selection.
-
-Run `aichat <command> --help` for detailed options
+All commands accept session ID or file path. If omitted, shows latest sessions.
+Run `aichat <command> --help` for options
 
 <a id="lmsh-experimental"></a>
 # 🚀 lmsh (Experimental)
