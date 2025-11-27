@@ -33,6 +33,10 @@ def _write_payload(
     rpc_path: str | None = None,
     scope_line: str | None = None,
     tip_line: str | None = None,
+    select_target: str | None = None,
+    results_title: str | None = None,
+    start_zoomed: bool = False,
+    lineage_back_target: str | None = None,
 ) -> Path:
     """Write payload to a temp file and return its path."""
     payload = {
@@ -44,6 +48,10 @@ def _write_payload(
         "rpc_path": rpc_path,
         "scope_line": scope_line,
         "tip_line": tip_line,
+        "select_target": select_target,
+        "results_title": results_title,
+        "start_zoomed": start_zoomed,
+        "lineage_back_target": lineage_back_target,
     }
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix="-node-ui.json")
     Path(tmp.name).write_text(json.dumps(payload), encoding="utf-8")
@@ -95,6 +103,10 @@ def run_node_menu_ui(
     rpc_path: str | None = None,
     scope_line: str | None = None,
     tip_line: str | None = None,
+    select_target: str | None = None,
+    results_title: str | None = None,
+    start_zoomed: bool = False,
+    lineage_back_target: str | None = None,
 ) -> str | None:
     """Launch Node UI and dispatch selected action.
 
@@ -107,6 +119,10 @@ def run_node_menu_ui(
         action_handler: Callback invoked with (session_dict, action)
         stderr_mode: If True, Node may log to stderr instead of stdout
         start_screen: Optional screen to start on ('action', 'resume', etc.)
+        select_target: Screen to go to after selection (default 'action')
+        results_title: Custom title for results view
+        start_zoomed: Start with all rows expanded
+        lineage_back_target: Screen to go back to from lineage (default 'resume')
     """
     data_path = _write_payload(
         sessions,
@@ -117,6 +133,10 @@ def run_node_menu_ui(
         rpc_path=rpc_path,
         scope_line=scope_line,
         tip_line=tip_line,
+        select_target=select_target,
+        results_title=results_title,
+        start_zoomed=start_zoomed,
+        lineage_back_target=lineage_back_target,
     )
     out_fd, out_path = tempfile.mkstemp(suffix="-node-ui-out.json")
     os.close(out_fd)

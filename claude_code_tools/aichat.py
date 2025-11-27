@@ -382,19 +382,159 @@ def delete(ctx):
     delete_main()
 
 
-@main.command("continue", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@main.command("resume", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
 @click.pass_context
-def continue_session(ctx):
-    """Continue from an exported session (when running out of context).
+def resume_session(ctx):
+    """Resume a session with various options (resume, clone, trim, continue).
 
-    Opens Node UI showing lineage, then continue form for agent/prompt options.
-    Use --simple-ui for direct CLI prompts.
+    If no session ID provided, finds latest session for current project/branch.
+    Shows resume menu with options: resume as-is, clone, trim+resume,
+    smart-trim, or continue with context.
     """
     import sys
-    # Route to session_menu_cli with --start-screen lineage
-    sys.argv = [sys.argv[0].replace('aichat', 'session-menu'), '--start-screen', 'lineage'] + ctx.args
-    from claude_code_tools.session_menu_cli import main as menu_main
-    menu_main()
+    from pathlib import Path
+
+    # Check if session argument was provided
+    args = ctx.args
+    session_provided = args and not args[0].startswith('-')
+
+    if session_provided:
+        # Route to session_menu_cli with --start-screen resume
+        sys.argv = [sys.argv[0].replace('aichat', 'session-menu'), '--start-screen', 'resume'] + args
+        from claude_code_tools.session_menu_cli import main as menu_main
+        menu_main()
+    else:
+        # No session provided - find latest sessions for current project and branch
+        import subprocess
+        from claude_code_tools.find_claude_session import (
+            find_sessions as find_claude_sessions,
+        )
+        from claude_code_tools.find_codex_session import (
+            find_sessions as find_codex_sessions,
+            get_codex_home,
+        )
+        from claude_code_tools.node_menu_ui import run_node_menu_ui
+        from claude_code_tools.session_menu_cli import execute_action
+
+        # Get current git branch
+        current_branch = None
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, check=True
+            )
+            current_branch = result.stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+        # Find Claude sessions for current project
+        claude_sessions = find_claude_sessions([], global_search=False)
+
+        # Filter by current branch if available
+        if current_branch and claude_sessions:
+            # Claude tuple index 7 is git_branch
+            claude_sessions = [s for s in claude_sessions if s[7] == current_branch]
+
+        # Find Codex sessions for current project
+        codex_home = get_codex_home()
+        codex_sessions = []
+        if codex_home.exists():
+            codex_sessions = find_codex_sessions(codex_home, [], global_search=False)
+            # Filter by current branch if available
+            if current_branch and codex_sessions:
+                codex_sessions = [s for s in codex_sessions if s.get("branch") == current_branch]
+
+        # Build session dicts for Node UI
+        candidates = []
+
+        if claude_sessions:
+            # Claude returns tuple: (session_id, mod_time, create_time, line_count,
+            #                        project_name, preview, project_path, git_branch, is_trimmed, is_sidechain)
+            s = claude_sessions[0]  # Most recent
+            # Get the actual file path
+            from claude_code_tools.find_claude_session import get_claude_project_dir
+            claude_dir = get_claude_project_dir()
+            session_file = claude_dir / f"{s[0]}.jsonl"
+
+            candidates.append({
+                "agent": "claude",
+                "agent_display": "Claude",
+                "session_id": s[0],
+                "mod_time": s[1],
+                "create_time": s[2],
+                "lines": s[3],
+                "project": s[4],
+                "preview": s[5],
+                "cwd": s[6],
+                "branch": s[7] or "",
+                "file_path": str(session_file),
+                "is_trimmed": s[8] if len(s) > 8 else False,
+                "derivation_type": None,
+                "is_sidechain": s[9] if len(s) > 9 else False,
+            })
+
+        if codex_sessions:
+            # Codex returns dict with keys: session_id, project, branch,
+            #                               lines, preview, cwd, file_path, mod_time, is_trimmed
+            s = codex_sessions[0]  # Most recent
+            candidates.append({
+                "agent": "codex",
+                "agent_display": "Codex",
+                "session_id": s["session_id"],
+                "mod_time": s.get("mod_time", 0),
+                "create_time": s.get("mod_time", 0),
+                "lines": s.get("lines", 0),
+                "project": s.get("project", ""),
+                "preview": s.get("preview", ""),
+                "cwd": s.get("cwd", ""),
+                "branch": s.get("branch", ""),
+                "file_path": s.get("file_path", ""),
+                "is_trimmed": s.get("is_trimmed", False),
+                "derivation_type": None,
+                "is_sidechain": False,
+            })
+
+        if not candidates:
+            print("No sessions found for current project/branch.", file=sys.stderr)
+            sys.exit(1)
+
+        # Handler for when user selects and resumes
+        def handler(sess, action, kwargs=None):
+            session_file = Path(sess["file_path"])
+            execute_action(
+                action,
+                sess["agent"],
+                session_file,
+                sess["cwd"],
+                action_kwargs=kwargs,
+            )
+
+        rpc_path = str(Path(__file__).parent / "action_rpc.py")
+
+        if len(candidates) == 1:
+            # Single session - go directly to resume menu
+            run_node_menu_ui(
+                candidates,
+                [],
+                handler,
+                start_screen="resume",
+                rpc_path=rpc_path,
+            )
+        else:
+            # Multiple sessions - show selection first
+            branch_info = f" on branch '{current_branch}'" if current_branch else ""
+            scope_text = f"Most recent sessions from Claude/Codex in this project{branch_info}"
+            run_node_menu_ui(
+                candidates,
+                [],
+                handler,
+                start_screen="results",
+                select_target="resume",
+                results_title=" Which session to resume? ",
+                start_zoomed=True,
+                scope_line=scope_text,
+                rpc_path=rpc_path,
+            )
 
 
 if __name__ == "__main__":

@@ -32,6 +32,10 @@ const startScreen = payload.start_screen || null;
 const rpcPath = payload.rpc_path || null;
 const scopeLine = payload.scope_line || '';
 const tipLine = payload.tip_line || '';
+const selectTarget = payload.select_target || 'action'; // screen after selection
+const resultsTitle = payload.results_title || null; // custom title for results
+const startZoomed = payload.start_zoomed || false; // start with all rows expanded
+const lineageBackTarget = payload.lineage_back_target || 'resume'; // where lineage goes back to
 // Find options form data
 const findOptions = payload.find_options || {};
 const findVariant = payload.find_variant || 'find'; // 'find', 'find-claude', 'find-codex'
@@ -238,7 +242,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
   const [scroll, setScroll] = useState(0);
   const [numBuffer, setNumBuffer] = useState('');
   const [expanded, setExpanded] = useState({});  // { [session_id]: true | false }
-  const [zoomAll, setZoomAll] = useState(false);  // global zoom state
+  const [zoomAll, setZoomAll] = useState(startZoomed);  // global zoom state
   const [resetting, setResetting] = useState(false);  // "blink" state for clean re-render
   const {stdout} = useStdout();
   const width = stdout?.columns || 80;
@@ -403,6 +407,11 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
     }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 0 && num <= 9) {
+      // For small selection screens (resultsTitle set), direct number selection
+      if (resultsTitle && num >= 1 && num <= sessions.length) {
+        clearScreen();
+        return onSelect(num - 1);
+      }
       const candidate = (numBuffer + input).replace(/^0+/, '') || '0';
       setNumBuffer(candidate);
     }
@@ -463,9 +472,13 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
     {flexDirection: 'column'},
     h(
       Box,
-      {marginBottom: 1},
-      h(Text, null, chalk.bgMagenta.white(' Sessions '), ' ', chalk.dim(kwTrim))
+      {marginBottom: 0},
+      h(Text, null, chalk.bold.cyan(resultsTitle || ' Sessions '), resultsTitle ? '' : ' ', resultsTitle ? '' : chalk.dim(kwTrim))
     ),
+    scopeLine && resultsTitle
+      ? h(Box, {marginBottom: 1}, h(Text, {dimColor: true}, scopeLine))
+      : null,
+    !resultsTitle ? h(Box, {marginBottom: 1}) : null,
     h(
       Box,
       // React key changes with zoomAll to force full remount, avoiding Ink render artifacts
@@ -489,6 +502,11 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         Text,
         {dimColor: true},
         (() => {
+          // Minimal help for custom title screens (like resume selection)
+          if (resultsTitle) {
+            const nums = sessions.length === 1 ? '1' : '1/2';
+            return `${nums}: select  Enter: select  Esc: quit  ↑/↓: move`;
+          }
           const currentRowExpanded = zoomAll || !!expanded[sessions[index]?.session_id];
           const spaceLabel = currentRowExpanded ? 'Space: collapse row' : 'Space: expand row';
           const zoomLabel = zoomAll ? 'z: unzoom' : 'z: zoom all';
@@ -497,7 +515,8 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}}) {
         })()
       )
     ),
-    scopeLine
+    // scopeLine shown at top when resultsTitle is set, otherwise at bottom
+    scopeLine && !resultsTitle
       ? h(
           Box,
           {marginTop: 0},
@@ -1580,7 +1599,7 @@ function App() {
     view = h(ResultsView, {
       onSelect: (idx) => {
         setCurrent(idx);
-        switchScreen('action');
+        switchScreen(selectTarget);
       },
       onQuit: backToOptions,
       clearScreen,
@@ -1620,7 +1639,7 @@ function App() {
       session,
       rpcPath,
       onContinue: () => switchScreen('continue_form'),
-      onBack: () => switchScreen('resume'),
+      onBack: () => switchScreen(lineageBackTarget),
       clearScreen,
     });
   } else if (screen === 'continue_form') {
