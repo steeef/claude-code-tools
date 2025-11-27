@@ -1400,6 +1400,161 @@ function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
   );
 }
 
+// Get default query from action config
+const DEFAULT_QUERY = ACTIONS.find(a => a.value === 'query')?.defaultQuery || 'Summarize this session';
+
+function QueryView({session, rpcPath, onBack, clearScreen}) {
+  const {exit} = useApp();
+  const [query, setQuery] = useState('');
+  const [hasTyped, setHasTyped] = useState(false); // Track if user started typing
+  const [stage, setStage] = useState('prompt'); // 'prompt', 'running', 'result'
+  const [result, setResult] = useState('');
+  const [error, setError] = useState('');
+
+  const runQuery = (queryText) => {
+    if (!rpcPath) {
+      setError('RPC path missing');
+      setStage('result');
+      return;
+    }
+    setStage('running');
+    // Use setTimeout to let React render the "running" state before blocking
+    setTimeout(() => {
+      const req = {
+        action: 'query',
+        agent: session.agent,
+        session_id: session.session_id,
+        file_path: session.file_path,
+        cwd: session.cwd,
+        claude_home: session.claude_home,
+        query: queryText,
+      };
+      const proc = spawnSync('python3', [rpcPath], {
+        input: JSON.stringify(req),
+        encoding: 'utf8',
+        maxBuffer: 10 * 1024 * 1024, // 10MB for potentially long responses
+      });
+      if (proc.error) {
+        setError(proc.error.message);
+        setStage('result');
+        return;
+      }
+      try {
+        const out = JSON.parse(proc.stdout || '{}');
+        if (out.status === 'ok') {
+          setResult(out.message || 'No response');
+        } else {
+          setError(out.message || 'Error');
+        }
+      } catch (e) {
+        setError(proc.stdout || 'Bad RPC output');
+      }
+      setStage('result');
+    }, 50); // Small delay to allow render
+  };
+
+  useInput((input, key) => {
+    if (stage === 'prompt') {
+      if (key.escape) {
+        clearScreen();
+        return onBack();
+      }
+      if (key.return) {
+        // Use default if user hasn't typed anything
+        const q = hasTyped ? query.trim() : DEFAULT_QUERY;
+        if (!q) {
+          setError('Query cannot be empty');
+          setStage('result');
+          return;
+        }
+        runQuery(q);
+        return;
+      }
+      if (key.backspace || key.delete) {
+        if (hasTyped) {
+          setQuery((q) => q.slice(0, -1));
+        }
+        return;
+      }
+      if (input) {
+        if (!hasTyped) {
+          // First keystroke clears placeholder
+          setHasTyped(true);
+          setQuery(input);
+        } else {
+          setQuery((q) => q + input);
+        }
+      }
+    } else if (stage === 'result') {
+      if (key.escape || key.return) {
+        clearScreen();
+        return onBack();
+      }
+    }
+  });
+
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
+  if (stage === 'running') {
+    const agentName = session.agent === 'codex' ? 'Codex' : 'Claude';
+    return h(
+      Box,
+      {flexDirection: 'column'},
+      h(Text, null,
+        chalk.bgMagenta.black(` QUERY `), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
+      h(Box, {flexDirection: 'column', marginTop: 1},
+        h(Text, {color: 'yellow'}, `⏳ Querying session using ${agentName} in non-interactive mode...`),
+        h(Text, {dimColor: true}, '   This may take 30-60 seconds as the agent analyzes the session.')
+      )
+    );
+  }
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(Text, null,
+      chalk.bgMagenta.black(` QUERY `), ' ',
+      colorize.project(session.project || ''), ' ',
+      colorize.branch(branchDisplay)
+    ),
+    h(
+      Text,
+      null,
+      colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+      chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+      colorize.lines(formatLines(session.lines)), ' | ',
+      colorize.date(date)
+    ),
+    stage === 'prompt'
+      ? h(
+          Box,
+          {flexDirection: 'column', marginTop: 1},
+          h(Text, null, 'Enter your question about this session (or Enter for default):'),
+          h(Text, null, '>', ' ', hasTyped ? (query || chalk.dim('type query...')) : chalk.dim(DEFAULT_QUERY)),
+          h(Text, {dimColor: true}, 'Enter: run query  Esc: back')
+        )
+      : h(
+          Box,
+          {flexDirection: 'column', marginTop: 1},
+          error
+            ? h(Text, {color: 'red'}, error)
+            : h(
+                Box,
+                {flexDirection: 'column'},
+                h(Text, {color: 'cyan', bold: true}, '─── Response ───'),
+                h(Text, null, result)
+              ),
+          h(Text, {dimColor: true, marginTop: 1}, 'Enter/Esc: back to menu')
+        )
+  );
+}
+
 function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) {
   const {exit} = useApp();
   const needsDest = action === 'copy' || action === 'export';
@@ -1633,6 +1788,8 @@ function App() {
           if (['path', 'copy', 'export'].includes(directAction)) {
             setNonLaunch({action: directAction});
             switchScreen('nonlaunch');
+          } else if (directAction === 'query') {
+            switchScreen('query');
           } else if (directAction === 'resume_menu') {
             switchScreen('resume');
           } else {
@@ -1659,6 +1816,8 @@ function App() {
         if (['path', 'copy', 'export'].includes(action)) {
           setNonLaunch({action});
           switchScreen('nonlaunch');
+        } else if (action === 'query') {
+          switchScreen('query');
         } else if (action === 'resume_menu') switchScreen('resume');
         else finish(action);
       },
@@ -1716,6 +1875,15 @@ function App() {
           switchScreen('trim');
         } else finish(value);
       },
+      clearScreen,
+    });
+  } else if (screen === 'query') {
+    // If we came via directAction, back goes to results; otherwise to action menu
+    const queryBackTarget = directAction ? 'results' : 'action';
+    view = h(QueryView, {
+      session,
+      rpcPath,
+      onBack: () => switchScreen(queryBackTarget),
       clearScreen,
     });
   } else if (screen === 'nonlaunch') {

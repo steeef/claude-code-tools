@@ -30,6 +30,15 @@ export const ACTIONS = [
     hint: 'Leave blank to use default exported-sessions/<date>-session-<id>.txt',
   },
   {
+    value: 'query',
+    label: 'Query this session...',
+    group: ACTION_GROUPS.nonlaunch,
+    requiresPath: false,
+    requiresQuery: true,
+    hint: 'Ask any question about this session',
+    defaultQuery: 'Summarize what was accomplished in this session',
+  },
+  {
     value: 'resume_menu',
     label: 'Resume/trim session...',
     group: ACTION_GROUPS.launch,
