@@ -31,9 +31,10 @@ class SessionIDGroup(click.Group):
         return super().parse_args(ctx, args)
 
 
-@click.group(cls=SessionIDGroup)
+@click.group(cls=SessionIDGroup, invoke_without_command=True)
 @click.version_option()
-def main():
+@click.pass_context
+def main(ctx):
     """
     Session management tools for Claude Code and Codex.
 
@@ -49,13 +50,22 @@ def main():
     Examples:
 
     \b
+        aichat                        # Action menu for latest session(s)
         aichat abc123-def456          # Shortcut for: aichat menu abc123-def456
         aichat find "langroid"
         aichat find-claude "bug fix"
         aichat menu abc123-def456
         aichat trim session-id.jsonl
     """
-    pass
+    if ctx.invoked_subcommand is None:
+        # No subcommand - find latest sessions and show action menu
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='action',
+            select_target='action',
+            results_title=' Select a session ',
+        )
 
 
 # Shared help text for find commands
