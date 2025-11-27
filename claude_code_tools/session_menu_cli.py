@@ -235,6 +235,11 @@ Examples:
         action="store_true",
         help="Use simple Rich menu instead of Node interactive UI",
     )
+    parser.add_argument(
+        "--start-screen",
+        dest="start_screen",
+        help="Start at specific Node UI screen (e.g., lineage, trim_menu)",
+    )
 
     args = parser.parse_args()
 
@@ -386,6 +391,7 @@ Examples:
         run_node_menu_ui(
             [session_dict], [session_id], handler,
             stderr_mode=args.shell,
+            start_screen=args.start_screen,
             rpc_path=rpc_path
         )
 
