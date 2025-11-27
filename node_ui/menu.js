@@ -104,6 +104,48 @@ function writeResult(sessionId, action, kwargs = {}) {
   fs.closeSync(fd);
 }
 
+/**
+ * Wrap preview text into multiple lines for display.
+ * @param {string} preview - The preview text
+ * @param {number} maxLines - Maximum number of lines (default: 6)
+ * @param {number} maxWidth - Maximum width per line (default: 80)
+ * @returns {string[]} Array of wrapped lines
+ */
+function wrapPreviewLines(preview, maxLines = 6, maxWidth = 80) {
+  if (!preview) return [];
+  const words = preview.split(/\s+/);
+  const lines = [];
+  let currentLine = '';
+  for (const word of words) {
+    if ((currentLine + ' ' + word).length > maxWidth) {
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
+      if (lines.length >= maxLines) break;
+    } else {
+      currentLine = currentLine ? currentLine + ' ' + word : word;
+    }
+  }
+  if (currentLine && lines.length < maxLines) lines.push(currentLine);
+  return lines;
+}
+
+/**
+ * Render preview as Ink elements (Box with multiple Text lines).
+ * @param {string} preview - The preview text
+ * @param {number} maxLines - Maximum number of lines (default: 6)
+ * @param {number} maxWidth - Maximum width per line (default: 80)
+ * @param {string} indent - Indentation for each line (default: '  ')
+ * @returns {React.Element|null} Ink Box element or null if no preview
+ */
+function renderPreview(preview, maxLines = 6, maxWidth = 80, indent = '  ') {
+  const lines = wrapPreviewLines(preview, maxLines, maxWidth);
+  if (lines.length === 0) return null;
+  return h(Box, {flexDirection: 'column'},
+    h(Text, {dimColor: true}, 'Preview:'),
+    ...lines.map((line, i) => h(Text, {key: i, dimColor: true}, indent + line))
+  );
+}
+
 function SessionRow({session, active, index, width, pad, isExpanded}) {
   const id = (session.session_id || '').slice(0, 8);
   const anno = toAnno(session);
@@ -505,7 +547,7 @@ function ConfirmView({session, actionLabel, onConfirm, onBack}) {
       colorize.lines(formatLines(session.lines)), ' | ',
       colorize.date(date)
     ),
-    session.preview ? h(Box, {marginBottom: 1}, h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80))) : h(Box, {marginBottom: 1}),
+    h(Box, {marginBottom: 1}, renderPreview(session.preview) || null),
     h(Text, {dimColor: true}, 'Enter: run action & exit  Esc: back')
   );
 }
@@ -566,7 +608,7 @@ function ActionView({session, onBack, onDone, clearScreen}) {
         colorize.lines(formatLines(session.lines)), ' | ',
         colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
+      renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
     h(Box, {flexDirection: 'column'},
@@ -639,7 +681,7 @@ function ResumeView({onBack, onDone, session, clearScreen}) {
         colorize.lines(formatLines(session.lines)), ' | ',
         colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
+      renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
     h(Box, {flexDirection: 'column'},
@@ -712,7 +754,7 @@ function TrimView({onBack, onDone, session, clearScreen}) {
         colorize.lines(formatLines(session.lines)), ' | ',
         colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
+      renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
     h(Box, {flexDirection: 'column'},
@@ -797,7 +839,7 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
         colorize.lines(formatLines(session.lines)), ' | ',
         colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
+      renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
     h(Text, {dimColor: true}, 'Enter: next field | Esc: back | Submit on last field'),
@@ -1038,7 +1080,7 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
         colorize.lines(formatLines(session.lines)), ' | ',
         colorize.date(date)
       ),
-      session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null
+      renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
     h(Text, {dimColor: true}, 'Enter: next field | Esc: back | Submit on last field'),
@@ -1428,7 +1470,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
       colorize.lines(formatLines(session.lines)), ' | ',
       colorize.date(date)
     ),
-    session.preview ? h(Text, {dimColor: true}, 'Preview: ', session.preview.slice(0, 80)) : null,
+    renderPreview(session.preview),
     stage === 'prompt'
       ? (() => {
           const defaultPathHint = action === 'export' ? defaultExportPath(session) : null;

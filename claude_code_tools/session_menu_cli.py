@@ -344,12 +344,12 @@ Examples:
         except Exception:
             pass
 
-        # Extract preview (first user message), clean for single-line display
+        # Extract preview (last user message), clean for single-line display
         preview = ""
         try:
-            raw_preview = extract_first_user_message(session_file, agent) or ""
+            raw_preview = extract_first_user_message(session_file, agent, last=True)
             # Replace newlines with spaces for single-line display
-            preview = raw_preview.replace('\n', ' ').strip()
+            preview = raw_preview.replace('\n', ' ').strip() if raw_preview else ""
         except Exception:
             pass
 

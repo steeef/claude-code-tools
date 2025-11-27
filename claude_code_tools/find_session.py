@@ -451,17 +451,22 @@ def append_to_codex_history(
         f.write(json.dumps(history_entry) + "\n")
 
 
-def extract_first_user_message(session_file: Path, agent: str) -> str:
+def extract_first_user_message(
+    session_file: Path, agent: str, last: bool = False
+) -> str:
     """
-    Extract first user message from session file.
+    Extract user message from session file.
 
     Args:
         session_file: Path to session file
         agent: Agent type ('claude' or 'codex')
+        last: If True, return the last user message; if False, return the first
 
     Returns:
-        First user message text
+        User message text (first or last depending on `last` parameter)
     """
+    result = None
+
     with open(session_file, "r") as f:
         for line in f:
             try:
@@ -469,15 +474,18 @@ def extract_first_user_message(session_file: Path, agent: str) -> str:
             except json.JSONDecodeError:
                 continue
 
+            message_text = None
+
             if agent == "claude":
                 if data.get("type") == "user":
                     content = data.get("message", {}).get("content")
                     if isinstance(content, str):
-                        return content
+                        message_text = content
                     elif isinstance(content, list):
                         for item in content:
                             if isinstance(item, dict) and item.get("type") == "text":
-                                return item.get("text", "")
+                                message_text = item.get("text", "")
+                                break
             elif agent == "codex":
                 if data.get("type") == "response_item":
                     payload = data.get("payload", {})
@@ -492,13 +500,18 @@ def extract_first_user_message(session_file: Path, agent: str) -> str:
                                         text = item.get("text", "")
                                         # Skip environment_context, get actual user message
                                         if text and "<environment_context>" not in text:
-                                            return text
+                                            message_text = text
+                                            break
                             # If content structure is different, try payload.text
-                            if payload.get("text"):
-                                return payload.get("text")
-                            # Otherwise continue to next message
+                            if not message_text and payload.get("text"):
+                                message_text = payload.get("text")
 
-    return "Suppressed session"
+            if message_text:
+                if not last:
+                    return message_text  # Return first match immediately
+                result = message_text  # Keep updating for last match
+
+    return result or "Suppressed session"
 
 
 def handle_suppress_resume(
