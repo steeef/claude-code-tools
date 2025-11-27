@@ -7,7 +7,7 @@ import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import figures from 'figures';
 import {spawnSync} from 'child_process';
-import {ACTIONS, filteredActions, defaultExportPath, RESUME_SUBMENU, TRIM_SUBMENU} from './action_config.js';
+import {ACTIONS, filteredActions, RESUME_SUBMENU, TRIM_SUBMENU} from './action_config.js';
 
 const h = React.createElement;
 
@@ -1440,7 +1440,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
       }
       if (key.return) {
         const submittedDest = dest.trim();
-        const finalDest = submittedDest || (action === 'export' ? defaultExportPath(session) : '');
+        const finalDest = submittedDest || (action === 'export' ? session.default_export_path : '');
         if (needsDest && !finalDest) {
           setError('Destination required');
           setStage('result');
@@ -1492,7 +1492,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
     renderPreview(session.preview),
     stage === 'prompt'
       ? (() => {
-          const defaultPathHint = action === 'export' ? defaultExportPath(session) : null;
+          const defaultPathHint = action === 'export' ? session.default_export_path : null;
           return h(
             Box,
             {flexDirection: 'column', marginTop: 1},

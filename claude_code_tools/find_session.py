@@ -58,6 +58,7 @@ from claude_code_tools.trim_session import (
 from claude_code_tools.session_utils import (
     format_session_id_display,
     filter_sessions_by_time,
+    default_export_path,
 )
 
 try:
@@ -237,6 +238,8 @@ def search_all_agents(
                     "preview": session[5],
                     "cwd": cwd,
                     "branch": session[7] if len(session) > 7 else "",
+                    "file_path": str(file_path),
+                    "default_export_path": str(default_export_path(file_path, "claude")),
                     "claude_home": home,
                     "is_trimmed": is_trimmed,
                     "derivation_type": derivation_type,
@@ -283,6 +286,7 @@ def search_all_agents(
                         "cwd": session["cwd"],
                         "branch": session.get("branch", ""),
                         "file_path": session.get("file_path", ""),
+                        "default_export_path": str(default_export_path(file_path, "codex")) if file_path else "",
                         "is_trimmed": is_trimmed,
                         "derivation_type": derivation_type,
                         "is_sidechain": False,  # Codex doesn't have sidechain sessions

@@ -447,6 +447,8 @@ def resume_session(ctx):
         # Build session dicts for Node UI
         candidates = []
 
+        from claude_code_tools.session_utils import default_export_path
+
         if claude_sessions:
             # Claude returns tuple: (session_id, mod_time, create_time, line_count,
             #                        project_name, preview, project_path, git_branch, is_trimmed, is_sidechain)
@@ -468,6 +470,7 @@ def resume_session(ctx):
                 "cwd": s[6],
                 "branch": s[7] or "",
                 "file_path": str(session_file),
+                "default_export_path": str(default_export_path(session_file, "claude")),
                 "is_trimmed": s[8] if len(s) > 8 else False,
                 "derivation_type": None,
                 "is_sidechain": s[9] if len(s) > 9 else False,
@@ -477,6 +480,7 @@ def resume_session(ctx):
             # Codex returns dict with keys: session_id, project, branch,
             #                               lines, preview, cwd, file_path, mod_time, is_trimmed
             s = codex_sessions[0]  # Most recent
+            codex_file = Path(s.get("file_path", ""))
             candidates.append({
                 "agent": "codex",
                 "agent_display": "Codex",
@@ -489,6 +493,7 @@ def resume_session(ctx):
                 "cwd": s.get("cwd", ""),
                 "branch": s.get("branch", ""),
                 "file_path": s.get("file_path", ""),
+                "default_export_path": str(default_export_path(codex_file, "codex")) if codex_file.exists() else "",
                 "is_trimmed": s.get("is_trimmed", False),
                 "derivation_type": None,
                 "is_sidechain": False,

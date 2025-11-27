@@ -1,8 +1,6 @@
 // Shared action metadata for Node alt UI.
 // If a rich UI config becomes importable, we can swap this module to proxy it.
 
-import path from 'path';
-
 export const ACTION_GROUPS = {
   nonlaunch: 'nonlaunch',
   launch: 'launch',
@@ -62,22 +60,3 @@ export function filteredActions(isSidechain = false) {
   return ACTIONS;
 }
 
-export function defaultExportPath(session) {
-  // Use session's project directory if available, fallback to cwd
-  const projectDir = session?.cwd || process.cwd();
-  const base = path.join(projectDir, 'exported-sessions');
-  const agentDir = session?.agent === 'codex' ? 'codex' : 'claude';
-
-  // Get original filename from file_path or reconstruct from session_id
-  let filename;
-  if (session?.file_path) {
-    // Session with file_path: extract basename, change extension to .txt
-    filename = path.basename(session.file_path, '.jsonl') + '.txt';
-  } else {
-    // Fallback: use session_id
-    const id = (session?.session_id || 'session').replace(/[^a-zA-Z0-9_-]/g, '');
-    filename = `${id}.txt`;
-  }
-
-  return path.join(base, agentDir, filename);
-}

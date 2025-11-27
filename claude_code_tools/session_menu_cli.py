@@ -32,6 +32,7 @@ from claude_code_tools.session_utils import (
     extract_session_metadata_codex,
     find_session_file,
     is_malformed_session,
+    default_export_path,
 )
 from claude_code_tools.find_session import extract_first_user_message
 
@@ -370,6 +371,7 @@ Examples:
             "cwd": project_path,
             "branch": git_branch or "",
             "file_path": str(session_file),
+            "default_export_path": str(default_export_path(session_file, agent)),
             "claude_home": args.claude_home,
             "is_trimmed": False,
             "derivation_type": None,
