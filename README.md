@@ -3,16 +3,40 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
+<a id="quick-start"></a>
+## 🚀 Quick Start
+
+```bash
+uv tool install claude-code-tools
+```
+
+**Prerequisites:** Node.js 16+ required for `aichat` interactive UI.
+
+### What You Get
+
+Four commands are installed:
+
+| Command | Description |
+|---------|-------------|
+| [`aichat`](#aichat-session-management) | Session management for Claude Code and Codex (find, resume, export, trim, query) |
+| [`tmux-cli`](#tmux-cli-terminal-automation) | Terminal automation for AI agents ("Playwright for terminals") |
+| [`vault`](#vault) | Encrypted .env backup and sync |
+| [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
+
+---
+
 ## ⚠️ Breaking Change (v1.0)
 
 All session tools are now under `aichat`. Use `aichat find` instead of
 `find-claude-session`/`find-codex-session`, and similarly for other commands.
 
+---
+
 ## Table of Contents
 
 - [🚀 Quick Start](#quick-start)
-- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [💬 aichat — Session Management](#aichat-session-management)
+- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
 - [🔐 Utilities](#utilities)
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
@@ -25,78 +49,19 @@ All session tools are now under `aichat`. Use `aichat find` instead of
 <a id="tmux-cli-terminal-automation"></a>
 # 🎮 tmux-cli — Terminal Automation
 
-<a id="tmux-cli-bridging-claude-code-and-interactive-clis"></a>
-## Overview: Bridging Claude Code and Interactive CLIs
-
 > **Note**: While the description below focuses on Claude Code, tmux-cli works with any CLI coding agent.
 
- ![tmux-cli demo](demos/tmux-cli-demo-short.gif)
-
-Consider these scenarios:
-
-You're using Claude Code (CC) to build an interactive script. The script prompts 
-for user input, but CC can't respond to prompts.
-
-You want Claude Code to debug using pdb, stepping through code line by line.
-
-You need your CLI code agent to launch another instance of the same OR different 
-CLI code agent, AND interact with it, not as a hidden sub-agent, 
-but as a visible session you can monitor (as shown in gif above).
-
-**tmux-cli enables these workflows** by giving Claude Code programmatic control 
-over terminal applications.
-
-For those new to [tmux](https://github.com/tmux/tmux/wiki), it's a terminal 
-multiplexer that lets you create and manage multiple terminal sessions. The key 
-benefit for our purposes is that tmux is scriptable and allows sending keystrokes 
-to specific panes or sessions programmatically.
-
-**Important**: You don't need to learn tmux-cli commands. Claude Code will handle 
-all the interactions automatically. Just tell CC what you want to do, and it will 
-use tmux-cli behind the scenes.
+![tmux-cli demo](demos/tmux-cli-demo-short.gif)
 
 **Think Playwright for terminals** - Terminal automation for AI agents.
 
+tmux-cli enables Claude Code to programmatically control terminal applications:
+test interactive scripts, debug with pdb, launch and interact with other CLI agents.
+
+**Important**: You don't need to learn tmux-cli commands. Claude Code handles
+everything automatically—just describe what you want.
+
 **Works anywhere**: Automatically handles both local tmux panes and remote sessions.
-
-<a id="quick-start"></a>
-## 🚀 Quick Start
-
-```bash
-# Install from PyPI (recommended)
-uv tool install claude-code-tools
-
-# Or install the latest development version from GitHub
-uv tool install git+https://github.com/pchalasani/claude-code-tools
-```
-
-### What You Get
-
-All tools are accessed through the **unified `aichat` command** and standalone utilities.
-
-**🎯 Quick Examples:**
-
-```bash
-aichat                        # Action menu for latest session(s)
-aichat abc123                 # Action menu for specific session
-aichat find "keywords"        # Find sessions across all agents
-aichat export abc123          # Export session to text
-aichat trim abc123            # Compress session
-aichat --help                 # See all subcommands
-```
-
-**Available Tools:**
-
-Session Management (`aichat`):
-- Unified command for all session operations (find, resume, export, trim, query)
-- Works with both Claude Code and Codex sessions
-- Omit session ID to use latest session(s) for current project/branch
-- See [aichat documentation](#aichat-session-management) for details
-
-Other Utilities (standalone commands):
-- `tmux-cli` - Interactive CLI controller ("Playwright for terminals")
-- `vault` - Encrypted .env backup and sync
-- `env-safe` - Safe .env inspection without exposing values
 
 <a id="tmux-cli-deep-dive"></a>
 ## 🎮 tmux-cli Deep Dive
