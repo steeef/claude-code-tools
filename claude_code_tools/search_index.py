@@ -129,6 +129,7 @@ class SessionIndex:
         self.schema_builder.add_text_field("project", stored=True)
         self.schema_builder.add_text_field("branch", stored=True)
         self.schema_builder.add_text_field("cwd", stored=True)
+        self.schema_builder.add_text_field("created", stored=True)
         self.schema_builder.add_text_field("modified", stored=True)
         self.schema_builder.add_integer_field("lines", stored=True)
         self.schema_builder.add_text_field("export_path", stored=True)
@@ -138,6 +139,10 @@ class SessionIndex:
         self.schema_builder.add_text_field("first_msg_content", stored=True)
         self.schema_builder.add_text_field("last_msg_role", stored=True)
         self.schema_builder.add_text_field("last_msg_content", stored=True)
+
+        # Session type fields (for filtering in TUI)
+        self.schema_builder.add_text_field("derivation_type", stored=True)
+        self.schema_builder.add_text_field("is_sidechain", stored=True)  # "true"/"false"
 
         # Searchable content field
         self.schema_builder.add_text_field("content", stored=True)
@@ -228,6 +233,7 @@ class SessionIndex:
             doc.add_text("project", metadata.get("project", ""))
             doc.add_text("branch", metadata.get("branch", "") or "")
             doc.add_text("cwd", metadata.get("cwd", "") or "")
+            doc.add_text("created", metadata.get("created", "") or "")
             doc.add_text("modified", metadata.get("modified", ""))
             doc.add_integer("lines", metadata.get("lines", 0))
             doc.add_text("export_path", parsed["export_path"])
@@ -239,6 +245,13 @@ class SessionIndex:
             doc.add_text("first_msg_content", first_msg.get("content", ""))
             doc.add_text("last_msg_role", last_msg.get("role", ""))
             doc.add_text("last_msg_content", last_msg.get("content", ""))
+
+            # Session type fields
+            doc.add_text("derivation_type", metadata.get("derivation_type", "") or "")
+            doc.add_text(
+                "is_sidechain",
+                "true" if metadata.get("is_sidechain") else "false"
+            )
 
             doc.add_text("content", parsed["content"])
 
@@ -377,6 +390,7 @@ class SessionIndex:
             doc_project = doc.get_first("project")
             branch = doc.get_first("branch")
             cwd = doc.get_first("cwd")
+            created = doc.get_first("created")
             modified = doc.get_first("modified")
             lines = doc.get_first("lines")
             export_path = doc.get_first("export_path")
@@ -404,6 +418,7 @@ class SessionIndex:
                 "project": doc_project,
                 "branch": branch,
                 "cwd": cwd,
+                "created": created,
                 "modified": modified,
                 "lines": lines,
                 "export_path": export_path,
@@ -461,6 +476,7 @@ class SessionIndex:
                 "project": doc_project,
                 "branch": doc.get_first("branch"),
                 "cwd": doc.get_first("cwd"),
+                "created": doc.get_first("created"),
                 "modified": modified,
                 "lines": doc.get_first("lines"),
                 "export_path": doc.get_first("export_path"),

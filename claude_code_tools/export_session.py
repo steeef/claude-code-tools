@@ -184,6 +184,7 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
         "cwd": None,
         "branch": None,
         "derivation_type": None,
+        "is_sidechain": False,
         "parent_session_id": None,
         "parent_session_file": None,
         "original_session_id": None,
@@ -232,11 +233,20 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                     metadata["parent_session_id"] = cm.get("parent_session_id")
                     metadata["parent_session_file"] = cm.get("parent_session_file")
 
+                # Check if sidechain (sub-agent session)
+                if "isSidechain" in data and data["isSidechain"] is True:
+                    metadata["is_sidechain"] = True
+
                 # Extract git branch for Claude sessions
+                # Method 1: From file-history-snapshot metadata
                 if agent == "claude" and data.get("type") == "file-history-snapshot":
                     git_info = data.get("metadata", {}).get("git", {})
                     if git_info.get("branch"):
                         metadata["branch"] = git_info["branch"]
+
+                # Method 2: From gitBranch field on user messages
+                if metadata["branch"] is None and data.get("gitBranch"):
+                    metadata["branch"] = data["gitBranch"]
 
                 # Extract git branch for Codex sessions
                 if agent == "codex" and data.get("type") == "session_meta":
@@ -344,9 +354,11 @@ def generate_yaml_frontmatter(metadata: dict[str, Any]) -> str:
     if metadata.get("modified"):
         yaml_data["modified"] = metadata["modified"]
 
-    # Lineage
+    # Lineage and session type
     if metadata.get("derivation_type"):
         yaml_data["derivation_type"] = metadata["derivation_type"]
+    if metadata.get("is_sidechain"):
+        yaml_data["is_sidechain"] = metadata["is_sidechain"]
     if metadata.get("parent_session_id"):
         yaml_data["parent_session_id"] = metadata["parent_session_id"]
     if metadata.get("parent_session_file"):
