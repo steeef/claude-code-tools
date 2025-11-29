@@ -620,5 +620,134 @@ def resume_session(ctx):
     )
 
 
+# =============================================================================
+# Search Infrastructure Commands
+# =============================================================================
+
+
+@main.command("export-all")
+@click.option(
+    "--output", "-o",
+    type=click.Path(),
+    default="./exported-sessions",
+    help="Output directory (default: ./exported-sessions/)",
+)
+@click.option("--force", "-f", is_flag=True, help="Re-export all (ignore mtime)")
+@click.option("--verbose", "-v", is_flag=True, help="Show progress")
+def export_all(output, force, verbose):
+    """Export all sessions with YAML front matter for indexing.
+
+    Exports Claude and Codex sessions to {output}/claude/ and {output}/codex/.
+    Skips sessions that haven't changed since last export (unless --force).
+    """
+    from pathlib import Path
+    from claude_code_tools.export_all import export_all_sessions
+
+    output_path = Path(output).expanduser()
+    print(f"Exporting sessions to: {output_path}")
+
+    stats = export_all_sessions(
+        output_dir=output_path,
+        force=force,
+        verbose=verbose,
+    )
+
+    print(f"\n✅ Export complete:")
+    print(f"   Exported: {stats['exported']}")
+    print(f"   Skipped:  {stats['skipped']} (up-to-date)")
+    print(f"   Failed:   {stats['failed']}")
+
+
+@main.command("build-index")
+@click.option(
+    "--exports", "-e",
+    type=click.Path(),
+    default="./exported-sessions",
+    help="Exports directory (default: ./exported-sessions/)",
+)
+@click.option(
+    "--index", "-i",
+    type=click.Path(),
+    default="~/.claude/search-index",
+    help="Index directory (default: ~/.claude/search-index/)",
+)
+@click.option("--full", is_flag=True, help="Full rebuild (not incremental)")
+@click.option("--verbose", "-v", is_flag=True, help="Show progress")
+def build_index(exports, index, full, verbose):
+    """Build Tantivy search index from exported sessions.
+
+    Reads exported .txt files with YAML front matter and indexes them
+    for full-text search. Incremental by default (only indexes new/changed).
+    """
+    from pathlib import Path
+    from claude_code_tools.search_index import SessionIndex
+
+    exports_path = Path(exports).expanduser()
+    index_path = Path(index).expanduser()
+
+    if not exports_path.exists():
+        print(f"Error: Exports directory not found: {exports_path}")
+        print("Run 'aichat export-all' first to export sessions.")
+        return
+
+    print(f"Building index at: {index_path}")
+    print(f"From exports in:   {exports_path}")
+
+    idx = SessionIndex(index_path)
+    stats = idx.build_from_exports(exports_path, incremental=not full)
+
+    print(f"\n✅ Index build complete:")
+    print(f"   Indexed: {stats['indexed']}")
+    print(f"   Skipped: {stats['skipped']} (unchanged)")
+    print(f"   Failed:  {stats['failed']}")
+
+
+@main.command("search")
+@click.argument("query", required=False, default="")
+@click.option(
+    "--index", "-i",
+    type=click.Path(),
+    default="~/.claude/search-index",
+    help="Index directory",
+)
+@click.option("-n", "--limit", default=20, help="Max results")
+@click.option("--project", "-p", help="Filter to project name")
+def search(query, index, limit, project):
+    """Search sessions using Tantivy full-text index (POC).
+
+    If no query provided, shows recent sessions.
+    """
+    from pathlib import Path
+    from claude_code_tools.search_index import SessionIndex
+
+    index_path = Path(index).expanduser()
+
+    if not index_path.exists():
+        print(f"Error: Index not found at: {index_path}")
+        print("Run 'aichat export-all && aichat build-index' first.")
+        return
+
+    idx = SessionIndex(index_path)
+
+    if query:
+        print(f"Searching for: {query}\n")
+        results = idx.search(query, limit=limit, project=project)
+    else:
+        print("Recent sessions:\n")
+        results = idx.get_recent(limit=limit, project=project)
+
+    if not results:
+        print("No results found.")
+        return
+
+    # Simple CLI output for POC
+    for i, r in enumerate(results, 1):
+        agent_icon = "●" if r["agent"] == "claude" else "■"
+        lines = r.get("lines", 0)
+        print(f"{i:2}. {agent_icon} {r['project']} | {r['session_id'][:12]}... | {lines}L")
+        print(f"    {r['snippet'][:80]}...")
+        print()
+
+
 if __name__ == "__main__":
     main()
