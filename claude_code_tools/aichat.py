@@ -749,5 +749,139 @@ def search(query, index, limit, project):
         print()
 
 
+@main.command("search-ui")
+def search_ui():
+    """Launch Rust TUI for session search with Node action menu handoff.
+
+    This is a POC demonstrating Rust → Node handoff:
+    1. Rust TUI displays sessions from Tantivy index
+    2. User selects a session
+    3. Selected session is passed to Node action menu
+    4. Escape from Node menu returns to Rust TUI
+    5. Quit (q/Esc) from Rust TUI exits
+    """
+    import json
+    import os
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    # Find Rust binary
+    rust_binary = Path(__file__).parent.parent / "rust-search-ui" / "target" / "release" / "session_search"
+    if not rust_binary.exists():
+        print(f"Error: Rust binary not found at: {rust_binary}")
+        print("Build it with: cd rust-search-ui && cargo build --release")
+        return
+
+    # Import once outside the loop
+    from claude_code_tools.node_menu_ui import run_node_menu_ui
+    from claude_code_tools.session_menu_cli import execute_action
+
+    def action_handler(sess, action, kwargs):
+        """Handle action from Node menu."""
+        agent = sess.get("agent", "claude")
+        file_path = sess.get("file_path")
+        cwd = sess.get("cwd") or "."
+
+        if not file_path:
+            print(f"Error: No file_path for session {sess.get('session_id')}")
+            return
+
+        execute_action(
+            action=action,
+            agent=agent,
+            session_file=Path(file_path),
+            project_path=cwd,
+            action_kwargs=kwargs,
+        )
+
+    # Main loop: Rust TUI → Node menu → back to Rust TUI
+    while True:
+        # Create temp file for IPC
+        fd, out_path = tempfile.mkstemp(suffix="-rust-ui.json")
+        os.close(fd)
+
+        # Run Rust TUI (interactive - needs TTY)
+        try:
+            result = subprocess.run([str(rust_binary), out_path])
+        except Exception as e:
+            print(f"Error running Rust TUI: {e}")
+            try:
+                os.unlink(out_path)
+            except Exception:
+                pass
+            return
+
+        if result.returncode != 0:
+            try:
+                os.unlink(out_path)
+            except Exception:
+                pass
+            return
+
+        # Read JSON from temp file
+        try:
+            content = Path(out_path).read_text().strip()
+        except Exception:
+            content = ""
+        finally:
+            try:
+                os.unlink(out_path)
+            except Exception:
+                pass
+
+        if not content:
+            # User quit without selecting - exit the loop
+            return
+
+        try:
+            selected = json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing Rust output: {e}")
+            print(f"Output was: {content[:200]}")
+            return
+
+        # Convert to session format expected by Node menu
+        session = {
+            "session_id": selected.get("session_id", ""),
+            "agent": selected.get("agent", "claude"),
+            "agent_display": selected.get("agent", "claude").title(),
+            "project": selected.get("project", ""),
+            "branch": selected.get("branch", ""),
+            "lines": selected.get("lines", 0),
+            "file_path": selected.get("export_path", ""),
+            "cwd": None,
+        }
+
+        # Extract cwd from export_path metadata if needed
+        export_path = selected.get("export_path", "")
+        if export_path:
+            try:
+                with open(export_path, "r") as f:
+                    file_content = f.read(2000)
+                    if file_content.startswith("---\n"):
+                        end_idx = file_content.find("\n---\n", 4)
+                        if end_idx != -1:
+                            import yaml
+                            metadata = yaml.safe_load(file_content[4:end_idx])
+                            if metadata:
+                                session["cwd"] = metadata.get("cwd")
+                                session["file_path"] = metadata.get("file_path", export_path)
+            except Exception:
+                pass
+
+        print(f"Selected: {session['project']} / {session['session_id'][:12]}...")
+
+        # Launch Node action menu - returns None normally, loops back on Escape
+        run_node_menu_ui(
+            sessions=[session],
+            keywords=[],
+            action_handler=action_handler,
+            start_action=True,
+            focus_session_id=session["session_id"],
+        )
+        # After Node menu exits (Escape or action complete), loop back to Rust TUI
+
+
 if __name__ == "__main__":
     main()
