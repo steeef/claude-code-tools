@@ -625,46 +625,158 @@ def resume_session(ctx):
 # =============================================================================
 
 
-@main.command("export-all")
+@main.command("clear-index")
 @click.option(
-    "--output", "-o",
+    "--index", "-i",
     type=click.Path(),
-    default="./exported-sessions",
-    help="Output directory (default: ./exported-sessions/)",
+    default="~/.claude/search-index",
+    help="Index directory (default: ~/.claude/search-index/)",
 )
+@click.option("--dry-run", "-n", is_flag=True, help="Show what would be deleted")
+def clear_index(index, dry_run):
+    """Clear the Tantivy search index.
+
+    Deletes the entire index directory to allow a fresh rebuild.
+    """
+    import shutil
+    from pathlib import Path
+
+    index_path = Path(index).expanduser()
+
+    if not index_path.exists():
+        print(f"Index directory does not exist: {index_path}")
+        return
+
+    # Count files for info
+    file_count = sum(1 for _ in index_path.rglob("*") if _.is_file())
+
+    if dry_run:
+        print(f"Dry run: would delete index at {index_path}")
+        print(f"   {file_count} files would be removed")
+    else:
+        shutil.rmtree(index_path)
+        print(f"✅ Cleared index at {index_path}")
+        print(f"   {file_count} files removed")
+
+
+@main.command("clear-exports")
+@click.option("--verbose", "-v", is_flag=True, help="Show what's being deleted")
+@click.option("--dry-run", "-n", is_flag=True, help="Show what would be deleted")
+def clear_exports(verbose, dry_run):
+    """Clear all exported session files from project directories.
+
+    Finds export files in per-project directories:
+    {project}/exported-sessions/{agent}/*.txt
+
+    Use this before re-exporting to ensure a clean slate.
+    """
+    from claude_code_tools.export_all import (
+        collect_sessions_to_export,
+        extract_export_dir_from_session,
+    )
+
+    print("Scanning for export files to delete...")
+    sessions = collect_sessions_to_export()
+    print(f"Found {len(sessions)} sessions to check")
+
+    deleted_count = 0
+    dirs_cleaned = set()
+
+    with click.progressbar(
+        sessions,
+        label="Scanning",
+        show_pos=True,
+        item_show_func=lambda x: x[0].name if x else "",
+    ) as bar:
+        for session_file, agent in bar:
+            export_dir = extract_export_dir_from_session(session_file, agent=agent)
+            if export_dir and export_dir.exists():
+                export_file = export_dir / f"{session_file.stem}.txt"
+                if export_file.exists():
+                    if dry_run:
+                        if verbose:
+                            print(f"\nWould delete: {export_file}")
+                    else:
+                        if verbose:
+                            print(f"\nDeleting: {export_file}")
+                        export_file.unlink()
+                    deleted_count += 1
+                    dirs_cleaned.add(export_dir)
+
+    if dry_run:
+        print(f"\nDry run: would delete {deleted_count} files "
+              f"from {len(dirs_cleaned)} directories")
+    else:
+        print(f"\n✅ Cleared {deleted_count} export files "
+              f"from {len(dirs_cleaned)} directories")
+
+
+@main.command("export-all")
 @click.option("--force", "-f", is_flag=True, help="Re-export all (ignore mtime)")
-@click.option("--verbose", "-v", is_flag=True, help="Show progress")
-def export_all(output, force, verbose):
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed progress and failures")
+def export_all(force, verbose):
     """Export all sessions with YAML front matter for indexing.
 
-    Exports Claude and Codex sessions to {output}/claude/ and {output}/codex/.
+    Each session is exported to its own project directory:
+    {project}/exported-sessions/{agent}/{session_id}.txt
+
     Skips sessions that haven't changed since last export (unless --force).
     """
-    from pathlib import Path
-    from claude_code_tools.export_all import export_all_sessions
-
-    output_path = Path(output).expanduser()
-    print(f"Exporting sessions to: {output_path}")
-
-    stats = export_all_sessions(
-        output_dir=output_path,
-        force=force,
-        verbose=verbose,
+    from claude_code_tools.export_all import (
+        collect_sessions_to_export,
+        export_single_session,
     )
+
+    print("Collecting sessions...")
+    sessions = collect_sessions_to_export()
+    print(f"Found {len(sessions)} sessions to process")
+
+    stats: dict = {
+        "exported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "exported_files": [],
+        "failures": [],
+    }
+
+    with click.progressbar(
+        sessions,
+        label="Exporting",
+        show_pos=True,
+        item_show_func=lambda x: x[0].name if x else "",
+    ) as bar:
+        for session_file, agent in bar:
+            result = export_single_session(session_file, agent, force)
+
+            if result["status"] == "exported":
+                stats["exported"] += 1
+                stats["exported_files"].append(result["export_file"])
+            elif result["status"] == "skipped":
+                stats["skipped"] += 1
+                if result["export_file"]:
+                    stats["exported_files"].append(result["export_file"])
+            else:  # failed
+                stats["failed"] += 1
+                stats["failures"].append({
+                    "session": str(session_file),
+                    "agent": agent,
+                    "error": result["error"],
+                })
 
     print(f"\n✅ Export complete:")
     print(f"   Exported: {stats['exported']}")
     print(f"   Skipped:  {stats['skipped']} (up-to-date)")
     print(f"   Failed:   {stats['failed']}")
+    print(f"   Total export files: {len(stats['exported_files'])}")
+
+    if stats["failures"] and verbose:
+        print(f"\n⚠️  Failures ({len(stats['failures'])}):")
+        for failure in stats["failures"]:
+            print(f"   {failure['session']}")
+            print(f"      Error: {failure['error']}")
 
 
 @main.command("build-index")
-@click.option(
-    "--exports", "-e",
-    type=click.Path(),
-    default="./exported-sessions",
-    help="Exports directory (default: ./exported-sessions/)",
-)
 @click.option(
     "--index", "-i",
     type=click.Path(),
@@ -672,34 +784,106 @@ def export_all(output, force, verbose):
     help="Index directory (default: ~/.claude/search-index/)",
 )
 @click.option("--full", is_flag=True, help="Full rebuild (not incremental)")
-@click.option("--verbose", "-v", is_flag=True, help="Show progress")
-def build_index(exports, index, full, verbose):
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed progress and failures")
+def build_index(index, full, verbose):
     """Build Tantivy search index from exported sessions.
 
-    Reads exported .txt files with YAML front matter and indexes them
+    Finds exported .txt files in per-project directories and indexes them
     for full-text search. Incremental by default (only indexes new/changed).
+
+    Export files are expected at: {project}/exported-sessions/{agent}/*.txt
     """
     from pathlib import Path
     from claude_code_tools.search_index import SessionIndex
+    from claude_code_tools.export_all import (
+        extract_export_dir_from_session,
+        find_all_claude_sessions,
+        find_all_codex_sessions,
+        should_export_session,
+    )
+    from claude_code_tools.session_utils import get_claude_home, get_codex_home
 
-    exports_path = Path(exports).expanduser()
     index_path = Path(index).expanduser()
+    claude_home = get_claude_home()
+    codex_home = get_codex_home()
 
-    if not exports_path.exists():
-        print(f"Error: Exports directory not found: {exports_path}")
+    print("Scanning for export files...")
+
+    # Collect all export files that exist
+    export_files: list[Path] = []
+
+    # Find Claude session exports
+    claude_sessions = find_all_claude_sessions(claude_home)
+    for session_file in claude_sessions:
+        if not should_export_session(session_file, agent="claude"):
+            continue
+        export_dir = extract_export_dir_from_session(session_file, agent="claude")
+        if export_dir:
+            export_file = export_dir / f"{session_file.stem}.txt"
+            if export_file.exists():
+                export_files.append(export_file)
+
+    # Find Codex session exports
+    codex_sessions = find_all_codex_sessions(codex_home)
+    for session_file in codex_sessions:
+        if not should_export_session(session_file, agent="codex"):
+            continue
+        export_dir = extract_export_dir_from_session(session_file, agent="codex")
+        if export_dir:
+            export_file = export_dir / f"{session_file.stem}.txt"
+            if export_file.exists():
+                export_files.append(export_file)
+
+    if not export_files:
+        print("No export files found.")
         print("Run 'aichat export-all' first to export sessions.")
         return
 
+    print(f"Found {len(export_files)} export files")
     print(f"Building index at: {index_path}")
-    print(f"From exports in:   {exports_path}")
 
     idx = SessionIndex(index_path)
-    stats = idx.build_from_exports(exports_path, incremental=not full)
+    writer = idx.get_writer()
+    incremental = not full
+
+    stats: dict = {
+        "indexed": 0,
+        "skipped": 0,
+        "failed": 0,
+        "failures": [],
+    }
+
+    with click.progressbar(
+        export_files,
+        label="Indexing",
+        show_pos=True,
+        item_show_func=lambda x: x.name if x else "",
+    ) as bar:
+        for export_file in bar:
+            result = idx.index_single_file(export_file, writer, incremental)
+            if result["status"] == "indexed":
+                stats["indexed"] += 1
+            elif result["status"] == "skipped":
+                stats["skipped"] += 1
+            else:
+                stats["failed"] += 1
+                stats["failures"].append({
+                    "file": str(export_file),
+                    "error": result["error"],
+                })
+
+    idx.commit_and_reload(writer)
 
     print(f"\n✅ Index build complete:")
     print(f"   Indexed: {stats['indexed']}")
     print(f"   Skipped: {stats['skipped']} (unchanged)")
     print(f"   Failed:  {stats['failed']}")
+
+    if stats["failures"] and verbose:
+        print(f"\n⚠️  Failures ({len(stats['failures'])}):")
+        for failure in stats["failures"]:
+            print(f"   {failure['file']}")
+            print(f"      Error: {failure['error']}")
 
 
 @main.command("search")

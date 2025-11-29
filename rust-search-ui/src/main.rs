@@ -137,11 +137,20 @@ impl Session {
     }
 
     /// Session ID display with annotations: abc123.. (t) (c) (sub)
+    /// For Codex, extracts UUID (last 36 chars) from session_id
     fn session_id_display(&self) -> String {
-        let id_prefix = if self.session_id.len() >= 8 {
-            &self.session_id[..8]
+        // UUIDs are always 36 characters (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+        // For Codex, extract last 36 chars which is the UUID
+        let clean_id = if self.agent == "codex" && self.session_id.len() >= 36 {
+            &self.session_id[self.session_id.len() - 36..]
         } else {
             &self.session_id
+        };
+
+        let id_prefix = if clean_id.len() >= 8 {
+            &clean_id[..8]
+        } else {
+            clean_id
         };
         let mut display = format!("{}..", id_prefix);
 
@@ -219,7 +228,7 @@ struct App {
 
     // Filter state
     filter_original_only: bool,
-    filter_no_sub: bool,
+    filter_show_sub: bool,  // false = hide sub-agents (default), true = show them
     filter_no_trim: bool,
     filter_no_cont: bool,
     filter_agent: Option<String>, // None = all, Some("claude"), Some("codex")
@@ -232,6 +241,89 @@ struct App {
     full_view_mode: bool,
     full_content: String,
     full_content_scroll: usize,
+
+    // Jump mode (num+Enter)
+    jump_input: String,
+
+    // Input mode for :m and :a
+    input_mode: Option<InputMode>,
+    input_buffer: String,
+
+    // Action mode for Enter (view/resume)
+    action_mode: Option<ActionMode>,
+
+    // Filter modal
+    filter_modal_open: bool,
+    filter_modal_selected: usize,
+}
+
+#[derive(Clone, PartialEq)]
+enum InputMode {
+    MinLines,   // :m - waiting for number
+    Agent,      // :a - waiting for 1 or 2
+    JumpToLine, // C-g - waiting for line number
+}
+
+#[derive(Clone, PartialEq)]
+enum ActionMode {
+    ViewOrResume,  // User pressed Enter, choosing between view (1) or resume (2)
+}
+
+#[derive(Clone, PartialEq)]
+enum FilterMenuItem {
+    ClearAll,
+    OriginalOnly,
+    ShowSubAgents,
+    NoTrimmed,
+    NoContinued,
+    AgentAll,
+    AgentClaude,
+    AgentCodex,
+    MinLines,
+}
+
+impl FilterMenuItem {
+    fn all() -> Vec<FilterMenuItem> {
+        vec![
+            FilterMenuItem::ClearAll,
+            FilterMenuItem::OriginalOnly,
+            FilterMenuItem::ShowSubAgents,
+            FilterMenuItem::NoTrimmed,
+            FilterMenuItem::NoContinued,
+            FilterMenuItem::AgentAll,
+            FilterMenuItem::AgentClaude,
+            FilterMenuItem::AgentCodex,
+            FilterMenuItem::MinLines,
+        ]
+    }
+
+    fn label(&self) -> &str {
+        match self {
+            FilterMenuItem::ClearAll => "(x) Clear all filters",
+            FilterMenuItem::OriginalOnly => "(o) Original sessions only",
+            FilterMenuItem::ShowSubAgents => "(s) Include sub-agent sessions",
+            FilterMenuItem::NoTrimmed => "(t) Exclude trimmed sessions",
+            FilterMenuItem::NoContinued => "(c) Exclude continued sessions",
+            FilterMenuItem::AgentAll => "(a) All agents",
+            FilterMenuItem::AgentClaude => "(d) Claude only",
+            FilterMenuItem::AgentCodex => "(e) Codex only",
+            FilterMenuItem::MinLines => "(l) Minimum lines",
+        }
+    }
+
+    fn shortcut(&self) -> char {
+        match self {
+            FilterMenuItem::ClearAll => 'x',
+            FilterMenuItem::OriginalOnly => 'o',
+            FilterMenuItem::ShowSubAgents => 's',
+            FilterMenuItem::NoTrimmed => 't',
+            FilterMenuItem::NoContinued => 'c',
+            FilterMenuItem::AgentAll => 'a',
+            FilterMenuItem::AgentClaude => 'd',
+            FilterMenuItem::AgentCodex => 'e',
+            FilterMenuItem::MinLines => 'l',
+        }
+    }
 }
 
 impl App {
@@ -255,7 +347,7 @@ impl App {
             launch_cwd,
             // Filter state
             filter_original_only: false,
-            filter_no_sub: false,
+            filter_show_sub: false,  // Default: hide sub-agents
             filter_no_trim: false,
             filter_no_cont: false,
             filter_agent: None,
@@ -266,6 +358,16 @@ impl App {
             full_view_mode: false,
             full_content: String::new(),
             full_content_scroll: 0,
+            // Jump mode
+            jump_input: String::new(),
+            // Input mode
+            input_mode: None,
+            input_buffer: String::new(),
+            // Action mode
+            action_mode: None,
+            // Filter modal
+            filter_modal_open: false,
+            filter_modal_selected: 0,
         };
         app.filter();
         app
@@ -290,8 +392,8 @@ impl App {
                     }
                 }
 
-                // No sub-agent filter
-                if self.filter_no_sub && s.is_sidechain {
+                // Sub-agent filter: hide by default, show only if filter_show_sub is true
+                if !self.filter_show_sub && s.is_sidechain {
                     return false;
                 }
 
@@ -319,14 +421,28 @@ impl App {
                     }
                 }
 
-                // Query filter
+                // Query filter - split into keywords, ALL must match (across any field)
                 if query_lower.is_empty() {
                     return true;
                 }
-                s.project.to_lowercase().contains(&query_lower)
-                    || s.first_msg_content.to_lowercase().contains(&query_lower)
-                    || s.last_msg_content.to_lowercase().contains(&query_lower)
-                    || s.session_id.to_lowercase().contains(&query_lower)
+
+                // Split query into keywords
+                let keywords: Vec<&str> = query_lower.split_whitespace().collect();
+                if keywords.is_empty() {
+                    return true;
+                }
+
+                // Build combined searchable text
+                let searchable = format!(
+                    "{} {} {} {}",
+                    s.project.to_lowercase(),
+                    s.first_msg_content.to_lowercase(),
+                    s.last_msg_content.to_lowercase(),
+                    s.session_id.to_lowercase()
+                );
+
+                // ALL keywords must be found somewhere in the searchable text
+                keywords.iter().all(|kw| searchable.contains(kw))
             })
             .map(|(i, _)| i)
             .collect();
@@ -375,6 +491,20 @@ impl App {
         }
     }
 
+    fn page_up(&mut self, lines: usize) {
+        if !self.filtered.is_empty() {
+            self.selected = self.selected.saturating_sub(lines);
+            self.preview_scroll = 0;
+        }
+    }
+
+    fn page_down(&mut self, lines: usize) {
+        if !self.filtered.is_empty() {
+            self.selected = (self.selected + lines).min(self.filtered.len() - 1);
+            self.preview_scroll = 0;
+        }
+    }
+
     fn on_enter(&mut self) {
         if let Some(session) = self.selected_session() {
             self.should_select = Some(session.clone());
@@ -416,6 +546,21 @@ impl App {
 
     fn scroll_preview_down(&mut self, lines: usize) {
         self.preview_scroll = self.preview_scroll.saturating_add(lines);
+    }
+
+    fn jump_to_row(&mut self, row: usize) {
+        if row > 0 && row <= self.filtered.len() {
+            self.selected = row - 1; // Convert 1-indexed to 0-indexed
+            self.preview_scroll = 0;
+        }
+        self.jump_input.clear();
+    }
+
+    fn process_jump_enter(&mut self) {
+        if let Ok(row) = self.jump_input.parse::<usize>() {
+            self.jump_to_row(row);
+        }
+        self.jump_input.clear();
     }
 }
 
@@ -468,13 +613,13 @@ fn render(frame: &mut Frame, app: &mut App) {
         ])
         .split(main_layout[2]);
 
-    // Split content: 40% list, padding, 60% preview
+    // Split content: 70% list, padding, 30% preview
     let content_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(40),
+            Constraint::Percentage(70),
             Constraint::Length(2),
-            Constraint::Percentage(60),
+            Constraint::Percentage(30),
         ])
         .split(content_area[1]);
 
@@ -492,6 +637,74 @@ fn render(frame: &mut Frame, app: &mut App) {
         .split(main_layout[4]);
 
     render_status_bar(frame, app, &t, status_area[1]);
+
+    // Filter modal overlay
+    if app.filter_modal_open {
+        render_filter_modal(frame, app, &t, area);
+    }
+}
+
+fn render_filter_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
+    use ratatui::widgets::{Block, Borders, Clear};
+
+    // Center the modal
+    let modal_width = 42u16;
+    let modal_height = 13u16; // 9 items + 2 border + 2 padding
+    let x = (area.width.saturating_sub(modal_width)) / 2;
+    let y = (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    // Clear the area behind the modal
+    frame.render_widget(Clear, modal_area);
+
+    // Modal border
+    let block = Block::default()
+        .title(" Filters (|) ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(t.search_bg));
+    frame.render_widget(block, modal_area);
+
+    // Inner content area
+    let inner = Rect::new(x + 2, y + 1, modal_width - 4, modal_height - 2);
+
+    let items = FilterMenuItem::all();
+    let mut lines: Vec<Line> = Vec::new();
+
+    for (i, item) in items.iter().enumerate() {
+        let is_selected = i == app.filter_modal_selected;
+
+        // Show current state for toggleable filters
+        let state_indicator = match item {
+            FilterMenuItem::ClearAll => "".to_string(),
+            FilterMenuItem::OriginalOnly => if app.filter_original_only { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::ShowSubAgents => if app.filter_show_sub { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::NoTrimmed => if app.filter_no_trim { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::NoContinued => if app.filter_no_cont { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::AgentAll => if app.filter_agent.is_none() { " ●" } else { " ○" }.to_string(),
+            FilterMenuItem::AgentClaude => if app.filter_agent.as_deref() == Some("claude") { " ●" } else { " ○" }.to_string(),
+            FilterMenuItem::AgentCodex => if app.filter_agent.as_deref() == Some("codex") { " ●" } else { " ○" }.to_string(),
+            FilterMenuItem::MinLines => match app.filter_min_lines {
+                Some(n) => format!(" [≥{}]", n),
+                None => " [Any]".to_string(),
+            },
+        };
+
+        let style = if is_selected {
+            Style::default().bg(t.selection_bg).fg(t.selection_header_fg)
+        } else {
+            Style::default()
+        };
+
+        let prefix = if is_selected { "▶ " } else { "  " };
+        lines.push(Line::from(vec![
+            Span::styled(prefix, style),
+            Span::styled(item.label(), style),
+            Span::styled(state_indicator, Style::default().fg(t.match_fg)),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 fn render_search_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
@@ -556,6 +769,28 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
         return;
     }
 
+    // Calculate field widths based on max values
+    let row_num_width = app.filtered.len().to_string().len().max(2);
+    let sep = " | ";
+
+    // Calculate max widths for each field - no artificial caps, show full names
+    let mut max_project_len = 0usize;
+    let mut max_branch_len = 0usize;
+    let mut max_lines_len = 0usize;
+    let mut max_date_len = 0usize;
+    for &idx in &app.filtered {
+        let s = &app.sessions[idx];
+        max_project_len = max_project_len.max(s.project_name().len());
+        max_branch_len = max_branch_len.max(s.branch_display().len());
+        max_lines_len = max_lines_len.max(format!("{}L", s.lines).len());
+        max_date_len = max_date_len.max(s.date_display().len());
+    }
+    // Ensure minimums and reasonable maximums for very long names
+    max_project_len = max_project_len.max(7).min(30);
+    max_branch_len = max_branch_len.max(6).min(25);
+    max_lines_len = max_lines_len.max(4);
+    max_date_len = max_date_len.max(11); // "MM/DD HH:MM" is 11 chars
+
     let items: Vec<ListItem> = app
         .filtered
         .iter()
@@ -563,6 +798,7 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
         .map(|(i, &idx)| {
             let s = &app.sessions[idx];
             let is_selected = i == app.selected;
+            let row_num = i + 1; // 1-indexed
 
             let source_color = if s.agent == "claude" {
                 t.claude_source
@@ -576,32 +812,37 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
                 Style::default()
             };
 
-            // New format: ● Claude  abc123.. (t)  project  main  11/29 10:30  125L
+            let sep_style = Style::default().fg(t.separator_fg);
+
+            // Agent icon + abbreviation
+            let (agent_icon, agent_abbrev) = if s.agent == "claude" {
+                ("●", "CLD")
+            } else {
+                ("■", "CDX")
+            };
+
+            // Format: row# [icon Agent] session_id | project | branch | lines | date
+            let row_num_str = format!("{:>width$}", row_num, width = row_num_width);
+            let session_display = s.session_id_display();
+            let project_padded = format!("{:<width$}", truncate(s.project_name(), max_project_len), width = max_project_len);
+            let branch_padded = format!("{:<width$}", truncate(s.branch_display(), max_branch_len), width = max_branch_len);
+            let lines_str = format!("{:>width$}", format!("{}L", s.lines), width = max_lines_len);
+
+            // Right-align date so single dates appear on the right, ranges extend left
+            let date_str = format!("{:>width$}", s.date_display(), width = max_date_len);
+
             let header_spans = vec![
-                Span::styled(
-                    format!("{} {}  ", s.agent_icon(), s.agent_display()),
-                    Style::default().fg(source_color),
-                ),
-                Span::styled(
-                    format!("{}  ", s.session_id_display()),
-                    Style::default().fg(t.dim_fg),
-                ),
-                Span::styled(
-                    format!("{}  ", truncate(s.project_name(), 12)),
-                    header_style,
-                ),
-                Span::styled(
-                    format!("{}  ", truncate(s.branch_display(), 10)),
-                    Style::default().fg(t.accent),
-                ),
-                Span::styled(
-                    format!("{}  ", s.date_display()),
-                    Style::default().fg(t.dim_fg),
-                ),
-                Span::styled(
-                    format!("{}L", s.lines),
-                    header_style,
-                ),
+                Span::styled(format!("{} ", row_num_str), Style::default().fg(t.dim_fg)),
+                Span::styled(format!("{} {} ", agent_icon, agent_abbrev), Style::default().fg(source_color)),
+                Span::styled(session_display, Style::default().fg(t.dim_fg)),
+                Span::styled(sep, sep_style),
+                Span::styled(project_padded, header_style),
+                Span::styled(sep, sep_style),
+                Span::styled(branch_padded, Style::default().fg(t.accent)),
+                Span::styled(sep, sep_style),
+                Span::styled(lines_str, header_style),
+                Span::styled(sep, sep_style),
+                Span::styled(date_str, Style::default().fg(t.dim_fg)),
             ];
 
             // Snippet: show last_msg when no query, highlighted match when searching
@@ -612,29 +853,30 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
             };
             let highlight_style = Style::default().fg(t.match_fg);
 
+            // Indent snippet to align with content (after row number)
+            let indent = " ".repeat(row_num_width + 1);
+            let snippet_width = available_width.saturating_sub(row_num_width + 1);
+
             let snippet_line = if app.query.is_empty() {
                 // No query: show last message content
-                let snippet = truncate(&s.last_msg_content, available_width);
-                Line::from(Span::styled(format!("...{}", snippet), snippet_style))
+                let snippet = truncate(&s.last_msg_content, snippet_width);
+                Line::from(Span::styled(format!("{}...{}", indent, snippet), snippet_style))
             } else {
                 // With query: find matching text and highlight keywords
-                // Search in both first and last message content
-                let combined_content = format!(
-                    "{} {}",
-                    s.first_msg_content, s.last_msg_content
-                );
-                if let Some(spans) = find_matching_snippet(
+                let combined_content = format!("{} {}", s.first_msg_content, s.last_msg_content);
+                if let Some(mut spans) = find_matching_snippet(
                     &combined_content,
                     &app.query,
-                    available_width,
+                    snippet_width,
                     snippet_style,
                     highlight_style,
                 ) {
+                    // Prepend indent
+                    spans.insert(0, Span::styled(indent, snippet_style));
                     Line::from(spans)
                 } else {
-                    // Fallback to first_msg if no match found
-                    let snippet = truncate(&s.first_msg_content, available_width);
-                    Line::from(Span::styled(format!("...{}", snippet), snippet_style))
+                    let snippet = truncate(&s.first_msg_content, snippet_width);
+                    Line::from(Span::styled(format!("{}...{}", indent, snippet), snippet_style))
                 }
             };
 
@@ -679,9 +921,9 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
     let bubble_width = area.width.saturating_sub(4) as usize;
     let mut lines: Vec<Line> = Vec::new();
 
-    // First message
+    // First message - labeled as "FIRST MESSAGE"
     if !s.first_msg_content.is_empty() {
-        let (label, label_color, bubble_bg) = if s.first_msg_role == "user" {
+        let (role_label, label_color, bubble_bg) = if s.first_msg_role == "user" {
             ("You", t.user_label, t.user_bubble_bg)
         } else if s.agent == "claude" {
             ("Claude", t.claude_source, t.claude_bubble_bg)
@@ -689,12 +931,12 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
             ("Codex", t.codex_source, t.codex_bubble_bg)
         };
 
-        lines.push(Line::from(Span::styled(
-            format!(" {}", label),
-            Style::default().fg(label_color).add_modifier(Modifier::BOLD),
-        )));
+        lines.push(Line::from(vec![
+            Span::styled(" ── FIRST ── ", Style::default().fg(t.dim_fg)),
+            Span::styled(role_label, Style::default().fg(label_color).add_modifier(Modifier::BOLD)),
+        ]));
 
-        for wrapped in wrap_text(&s.first_msg_content, bubble_width).iter().take(8) {
+        for wrapped in wrap_text(&s.first_msg_content, bubble_width).iter().take(6) {
             let padding = bubble_width.saturating_sub(wrapped.chars().count());
             lines.push(Line::from(vec![
                 Span::styled(" ", Style::default().bg(bubble_bg)),
@@ -706,9 +948,9 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
         lines.push(Line::from(""));
     }
 
-    // Last message (if different from first)
+    // Last message - labeled as "LAST MESSAGE" (if different from first)
     if !s.last_msg_content.is_empty() && s.last_msg_content != s.first_msg_content {
-        let (label, label_color, bubble_bg) = if s.last_msg_role == "user" {
+        let (role_label, label_color, bubble_bg) = if s.last_msg_role == "user" {
             ("You", t.user_label, t.user_bubble_bg)
         } else if s.agent == "claude" {
             ("Claude", t.claude_source, t.claude_bubble_bg)
@@ -716,12 +958,12 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
             ("Codex", t.codex_source, t.codex_bubble_bg)
         };
 
-        lines.push(Line::from(Span::styled(
-            format!(" {}", label),
-            Style::default().fg(label_color).add_modifier(Modifier::BOLD),
-        )));
+        lines.push(Line::from(vec![
+            Span::styled(" ── LAST ── ", Style::default().fg(t.dim_fg)),
+            Span::styled(role_label, Style::default().fg(label_color).add_modifier(Modifier::BOLD)),
+        ]));
 
-        for wrapped in wrap_text(&s.last_msg_content, bubble_width).iter().take(8) {
+        for wrapped in wrap_text(&s.last_msg_content, bubble_width).iter().take(6) {
             let padding = bubble_width.saturating_sub(wrapped.chars().count());
             lines.push(Line::from(vec![
                 Span::styled(" ", Style::default().bg(bubble_bg)),
@@ -749,44 +991,69 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
 
     let mut spans: Vec<Span> = Vec::new();
 
-    // Command mode indicator
-    if app.command_mode {
+    // Action mode indicator (view/resume)
+    if let Some(ref mode) = app.action_mode {
+        let prompt = match mode {
+            ActionMode::ViewOrResume => " 1=View  2=Resume  Esc=Cancel ".to_string(),
+        };
+        spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
+    } else if let Some(ref mode) = app.input_mode {
+        // Input mode indicator
+        let prompt = match mode {
+            InputMode::MinLines => format!(" Min lines: {}█ ", app.input_buffer),
+            InputMode::Agent => " Agent: 1=Claude 2=Codex 0=All ".to_string(),
+            InputMode::JumpToLine => format!(" Go to row: {}█ ", app.input_buffer),
+        };
+        spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
+    } else if app.command_mode {
+        // Command mode indicator
         spans.push(Span::styled(" CMD ", Style::default().bg(t.accent).fg(Color::Black)));
-        spans.push(Span::styled(" :o orig :s sub :t trim :c cont :a agent :m lines ", label));
+        spans.push(Span::styled(" :x clear :o orig :s sub :t trim :c cont :a agent :m lines ", label));
     } else {
         // Normal keybindings
         let has_selection = !app.filtered.is_empty();
         spans.extend([
             Span::styled(" ↑↓ ", keycap),
             Span::styled(" nav ", label),
+            Span::styled(" │ ", dim),
+            Span::styled(" C-u/d/PgUp/Dn ", keycap),
+            Span::styled(" page ", label),
         ]);
 
         if has_selection {
             spans.extend([
                 Span::styled(" │ ", dim),
-                Span::styled(" Space ", keycap),
-                Span::styled(" view ", label),
-                Span::styled(" │ ", dim),
                 Span::styled(" Enter ", keycap),
-                Span::styled(" open ", label),
+                Span::styled(" view/resume ", label),
+                Span::styled(" │ ", dim),
+                Span::styled(" C-g ", keycap),
+                Span::styled(" jump ", label),
             ]);
         }
 
+        // Scope toggle with current state
+        let scope_indicator = if app.scope_global { "global" } else { "local" };
         spans.extend([
             Span::styled(" │ ", dim),
-            Span::styled(" : ", keycap),
+            Span::styled(" / ", keycap),
+            Span::styled(format!(" {} ", scope_indicator), label),
+        ]);
+
+        spans.extend([
+            Span::styled(" │ ", dim),
+            Span::styled(" C-f ", keycap),
             Span::styled(" filter ", label),
             Span::styled(" │ ", dim),
             Span::styled(" Esc ", keycap),
             Span::styled(" quit", label),
         ]);
 
-        // Active filters
+        // Active filters (only show when non-default)
         if app.filter_original_only {
             spans.push(Span::styled(" [orig]", filter_active));
         }
-        if app.filter_no_sub {
-            spans.push(Span::styled(" [-sub]", filter_active));
+        if app.filter_show_sub {
+            spans.push(Span::styled(" [+sub]", filter_active));
         }
         if app.filter_no_trim {
             spans.push(Span::styled(" [-trim]", filter_active));
@@ -1183,7 +1450,7 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let output_file = args.get(1).map(std::path::PathBuf::from);
 
-    let sessions = load_sessions(index_path.to_str().unwrap(), 500)?;
+    let sessions = load_sessions(index_path.to_str().unwrap(), 5000)?;
 
     if sessions.is_empty() {
         eprintln!("No sessions found. Run 'aichat export-all && aichat build-index' first.");
@@ -1238,16 +1505,183 @@ fn main() -> Result<()> {
                             }
                             _ => {}
                         }
+                    } else if app.filter_modal_open {
+                        // Handle filter modal
+                        let items = FilterMenuItem::all();
+
+                        // Helper to apply filter by item
+                        let apply_filter = |app: &mut App, item: &FilterMenuItem| {
+                            match item {
+                                FilterMenuItem::ClearAll => {
+                                    app.filter_original_only = false;
+                                    app.filter_show_sub = false;
+                                    app.filter_no_trim = false;
+                                    app.filter_no_cont = false;
+                                    app.filter_agent = None;
+                                    app.filter_min_lines = None;
+                                    app.filter();
+                                }
+                                FilterMenuItem::OriginalOnly => {
+                                    app.filter_original_only = !app.filter_original_only;
+                                    app.filter();
+                                }
+                                FilterMenuItem::ShowSubAgents => {
+                                    app.filter_show_sub = !app.filter_show_sub;
+                                    app.filter();
+                                }
+                                FilterMenuItem::NoTrimmed => {
+                                    app.filter_no_trim = !app.filter_no_trim;
+                                    app.filter();
+                                }
+                                FilterMenuItem::NoContinued => {
+                                    app.filter_no_cont = !app.filter_no_cont;
+                                    app.filter();
+                                }
+                                FilterMenuItem::AgentAll => {
+                                    app.filter_agent = None;
+                                    app.filter();
+                                }
+                                FilterMenuItem::AgentClaude => {
+                                    app.filter_agent = Some("claude".to_string());
+                                    app.filter();
+                                }
+                                FilterMenuItem::AgentCodex => {
+                                    app.filter_agent = Some("codex".to_string());
+                                    app.filter();
+                                }
+                                FilterMenuItem::MinLines => {
+                                    app.filter_modal_open = false;
+                                    app.input_mode = Some(InputMode::MinLines);
+                                    app.input_buffer.clear();
+                                }
+                            }
+                        };
+
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.filter_modal_open = false;
+                            }
+                            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.filter_modal_open = false;
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                if app.filter_modal_selected > 0 {
+                                    app.filter_modal_selected -= 1;
+                                }
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                if app.filter_modal_selected < items.len() - 1 {
+                                    app.filter_modal_selected += 1;
+                                }
+                            }
+                            KeyCode::Enter | KeyCode::Char(' ') => {
+                                let item = items[app.filter_modal_selected].clone();
+                                apply_filter(&mut app, &item);
+                            }
+                            // Shortcut keys
+                            KeyCode::Char(c) => {
+                                if let Some(item) = items.iter().find(|i| i.shortcut() == c) {
+                                    apply_filter(&mut app, item);
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else if app.action_mode.is_some() {
+                        // Handle action mode (view/resume)
+                        let mode = app.action_mode.clone().unwrap();
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.action_mode = None;
+                            }
+                            KeyCode::Char('1') if mode == ActionMode::ViewOrResume => {
+                                // View: enter full view mode
+                                if let Some(session) = app.selected_session() {
+                                    app.full_content = std::fs::read_to_string(&session.export_path)
+                                        .unwrap_or_else(|_| "Error loading content".to_string());
+                                    app.full_content_scroll = 0;
+                                    app.full_view_mode = true;
+                                }
+                                app.action_mode = None;
+                            }
+                            KeyCode::Char('2') if mode == ActionMode::ViewOrResume => {
+                                // Resume: select session and quit
+                                app.on_enter();
+                                app.action_mode = None;
+                            }
+                            _ => {}
+                        }
+                    } else if app.input_mode.is_some() {
+                        // Handle input mode for :m and :a
+                        let mode = app.input_mode.clone().unwrap();
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.input_mode = None;
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Enter => {
+                                match mode {
+                                    InputMode::MinLines => {
+                                        if let Ok(num) = app.input_buffer.parse::<i64>() {
+                                            app.filter_min_lines = if num > 0 { Some(num) } else { None };
+                                            app.filter();
+                                        }
+                                    }
+                                    InputMode::Agent => {}
+                                    InputMode::JumpToLine => {
+                                        if let Ok(row) = app.input_buffer.parse::<usize>() {
+                                            app.jump_to_row(row);
+                                        }
+                                    }
+                                }
+                                app.input_mode = None;
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Char('1') if mode == InputMode::Agent => {
+                                app.filter_agent = Some("claude".to_string());
+                                app.filter();
+                                app.input_mode = None;
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Char('2') if mode == InputMode::Agent => {
+                                app.filter_agent = Some("codex".to_string());
+                                app.filter();
+                                app.input_mode = None;
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Char('0') if mode == InputMode::Agent => {
+                                app.filter_agent = None;
+                                app.filter();
+                                app.input_mode = None;
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Char(c) if c.is_ascii_digit() && (mode == InputMode::MinLines || mode == InputMode::JumpToLine) => {
+                                app.input_buffer.push(c);
+                            }
+                            KeyCode::Backspace if mode == InputMode::MinLines || mode == InputMode::JumpToLine => {
+                                app.input_buffer.pop();
+                            }
+                            _ => {}
+                        }
                     } else if app.command_mode {
                         // Handle command mode (: prefix)
                         app.command_mode = false;
                         match key.code {
+                            KeyCode::Char('x') | KeyCode::Char('0') => {
+                                // Clear all filters
+                                app.filter_original_only = false;
+                                app.filter_show_sub = false;
+                                app.filter_no_trim = false;
+                                app.filter_no_cont = false;
+                                app.filter_agent = None;
+                                app.filter_min_lines = None;
+                                app.filter();
+                            }
                             KeyCode::Char('o') => {
                                 app.filter_original_only = !app.filter_original_only;
                                 app.filter();
                             }
                             KeyCode::Char('s') => {
-                                app.filter_no_sub = !app.filter_no_sub;
+                                app.filter_show_sub = !app.filter_show_sub;
                                 app.filter();
                             }
                             KeyCode::Char('t') => {
@@ -1259,23 +1693,33 @@ fn main() -> Result<()> {
                                 app.filter();
                             }
                             KeyCode::Char('a') => {
-                                app.filter_agent = match &app.filter_agent {
-                                    None => Some("claude".to_string()),
-                                    Some(a) if a == "claude" => Some("codex".to_string()),
-                                    Some(_) => None,
-                                };
-                                app.filter();
+                                // Enter agent input mode
+                                app.input_mode = Some(InputMode::Agent);
+                                app.input_buffer.clear();
                             }
                             KeyCode::Char('m') => {
-                                app.filter_min_lines = match app.filter_min_lines {
-                                    None => Some(10),
-                                    Some(10) => Some(50),
-                                    Some(50) => Some(100),
-                                    _ => None,
-                                };
-                                app.filter();
+                                // Enter min-lines input mode
+                                app.input_mode = Some(InputMode::MinLines);
+                                app.input_buffer.clear();
                             }
                             KeyCode::Esc => {} // Just exit command mode
+                            _ => {}
+                        }
+                    } else if !app.jump_input.is_empty() {
+                        // Handle jump input mode
+                        match key.code {
+                            KeyCode::Enter => {
+                                app.process_jump_enter();
+                            }
+                            KeyCode::Esc => {
+                                app.jump_input.clear();
+                            }
+                            KeyCode::Char(c) if c.is_ascii_digit() => {
+                                app.jump_input.push(c);
+                            }
+                            KeyCode::Backspace => {
+                                app.jump_input.pop();
+                            }
                             _ => {}
                         }
                     } else {
@@ -1288,22 +1732,37 @@ fn main() -> Result<()> {
                                 app.command_mode = true;
                             }
                             KeyCode::Char(' ') => {
-                                // Enter full view mode
-                                if let Some(session) = app.selected_session() {
-                                    app.full_content = std::fs::read_to_string(&session.export_path)
-                                        .unwrap_or_else(|_| "Error loading content".to_string());
-                                    app.full_content_scroll = 0;
-                                    app.full_view_mode = true;
-                                }
+                                // Space: add to query (for multi-word search)
+                                app.on_char(' ');
                             }
                             KeyCode::Esc => app.on_escape(),
-                            KeyCode::Enter => app.on_enter(),
+                            KeyCode::Enter => {
+                                // If there's pending jump input, use it
+                                if !app.jump_input.is_empty() {
+                                    app.process_jump_enter();
+                                } else if app.selected_session().is_some() {
+                                    // Enter action mode to choose view or resume
+                                    app.action_mode = Some(ActionMode::ViewOrResume);
+                                }
+                            }
                             KeyCode::Up => app.on_up(),
                             KeyCode::Down => app.on_down(),
-                            KeyCode::PageUp => app.scroll_preview_up(10),
-                            KeyCode::PageDown => app.scroll_preview_down(10),
+                            KeyCode::PageUp => app.page_up(10),
+                            KeyCode::PageDown => app.page_down(10),
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_up(10),
+                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_down(10),
                             KeyCode::Backspace => app.on_backspace(),
                             KeyCode::Char('/') => app.toggle_scope(),
+                            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                // Open filter modal
+                                app.filter_modal_open = true;
+                                app.filter_modal_selected = 0;
+                            }
+                            KeyCode::Char('g') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                // Enter jump mode (go to line)
+                                app.input_mode = Some(InputMode::JumpToLine);
+                                app.input_buffer.clear();
+                            }
                             KeyCode::Char(c) => app.on_char(c),
                             _ => {}
                         }

@@ -265,6 +265,129 @@ class SessionIndex:
 
         return stats
 
+    def index_single_file(
+        self, export_path: Path, writer, incremental: bool = True
+    ) -> dict:
+        """
+        Index a single export file.
+
+        Args:
+            export_path: Path to exported .txt file
+            writer: Tantivy index writer
+            incremental: If True, skip if already indexed
+
+        Returns:
+            Dict with result: {status, error}
+            status: 'indexed', 'skipped', 'failed'
+        """
+        result: dict = {"status": "failed", "error": None}
+
+        if not export_path.exists():
+            result["error"] = "file not found"
+            return result
+
+        # Check if needs indexing
+        if incremental and not self.state.needs_reindex(export_path):
+            result["status"] = "skipped"
+            return result
+
+        # Parse export file
+        try:
+            parsed = self._parse_export_file(export_path)
+        except Exception as e:
+            result["error"] = f"parse error: {e}"
+            return result
+
+        if parsed is None:
+            result["error"] = "failed to parse YAML frontmatter"
+            return result
+
+        metadata = parsed["metadata"]
+
+        try:
+            # Create document
+            doc = tantivy.Document()
+            doc.add_text("session_id", metadata.get("session_id", ""))
+            doc.add_text("agent", metadata.get("agent", ""))
+            doc.add_text("project", metadata.get("project", ""))
+            doc.add_text("branch", metadata.get("branch", "") or "")
+            doc.add_text("cwd", metadata.get("cwd", "") or "")
+            doc.add_text("created", metadata.get("created", "") or "")
+            doc.add_text("modified", metadata.get("modified", ""))
+            doc.add_integer("lines", metadata.get("lines", 0))
+            doc.add_text("export_path", parsed["export_path"])
+
+            # First and last message fields
+            first_msg = metadata.get("first_msg", {}) or {}
+            last_msg = metadata.get("last_msg", {}) or {}
+            doc.add_text("first_msg_role", first_msg.get("role", ""))
+            doc.add_text("first_msg_content", first_msg.get("content", ""))
+            doc.add_text("last_msg_role", last_msg.get("role", ""))
+            doc.add_text("last_msg_content", last_msg.get("content", ""))
+
+            # Session type fields
+            doc.add_text(
+                "derivation_type", metadata.get("derivation_type", "") or ""
+            )
+            doc.add_text(
+                "is_sidechain",
+                "true" if metadata.get("is_sidechain") else "false"
+            )
+
+            doc.add_text("content", parsed["content"])
+
+            writer.add_document(doc)
+            self.state.mark_indexed(export_path)
+            result["status"] = "indexed"
+        except Exception as e:
+            result["error"] = f"index error: {e}"
+
+        return result
+
+    def get_writer(self):
+        """Get a writer for batch indexing."""
+        return self.index.writer()
+
+    def commit_and_reload(self, writer):
+        """Commit writer changes and reload index."""
+        writer.commit()
+        self.state.save()
+        self.index.reload()
+
+    def build_from_files(
+        self, export_files: list[Path], incremental: bool = True
+    ) -> dict[str, int]:
+        """
+        Build or update index from a list of exported session files.
+
+        This is the per-project alternative to build_from_exports().
+        Instead of expecting a single directory, it accepts a list of
+        export file paths from multiple project directories.
+
+        Args:
+            export_files: List of paths to exported .txt files
+            incremental: If True, only index new/modified files
+
+        Returns:
+            Stats dict: {indexed, skipped, failed}
+        """
+        stats = {"indexed": 0, "skipped": 0, "failed": 0}
+
+        writer = self.get_writer()
+
+        for export_path in export_files:
+            result = self.index_single_file(export_path, writer, incremental)
+            if result["status"] == "indexed":
+                stats["indexed"] += 1
+            elif result["status"] == "skipped":
+                stats["skipped"] += 1
+            else:
+                stats["failed"] += 1
+
+        self.commit_and_reload(writer)
+
+        return stats
+
     def _generate_snippet(
         self, content: str, query: str, max_len: int = 200
     ) -> str:

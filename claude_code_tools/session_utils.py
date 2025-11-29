@@ -687,7 +687,11 @@ def is_malformed_session(filepath: Path) -> bool:
 
 def extract_cwd_from_session(session_file: Path) -> Optional[str]:
     """
-    Extract the working directory (cwd) from a Claude session file.
+    Extract the working directory (cwd) from a session file.
+
+    Supports both Claude and Codex session formats:
+    - Claude: top-level "cwd" field
+    - Codex: "payload.cwd" field
 
     Real Claude sessions often have file-history-snapshot lines with null cwd values
     at the start, followed by actual messages with valid cwd. We check first 10 lines
@@ -707,8 +711,14 @@ def extract_cwd_from_session(session_file: Path) -> Optional[str]:
                     break
                 try:
                     data = json.loads(line.strip())
+                    # Claude format: top-level cwd
                     if "cwd" in data and data["cwd"] is not None:
                         return data["cwd"]
+                    # Codex format: payload.cwd
+                    if "payload" in data and isinstance(data["payload"], dict):
+                        payload_cwd = data["payload"].get("cwd")
+                        if payload_cwd is not None:
+                            return payload_cwd
                 except (json.JSONDecodeError, KeyError):
                     continue
     except (OSError, IOError):
