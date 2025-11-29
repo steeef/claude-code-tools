@@ -36,6 +36,10 @@ struct Session {
     modified: String,
     lines: i64,
     export_path: String,
+    first_msg_role: String,
+    first_msg_content: String,
+    last_msg_role: String,
+    last_msg_content: String,
 }
 
 /// App state.
@@ -108,6 +112,11 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
     let modified_field = schema_builder.add_text_field("modified", TEXT | STORED);
     let lines_field = schema_builder.add_i64_field("lines", STORED);
     let export_path_field = schema_builder.add_text_field("export_path", TEXT | STORED);
+    // First and last message fields
+    let first_msg_role_field = schema_builder.add_text_field("first_msg_role", TEXT | STORED);
+    let first_msg_content_field = schema_builder.add_text_field("first_msg_content", TEXT | STORED);
+    let last_msg_role_field = schema_builder.add_text_field("last_msg_role", TEXT | STORED);
+    let last_msg_content_field = schema_builder.add_text_field("last_msg_content", TEXT | STORED);
     let _content_field = schema_builder.add_text_field("content", TEXT | STORED);
     let _schema = schema_builder.build();
 
@@ -152,6 +161,10 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
             modified: get_text(modified_field),
             lines,
             export_path: get_text(export_path_field),
+            first_msg_role: get_text(first_msg_role_field),
+            first_msg_content: get_text(first_msg_content_field),
+            last_msg_role: get_text(last_msg_role_field),
+            last_msg_content: get_text(last_msg_content_field),
         });
     }
 
@@ -164,7 +177,19 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
 
 /// Render the UI.
 fn render(frame: &mut Frame, app: &mut App) {
-    let chunks = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).split(frame.area());
+    use ratatui::layout::Direction;
+    use ratatui::text::Text;
+    use ratatui::widgets::Wrap;
+
+    // Main horizontal split: left (session list) and right (preview)
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(frame.area());
+
+    // Left side: session list + status bar
+    let left_chunks =
+        Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).split(main_chunks[0]);
 
     // Session list
     let items: Vec<ListItem> = app
@@ -181,9 +206,9 @@ fn render(frame: &mut Frame, app: &mut App) {
                         Color::Green
                     }),
                 ),
-                Span::raw(format!("{:<20} ", truncate(&s.project, 20))),
+                Span::raw(format!("{:<18} ", truncate(&s.project, 18))),
                 Span::styled(
-                    format!("{:<15} ", truncate(&s.session_id, 15)),
+                    format!("{:<12} ", truncate(&s.session_id, 12)),
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::raw(format!("{}L", s.lines)),
@@ -205,7 +230,7 @@ fn render(frame: &mut Frame, app: &mut App) {
         )
         .highlight_symbol("> ");
 
-    frame.render_stateful_widget(list, chunks[0], &mut app.list_state);
+    frame.render_stateful_widget(list, left_chunks[0], &mut app.list_state);
 
     // Status bar
     let status = if let Some(i) = app.list_state.selected() {
@@ -218,7 +243,53 @@ fn render(frame: &mut Frame, app: &mut App) {
     let status_widget =
         Paragraph::new(status).block(Block::default().borders(Borders::ALL).title(" Details "));
 
-    frame.render_widget(status_widget, chunks[1]);
+    frame.render_widget(status_widget, left_chunks[1]);
+
+    // Right side: preview pane with first/last messages
+    let preview_content = if let Some(i) = app.list_state.selected() {
+        let s = &app.sessions[i];
+
+        let first_role_style = if s.first_msg_role == "user" {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        };
+
+        let last_role_style = if s.last_msg_role == "user" {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        };
+
+        let first_label = if s.first_msg_role == "user" {
+            "USER"
+        } else {
+            "ASSISTANT"
+        };
+        let last_label = if s.last_msg_role == "user" {
+            "USER"
+        } else {
+            "ASSISTANT"
+        };
+
+        Text::from(vec![
+            Line::from(Span::styled("─── First Message ───", Style::default().fg(Color::Blue))),
+            Line::from(Span::styled(format!("[{}]", first_label), first_role_style)),
+            Line::from(s.first_msg_content.clone()),
+            Line::from(""),
+            Line::from(Span::styled("─── Last Message ───", Style::default().fg(Color::Blue))),
+            Line::from(Span::styled(format!("[{}]", last_label), last_role_style)),
+            Line::from(s.last_msg_content.clone()),
+        ])
+    } else {
+        Text::from("No session selected")
+    };
+
+    let preview = Paragraph::new(preview_content)
+        .block(Block::default().title(" Preview ").borders(Borders::ALL))
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(preview, main_chunks[1]);
 }
 
 fn truncate(s: &str, max: usize) -> String {

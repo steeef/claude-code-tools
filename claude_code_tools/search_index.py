@@ -133,6 +133,12 @@ class SessionIndex:
         self.schema_builder.add_integer_field("lines", stored=True)
         self.schema_builder.add_text_field("export_path", stored=True)
 
+        # First and last message fields (for preview in TUI)
+        self.schema_builder.add_text_field("first_msg_role", stored=True)
+        self.schema_builder.add_text_field("first_msg_content", stored=True)
+        self.schema_builder.add_text_field("last_msg_role", stored=True)
+        self.schema_builder.add_text_field("last_msg_content", stored=True)
+
         # Searchable content field
         self.schema_builder.add_text_field("content", stored=True)
 
@@ -225,6 +231,15 @@ class SessionIndex:
             doc.add_text("modified", metadata.get("modified", ""))
             doc.add_integer("lines", metadata.get("lines", 0))
             doc.add_text("export_path", parsed["export_path"])
+
+            # First and last message fields
+            first_msg = metadata.get("first_msg", {}) or {}
+            last_msg = metadata.get("last_msg", {}) or {}
+            doc.add_text("first_msg_role", first_msg.get("role", ""))
+            doc.add_text("first_msg_content", first_msg.get("content", ""))
+            doc.add_text("last_msg_role", last_msg.get("role", ""))
+            doc.add_text("last_msg_content", last_msg.get("content", ""))
+
             doc.add_text("content", parsed["content"])
 
             writer.add_document(doc)
@@ -377,6 +392,12 @@ class SessionIndex:
             # Apply recency scoring
             final_score = self._calculate_recency_score(modified, score)
 
+            # Extract first/last message fields
+            first_msg_role = doc.get_first("first_msg_role") or ""
+            first_msg_content = doc.get_first("first_msg_content") or ""
+            last_msg_role = doc.get_first("last_msg_role") or ""
+            last_msg_content = doc.get_first("last_msg_content") or ""
+
             results.append({
                 "session_id": session_id,
                 "agent": agent,
@@ -388,6 +409,10 @@ class SessionIndex:
                 "export_path": export_path,
                 "snippet": snippet,
                 "score": final_score,
+                "first_msg_role": first_msg_role,
+                "first_msg_content": first_msg_content,
+                "last_msg_role": last_msg_role,
+                "last_msg_content": last_msg_content,
             })
 
             if len(results) >= limit:
@@ -441,6 +466,10 @@ class SessionIndex:
                 "export_path": doc.get_first("export_path"),
                 "snippet": self._generate_snippet(content, ""),
                 "score": 0.0,
+                "first_msg_role": doc.get_first("first_msg_role") or "",
+                "first_msg_content": doc.get_first("first_msg_content") or "",
+                "last_msg_role": doc.get_first("last_msg_role") or "",
+                "last_msg_content": doc.get_first("last_msg_content") or "",
             })
 
         # Sort by modified timestamp (most recent first)

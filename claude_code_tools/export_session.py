@@ -26,6 +26,140 @@ def _require_yaml():
         )
 
 
+def _truncate_text(text: str, max_length: int = 200) -> str:
+    """Truncate text to max length, adding ellipsis if needed."""
+    text = text.strip()
+    # Replace newlines with spaces for single-line display
+    text = " ".join(text.split())
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3] + "..."
+
+
+def _extract_claude_message_text(data: dict) -> Optional[str]:
+    """
+    Extract text content from a Claude session message.
+
+    Args:
+        data: Parsed JSON line from Claude session
+
+    Returns:
+        Extracted text or None if not a text message
+    """
+    message = data.get("message", {})
+    content = message.get("content")
+
+    if not content:
+        return None
+
+    # Handle string content
+    if isinstance(content, str):
+        return content.strip() if content.strip() else None
+
+    # Handle list of content blocks
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, str) and block.strip():
+                return block.strip()
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text", "").strip()
+                if text:
+                    return text
+
+    return None
+
+
+def _extract_codex_message_text(data: dict) -> Optional[str]:
+    """
+    Extract text content from a Codex session message.
+
+    Args:
+        data: Parsed JSON line from Codex session
+
+    Returns:
+        Extracted text or None if not a text message
+    """
+    payload = data.get("payload", {})
+    if payload.get("type") != "message":
+        return None
+
+    content = payload.get("content", [])
+    if not isinstance(content, list):
+        return None
+
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        # Both input_text and output_text have text field
+        if block_type in ("input_text", "output_text"):
+            text = block.get("text", "").strip()
+            if text:
+                return text
+
+    return None
+
+
+def extract_first_last_messages(
+    session_file: Path, agent: str
+) -> tuple[Optional[dict[str, str]], Optional[dict[str, str]]]:
+    """
+    Extract first and last user/assistant messages from a session.
+
+    Args:
+        session_file: Path to session JSONL file
+        agent: Agent type ('claude' or 'codex')
+
+    Returns:
+        Tuple of (first_msg, last_msg) where each is a dict with 'role' and
+        'content' keys, or None if not found
+    """
+    first_msg: Optional[dict[str, str]] = None
+    last_msg: Optional[dict[str, str]] = None
+
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                role: Optional[str] = None
+                text: Optional[str] = None
+
+                if agent == "claude":
+                    msg_type = data.get("type")
+                    if msg_type in ("user", "assistant"):
+                        role = msg_type
+                        text = _extract_claude_message_text(data)
+                elif agent == "codex":
+                    if data.get("type") == "response_item":
+                        payload = data.get("payload", {})
+                        if payload.get("type") == "message":
+                            role = payload.get("role")
+                            text = _extract_codex_message_text(data)
+
+                if role and text:
+                    msg_dict = {
+                        "role": role,
+                        "content": _truncate_text(text),
+                    }
+                    if first_msg is None:
+                        first_msg = msg_dict
+                    # Always update last_msg to get the last one
+                    last_msg = msg_dict
+
+    except (OSError, IOError):
+        pass
+
+    return first_msg, last_msg
+
+
 def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
     """
     Extract metadata from a session JSONL file.
@@ -54,6 +188,8 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
         "parent_session_file": None,
         "original_session_id": None,
         "trim_stats": None,
+        "first_msg": None,
+        "last_msg": None,
     }
 
     try:
@@ -137,6 +273,11 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
     if metadata["cwd"]:
         metadata["project"] = Path(metadata["cwd"]).name
 
+    # Extract first and last messages
+    first_msg, last_msg = extract_first_last_messages(session_file, agent)
+    metadata["first_msg"] = first_msg
+    metadata["last_msg"] = last_msg
+
     return metadata
 
 
@@ -212,6 +353,12 @@ def generate_yaml_frontmatter(metadata: dict[str, Any]) -> str:
         yaml_data["parent_session_file"] = metadata["parent_session_file"]
     if metadata.get("original_session_id"):
         yaml_data["original_session_id"] = metadata["original_session_id"]
+
+    # First and last messages
+    if metadata.get("first_msg"):
+        yaml_data["first_msg"] = metadata["first_msg"]
+    if metadata.get("last_msg"):
+        yaml_data["last_msg"] = metadata["last_msg"]
 
     # Trim stats (only for trimmed sessions)
     if metadata.get("trim_stats"):
