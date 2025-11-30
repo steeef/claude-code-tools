@@ -934,7 +934,13 @@ def search(query, index, limit, project):
 
 
 @main.command("search-ui")
-def search_ui():
+@click.option(
+    '--claude-home',
+    'claude_home_arg',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help='Path to Claude home directory (overrides CLAUDE_CONFIG_DIR env var)',
+)
+def search_ui(claude_home_arg):
     """Launch Rust TUI for session search with Node action menu handoff.
 
     This is a POC demonstrating Rust → Node handoff:
@@ -943,6 +949,8 @@ def search_ui():
     3. Selected session is passed to Node action menu
     4. Escape from Node menu returns to Rust TUI
     5. Quit (q/Esc) from Rust TUI exits
+
+    The --claude-home option takes precedence over CLAUDE_CONFIG_DIR env var.
     """
     import json
     import os
@@ -958,9 +966,12 @@ def search_ui():
         return
 
     # Auto-index new/changed sessions before launching TUI (Recall model)
+    # Priority: CLI arg > CLAUDE_CONFIG_DIR env var > default ~/.claude
     try:
         from claude_code_tools.search_index import auto_index
-        stats = auto_index(verbose=False)
+        from claude_code_tools.session_utils import get_claude_home
+        claude_home = get_claude_home(cli_arg=claude_home_arg)
+        stats = auto_index(claude_home=claude_home, verbose=False)
         if stats["indexed"] > 0:
             print(f"Indexed {stats['indexed']} new/modified sessions")
     except ImportError:

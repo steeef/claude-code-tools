@@ -27,10 +27,9 @@ use std::time::Duration;
 use std::collections::{HashMap, HashSet};
 use tantivy::{
     collector::TopDocs,
-    query::AllQuery,
-    query::QueryParser,
+    query::{AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, QueryParser},
     schema::{Schema, Value, STORED, TEXT},
-    Index, ReloadPolicy,
+    Index, ReloadPolicy, Term,
 };
 
 // ============================================================================
@@ -483,13 +482,29 @@ impl App {
 
         // If there's a keyword query, use Tantivy full-text search
         if !self.query.trim().is_empty() {
-            let search_results = search_tantivy(&self.index_path, &self.query);
-            if !search_results.is_empty() {
+            let (snippets, ranked_ids) = search_tantivy(&self.index_path, &self.query);
+            if !snippets.is_empty() {
                 // Store snippets for rendering
-                self.search_snippets = search_results.clone();
+                self.search_snippets = snippets.clone();
                 // Filter to only sessions that match the Tantivy search
                 self.filtered.retain(|&i| {
-                    search_results.contains_key(&self.sessions[i].session_id)
+                    snippets.contains_key(&self.sessions[i].session_id)
+                });
+
+                // Reorder filtered by Tantivy ranking (phrase + recency boosted)
+                // Build position map for ranking
+                let rank_pos: HashMap<&str, usize> = ranked_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(pos, id)| (id.as_str(), pos))
+                    .collect();
+
+                // Sort filtered by position in ranked_ids (lower = higher rank)
+                self.filtered.sort_by_key(|&i| {
+                    rank_pos
+                        .get(self.sessions[i].session_id.as_str())
+                        .copied()
+                        .unwrap_or(usize::MAX)
                 });
             } else {
                 // No Tantivy matches - clear results and snippets
@@ -2063,20 +2078,23 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
 }
 
 /// Search Tantivy index for sessions matching keyword query.
-/// Returns a map of session_id -> snippet containing the matching text.
-fn search_tantivy(index_path: &str, query_str: &str) -> HashMap<String, String> {
-    // Return empty map if query is empty
+/// Returns (snippets_map, ranked_session_ids) where:
+/// - snippets_map: session_id -> snippet for lookup
+/// - ranked_session_ids: session_ids in score order (highest first)
+fn search_tantivy(index_path: &str, query_str: &str) -> (HashMap<String, String>, Vec<String>) {
+    // Return empty if query is empty
     if query_str.trim().is_empty() {
-        return HashMap::new();
+        return (HashMap::new(), Vec::new());
     }
 
-    let result: Option<HashMap<String, String>> = (|| {
+    let result: Option<(HashMap<String, String>, Vec<String>)> = (|| {
         let index = Index::open_in_dir(index_path).ok()?;
         let schema = index.schema();
 
-        // Get the content field for full-text search
+        // Get fields for search and ranking
         let content_field = schema.get_field("content").ok()?;
         let session_id_field = schema.get_field("session_id").ok()?;
+        let modified_field = schema.get_field("modified").ok()?;
 
         let reader = index
             .reader_builder()
@@ -2088,43 +2106,131 @@ fn search_tantivy(index_path: &str, query_str: &str) -> HashMap<String, String> 
         // Create query parser for content field
         let query_parser = QueryParser::for_index(&index, vec![content_field]);
 
-        // Parse the query - use lenient parsing to handle user input
-        let query = query_parser.parse_query_lenient(query_str).0;
+        // Parse the base query with lenient parsing
+        let base_query = query_parser.parse_query_lenient(query_str).0;
 
-        // Search with limit for performance (top 100 most relevant)
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(100)).ok()?;
+        // Phrase boosting: multi-word queries get 5x boost for exact phrase match
+        let words: Vec<&str> = query_str.split_whitespace().collect();
+        let final_query: Box<dyn tantivy::query::Query> = if words.len() > 1 {
+            // Create phrase query for exact match
+            let terms: Vec<Term> = words
+                .iter()
+                .map(|w| Term::from_field_text(content_field, &w.to_lowercase()))
+                .collect();
+            let phrase_query = PhraseQuery::new(terms);
+            let boosted_phrase = BoostQuery::new(Box::new(phrase_query), 5.0);
 
-        // Extract session IDs and snippets from results
+            // Combine: boosted phrase OR base query
+            Box::new(BooleanQuery::new(vec![
+                (Occur::Should, Box::new(boosted_phrase) as Box<dyn tantivy::query::Query>),
+                (Occur::Should, Box::new(base_query) as Box<dyn tantivy::query::Query>),
+            ]))
+        } else {
+            Box::new(base_query)
+        };
+
+        // Search with limit for performance
+        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(100)).ok()?;
+
+        // Extract keywords for snippet generation
         let query_lower = query_str.to_lowercase();
         let keywords: Vec<&str> = query_lower.split_whitespace().collect();
 
-        let results: HashMap<String, String> = top_docs
+        // Recency ranking: 7-day half-life exponential decay
+        let now = Utc::now().timestamp() as f64;
+        let half_life_secs = 7.0 * 24.0 * 3600.0; // 7 days
+
+        // Collect results with scores and apply recency boost
+        let mut scored_results: Vec<(f32, String, String)> = top_docs
             .iter()
-            .filter_map(|(_, doc_address)| {
+            .filter_map(|(score, doc_address)| {
                 let doc: tantivy::TantivyDocument = searcher.doc(*doc_address).ok()?;
                 let session_id = doc.get_first(session_id_field)?.as_str()?.to_string();
                 let content = doc.get_first(content_field)?.as_str()?;
+                let modified = doc.get_first(modified_field)?.as_str().unwrap_or("");
 
-                // Find a snippet containing the first keyword
+                // Parse modified timestamp and compute recency boost
+                let modified_ts = DateTime::parse_from_rfc3339(modified)
+                    .map(|dt| dt.timestamp() as f64)
+                    .unwrap_or(0.0);
+                let age = (now - modified_ts).max(0.0);
+                let recency_mult = 1.0 + (-age / half_life_secs).exp();
+
+                let final_score = *score * recency_mult as f32;
                 let snippet = extract_snippet(content, &keywords, 100);
-                Some((session_id, snippet))
+                Some((final_score, session_id, snippet))
             })
             .collect();
 
-        Some(results)
+        // Re-sort by final score (descending) - recency-adjusted ranking
+        scored_results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Build both the snippet map and the ranked ID list
+        let mut snippets: HashMap<String, String> = HashMap::new();
+        let mut ranked_ids: Vec<String> = Vec::new();
+        for (_, id, snippet) in scored_results {
+            ranked_ids.push(id.clone());
+            snippets.insert(id, snippet);
+        }
+
+        Some((snippets, ranked_ids))
     })();
 
     result.unwrap_or_default()
 }
 
-/// Extract a snippet from content containing one of the keywords.
-/// Returns a window of text around the first keyword match.
+/// Extract a snippet from content containing the keywords.
+/// For multi-word queries, prioritizes finding the exact phrase over scattered keywords.
+/// Returns a window of text around the best match.
 fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> String {
     let content_lower = content.to_lowercase();
     let chars: Vec<char> = content.chars().collect();
     let chars_lower: Vec<char> = content_lower.chars().collect();
 
-    // Find the first keyword occurrence (by character index)
+    // Helper to build snippet around a character position
+    let build_snippet = |match_start: usize, match_len: usize| -> String {
+        let half_window = window_chars / 2;
+        let start_idx = match_start.saturating_sub(half_window);
+        let end_idx = (match_start + match_len + half_window).min(chars.len());
+
+        // Find word boundaries (whitespace)
+        let snippet_start = (0..start_idx)
+            .rev()
+            .find(|&idx| chars[idx].is_whitespace())
+            .map(|idx| idx + 1)
+            .unwrap_or(start_idx);
+        let snippet_end = (end_idx..chars.len())
+            .find(|&idx| chars[idx].is_whitespace())
+            .unwrap_or(end_idx);
+
+        let snippet_text: String = chars[snippet_start..snippet_end].iter().collect();
+        let mut snippet = String::new();
+        if snippet_start > 0 {
+            snippet.push_str("...");
+        }
+        snippet.push_str(snippet_text.trim());
+        if snippet_end < chars.len() {
+            snippet.push_str("...");
+        }
+        snippet
+    };
+
+    // For multi-word queries, first try to find the exact phrase
+    if keywords.len() > 1 {
+        let phrase = keywords.join(" ");
+        let phrase_chars: Vec<char> = phrase.chars().collect();
+        for i in 0..chars_lower.len().saturating_sub(phrase_chars.len() - 1) {
+            let matches = phrase_chars
+                .iter()
+                .enumerate()
+                .all(|(j, &pc)| chars_lower.get(i + j) == Some(&pc));
+            if matches {
+                return build_snippet(i, phrase_chars.len());
+            }
+        }
+    }
+
+    // Fallback: find the first keyword occurrence (by character index)
     for keyword in keywords {
         let kw_chars: Vec<char> = keyword.chars().collect();
         if kw_chars.is_empty() {
@@ -2138,31 +2244,7 @@ fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> Str
                 .enumerate()
                 .all(|(j, &kc)| chars_lower.get(i + j) == Some(&kc));
             if matches {
-                // Found at char index i
-                let half_window = window_chars / 2;
-                let start_idx = i.saturating_sub(half_window);
-                let end_idx = (i + kw_chars.len() + half_window).min(chars.len());
-
-                // Find word boundaries (whitespace)
-                let snippet_start = (0..start_idx)
-                    .rev()
-                    .find(|&idx| chars[idx].is_whitespace())
-                    .map(|idx| idx + 1)
-                    .unwrap_or(start_idx);
-                let snippet_end = (end_idx..chars.len())
-                    .find(|&idx| chars[idx].is_whitespace())
-                    .unwrap_or(end_idx);
-
-                let snippet_text: String = chars[snippet_start..snippet_end].iter().collect();
-                let mut snippet = String::new();
-                if snippet_start > 0 {
-                    snippet.push_str("...");
-                }
-                snippet.push_str(snippet_text.trim());
-                if snippet_end < chars.len() {
-                    snippet.push_str("...");
-                }
-                return snippet;
+                return build_snippet(i, kw_chars.len());
             }
         }
     }
