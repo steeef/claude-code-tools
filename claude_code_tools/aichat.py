@@ -961,6 +961,9 @@ def search_ui():
     from claude_code_tools.node_menu_ui import run_node_menu_ui
     from claude_code_tools.session_menu_cli import execute_action
 
+    # RPC path for action execution
+    rpc_path = str(Path(__file__).parent / "action_rpc.py")
+
     def action_handler(sess, action, kwargs):
         """Handle action from Node menu."""
         agent = sess.get("agent", "claude")
@@ -1063,6 +1066,7 @@ def search_ui():
             action_handler=action_handler,
             start_action=True,
             focus_session_id=session["session_id"],
+            rpc_path=rpc_path,
         )
         # After Node menu exits (Escape or action complete), loop back to Rust TUI
 

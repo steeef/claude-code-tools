@@ -249,7 +249,7 @@ struct App {
     input_mode: Option<InputMode>,
     input_buffer: String,
 
-    // Action mode for Enter (view/resume)
+    // Action mode for Enter (view/actions)
     action_mode: Option<ActionMode>,
 
     // Filter modal
@@ -266,7 +266,7 @@ enum InputMode {
 
 #[derive(Clone, PartialEq)]
 enum ActionMode {
-    ViewOrResume,  // User pressed Enter, choosing between view (1) or resume (2)
+    ViewOrActions,  // User pressed Enter, choosing between view (1) or actions (2)
 }
 
 #[derive(Clone, PartialEq)]
@@ -562,6 +562,14 @@ impl App {
         }
         self.jump_input.clear();
     }
+
+    /// Check if any filtered session has annotations (c/t/sub)
+    fn has_annotations(&self) -> bool {
+        self.filtered.iter().any(|&idx| {
+            let s = &self.sessions[idx];
+            !s.derivation_type.is_empty() || s.is_sidechain
+        })
+    }
 }
 
 // ============================================================================
@@ -579,15 +587,19 @@ fn render(frame: &mut Frame, app: &mut App) {
 
     let area = frame.area();
 
+    // Status bar height: 1 for main, +1 for annotation legend if annotations exist
+    let show_legend = app.has_annotations();
+    let status_height = if show_legend { 2 } else { 1 };
+
     // Main layout
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Search bar
-            Constraint::Length(1), // Spacing
-            Constraint::Min(0),    // Content
-            Constraint::Length(1), // Spacing
-            Constraint::Length(1), // Status bar
+            Constraint::Length(3),            // Search bar
+            Constraint::Length(1),            // Spacing
+            Constraint::Min(0),               // Content
+            Constraint::Length(1),            // Spacing
+            Constraint::Length(status_height), // Status bar (+ legend if annotations)
         ])
         .split(area);
 
@@ -636,7 +648,7 @@ fn render(frame: &mut Frame, app: &mut App) {
         ])
         .split(main_layout[4]);
 
-    render_status_bar(frame, app, &t, status_area[1]);
+    render_status_bar(frame, app, &t, status_area[1], show_legend);
 
     // Filter modal overlay
     if app.filter_modal_open {
@@ -774,18 +786,22 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
     let sep = " | ";
 
     // Calculate max widths for each field - no artificial caps, show full names
+    let mut max_session_id_len = 0usize;
     let mut max_project_len = 0usize;
     let mut max_branch_len = 0usize;
     let mut max_lines_len = 0usize;
     let mut max_date_len = 0usize;
     for &idx in &app.filtered {
         let s = &app.sessions[idx];
+        max_session_id_len = max_session_id_len.max(s.session_id_display().len());
         max_project_len = max_project_len.max(s.project_name().len());
         max_branch_len = max_branch_len.max(s.branch_display().len());
         max_lines_len = max_lines_len.max(format!("{}L", s.lines).len());
         max_date_len = max_date_len.max(s.date_display().len());
     }
     // Ensure minimums and reasonable maximums for very long names
+    // Session ID: "abcd1234.." (10) + " (c)" (4) or " (t)" (4) or " (sub)" (6) = max ~16
+    max_session_id_len = max_session_id_len.max(10).min(20);
     max_project_len = max_project_len.max(7).min(30);
     max_branch_len = max_branch_len.max(6).min(25);
     max_lines_len = max_lines_len.max(4);
@@ -823,7 +839,7 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
 
             // Format: row# [icon Agent] session_id | project | branch | lines | date
             let row_num_str = format!("{:>width$}", row_num, width = row_num_width);
-            let session_display = s.session_id_display();
+            let session_display = format!("{:<width$}", s.session_id_display(), width = max_session_id_len);
             let project_padded = format!("{:<width$}", truncate(s.project_name(), max_project_len), width = max_project_len);
             let branch_padded = format!("{:<width$}", truncate(s.branch_display(), max_branch_len), width = max_branch_len);
             let lines_str = format!("{:>width$}", format!("{}L", s.lines), width = max_lines_len);
@@ -924,7 +940,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
     // First message - labeled as "FIRST MESSAGE"
     if !s.first_msg_content.is_empty() {
         let (role_label, label_color, bubble_bg) = if s.first_msg_role == "user" {
-            ("You", t.user_label, t.user_bubble_bg)
+            ("User", t.user_label, t.user_bubble_bg)
         } else if s.agent == "claude" {
             ("Claude", t.claude_source, t.claude_bubble_bg)
         } else {
@@ -951,7 +967,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
     // Last message - labeled as "LAST MESSAGE" (if different from first)
     if !s.last_msg_content.is_empty() && s.last_msg_content != s.first_msg_content {
         let (role_label, label_color, bubble_bg) = if s.last_msg_role == "user" {
-            ("You", t.user_label, t.user_bubble_bg)
+            ("User", t.user_label, t.user_bubble_bg)
         } else if s.agent == "claude" {
             ("Claude", t.claude_source, t.claude_bubble_bg)
         } else {
@@ -983,7 +999,22 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
+fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_legend: bool) {
+    // Split area into main status bar and optional legend line
+    let status_layout = if show_legend {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Length(1)])
+            .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1)])
+            .split(area)
+    };
+
+    let main_area = status_layout[0];
+
     let keycap = Style::default().bg(t.keycap_bg);
     let label = Style::default();
     let dim = Style::default().fg(t.dim_fg);
@@ -991,10 +1022,10 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
 
     let mut spans: Vec<Span> = Vec::new();
 
-    // Action mode indicator (view/resume)
+    // Action mode indicator (view/actions)
     if let Some(ref mode) = app.action_mode {
         let prompt = match mode {
-            ActionMode::ViewOrResume => " 1=View  2=Resume  Esc=Cancel ".to_string(),
+            ActionMode::ViewOrActions => " 1=View  2=Actions  Esc=Cancel ".to_string(),
         };
         spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
     } else if let Some(ref mode) = app.input_mode {
@@ -1024,7 +1055,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
             spans.extend([
                 Span::styled(" │ ", dim),
                 Span::styled(" Enter ", keycap),
-                Span::styled(" view/resume ", label),
+                Span::styled(" view/actions ", label),
                 Span::styled(" │ ", dim),
                 Span::styled(" C-g ", keycap),
                 Span::styled(" jump ", label),
@@ -1075,10 +1106,25 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(count.width() as u16)])
-        .split(area);
+        .split(main_area);
 
     frame.render_widget(Paragraph::new(hints), layout[0]);
     frame.render_widget(Paragraph::new(count), layout[1]);
+
+    // Render annotation legend if needed
+    if show_legend {
+        let legend_spans = vec![
+            Span::styled("  ", dim),
+            Span::styled("(c)", Style::default().fg(t.dim_fg)),
+            Span::styled(" continued  ", dim),
+            Span::styled("(t)", Style::default().fg(t.dim_fg)),
+            Span::styled(" trimmed  ", dim),
+            Span::styled("(sub)", Style::default().fg(t.dim_fg)),
+            Span::styled(" sub-agent", dim),
+        ];
+        let legend = Paragraph::new(Line::from(legend_spans));
+        frame.render_widget(legend, status_layout[1]);
+    }
 }
 
 fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
@@ -1127,13 +1173,59 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
         frame.render_widget(Paragraph::new(header), layout[0]);
     }
 
-    // Content - full conversation
+    // Determine agent label and colors for assistant messages
+    let (agent_label, assistant_bg, assistant_fg) = if let Some(s) = app.selected_session() {
+        if s.agent == "claude" {
+            ("Claude", t.claude_bubble_bg, t.claude_source)
+        } else {
+            ("Codex", t.codex_bubble_bg, t.codex_source)
+        }
+    } else {
+        ("Assistant", t.claude_bubble_bg, t.claude_source)
+    };
+
+    let content_width = layout[1].width.saturating_sub(2) as usize;
+
+    // Content - full conversation with styled messages
     let content_lines: Vec<Line> = app
         .full_content
         .lines()
         .skip(app.full_content_scroll)
         .take(layout[1].height as usize)
-        .map(|line| Line::from(line.to_string()))
+        .map(|line| {
+            if line.starts_with("> ") {
+                // User message - skip "> " (2 chars)
+                let msg_content: String = line.chars().skip(2).collect();
+                let padding = content_width.saturating_sub(msg_content.chars().count() + 7);
+                Line::from(vec![
+                    Span::styled(" User ", Style::default().fg(t.user_label).add_modifier(Modifier::BOLD)),
+                    Span::styled(" ", Style::default().bg(t.user_bubble_bg)),
+                    Span::styled(msg_content, Style::default().bg(t.user_bubble_bg)),
+                    Span::styled(" ".repeat(padding.min(50)), Style::default().bg(t.user_bubble_bg)),
+                ])
+            } else if line.starts_with("⏺ ") {
+                // Assistant message - ⏺ is 3 bytes + space = 4 bytes
+                let msg_content: String = line.chars().skip(2).collect(); // Skip icon + space
+                let label_with_space = format!(" {} ", agent_label);
+                let padding = content_width.saturating_sub(msg_content.chars().count() + label_with_space.len() + 1);
+                Line::from(vec![
+                    Span::styled(label_with_space, Style::default().fg(assistant_fg).add_modifier(Modifier::BOLD)),
+                    Span::styled(" ", Style::default().bg(assistant_bg)),
+                    Span::styled(msg_content, Style::default().bg(assistant_bg)),
+                    Span::styled(" ".repeat(padding.min(50)), Style::default().bg(assistant_bg)),
+                ])
+            } else if line.starts_with("  ⎿") {
+                // Tool result - style as dimmed (2 spaces + ⎿ character)
+                let content: String = line.chars().skip(3).collect(); // Skip "  ⎿"
+                Line::from(Span::styled(
+                    format!("      {}", content),
+                    Style::default().fg(t.dim_fg),
+                ))
+            } else {
+                // Plain line (metadata, continuation, etc.)
+                Line::from(line.to_string())
+            }
+        })
         .collect();
 
     // Clamp scroll to content bounds
@@ -1587,13 +1679,13 @@ fn main() -> Result<()> {
                             _ => {}
                         }
                     } else if app.action_mode.is_some() {
-                        // Handle action mode (view/resume)
+                        // Handle action mode (view/actions)
                         let mode = app.action_mode.clone().unwrap();
                         match key.code {
                             KeyCode::Esc => {
                                 app.action_mode = None;
                             }
-                            KeyCode::Char('1') if mode == ActionMode::ViewOrResume => {
+                            KeyCode::Char('1') if mode == ActionMode::ViewOrActions => {
                                 // View: enter full view mode
                                 if let Some(session) = app.selected_session() {
                                     app.full_content = std::fs::read_to_string(&session.export_path)
@@ -1603,8 +1695,8 @@ fn main() -> Result<()> {
                                 }
                                 app.action_mode = None;
                             }
-                            KeyCode::Char('2') if mode == ActionMode::ViewOrResume => {
-                                // Resume: select session and quit
+                            KeyCode::Char('2') if mode == ActionMode::ViewOrActions => {
+                                // Actions: select session and quit to show actions menu
                                 app.on_enter();
                                 app.action_mode = None;
                             }
@@ -1741,8 +1833,8 @@ fn main() -> Result<()> {
                                 if !app.jump_input.is_empty() {
                                     app.process_jump_enter();
                                 } else if app.selected_session().is_some() {
-                                    // Enter action mode to choose view or resume
-                                    app.action_mode = Some(ActionMode::ViewOrResume);
+                                    // Enter action mode to choose view or actions
+                                    app.action_mode = Some(ActionMode::ViewOrActions);
                                 }
                             }
                             KeyCode::Up => app.on_up(),
