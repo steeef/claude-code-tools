@@ -263,8 +263,13 @@ Provide a clear and concise answer."""
 
             # Run the agent in non-interactive mode
             if agent == "claude":
-                # Use claude -p for non-interactive mode
-                cmd = ["claude", "-p", full_prompt, "--output-format", "json"]
+                # Use claude -p for non-interactive mode with haiku for faster queries
+                cmd = [
+                    "claude", "-p", full_prompt,
+                    "--model", "haiku",
+                    "--permission-mode", "bypassPermissions",
+                    "--output-format", "json",
+                ]
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
@@ -295,8 +300,12 @@ Provide a clear and concise answer."""
                     response_text = result.stdout.strip()
 
             else:
-                # Use codex exec for non-interactive mode
-                cmd = ["codex", "exec", "--json", full_prompt]
+                # Use codex exec for non-interactive mode with mini model for faster queries
+                cmd = [
+                    "codex", "exec", "--json",
+                    "--model", "gpt-5.1-codex-mini",
+                    full_prompt,
+                ]
                 result = subprocess.run(
                     cmd,
                     capture_output=True,

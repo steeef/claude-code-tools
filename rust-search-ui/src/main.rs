@@ -1250,8 +1250,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             ]);
         }
 
-        // / scope toggle
-        let scope_indicator = if app.scope_global { "global" } else { "local" };
+        // / scope toggle - show action (what it will switch TO), not current state
+        let scope_indicator = if app.scope_global { "local" } else { "global" };
         spans.extend([
             Span::styled(" │ ", dim),
             Span::styled(" / ", keycap),
@@ -1976,8 +1976,8 @@ fn search_tantivy(index_path: &str, query_str: &str) -> HashMap<String, String> 
         // Parse the query - use lenient parsing to handle user input
         let query = query_parser.parse_query_lenient(query_str).0;
 
-        // Search with high limit to get all matching sessions
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(5000)).ok()?;
+        // Search with limit for performance (top 100 most relevant)
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(100)).ok()?;
 
         // Extract session IDs and snippets from results
         let query_lower = query_str.to_lowercase();
