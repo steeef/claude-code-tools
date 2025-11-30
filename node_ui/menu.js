@@ -832,8 +832,22 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
       clearScreen();
       return onBack();
     }
-    // Down arrow or Enter: advance to next field (or submit on last)
-    if (key.downArrow || key.return) {
+    // Down arrow: cycle through fields (wrap around)
+    if (key.downArrow) {
+      if (field === 'tools') setField('threshold');
+      else if (field === 'threshold') setField('assistant');
+      else if (field === 'assistant') setField('tools'); // Cycle back to top
+      return;
+    }
+    // Up arrow: cycle through fields (wrap around)
+    if (key.upArrow) {
+      if (field === 'threshold') setField('tools');
+      else if (field === 'assistant') setField('threshold');
+      else if (field === 'tools') setField('assistant'); // Cycle to bottom
+      return;
+    }
+    // Enter: advance to next field, or submit on last field
+    if (key.return) {
       if (field === 'tools') setField('threshold');
       else if (field === 'threshold') setField('assistant');
       else if (field === 'assistant') {
@@ -843,12 +857,6 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
           trim_assistant: assistant ? Number(assistant) : null,
         });
       }
-      return;
-    }
-    // Up arrow: go back to previous field
-    if (key.upArrow) {
-      if (field === 'threshold') setField('tools');
-      else if (field === 'assistant') setField('threshold');
       return;
     }
     if (key.backspace || key.delete) {
@@ -892,7 +900,7 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
       renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
-    h(Text, {dimColor: true}, '↑↓/Enter: navigate fields | Esc: back | Submit on last field'),
+    h(Text, {dimColor: true}, '↑↓: cycle fields | Enter: next/submit | Esc: back'),
     h(Box, {marginBottom: 1}),
     // Tools field
     h(
@@ -1084,17 +1092,24 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       clearScreen();
       return onBack();
     }
-    // Down arrow or Enter: advance to next field (or submit on last)
-    if (key.downArrow || key.return) {
+    // Down arrow: cycle through fields (wrap around)
+    if (key.downArrow) {
       if (field === 'agent') setField('prompt');
-      else if (field === 'prompt') {
-        onSubmit({agent, prompt: prompt || null});
-      }
+      else if (field === 'prompt') setField('agent'); // Cycle back to top
       return;
     }
-    // Up arrow: go back to previous field
+    // Up arrow: cycle through fields (wrap around)
     if (key.upArrow) {
       if (field === 'prompt') setField('agent');
+      else if (field === 'agent') setField('prompt'); // Cycle to bottom
+      return;
+    }
+    // Enter: advance to next field, or submit on last field
+    if (key.return) {
+      if (field === 'agent') setField('prompt');
+      else if (field === 'prompt') {
+        onSubmit({agent, prompt});  // Empty string means "skip prompt", not "prompt again"
+      }
       return;
     }
     if (key.backspace || key.delete) {
@@ -1139,7 +1154,7 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
-    h(Text, {dimColor: true}, '↑↓/Enter: navigate fields | Esc: back | Submit on last field'),
+    h(Text, {dimColor: true}, '↑↓: cycle fields | Enter: next/submit | Esc: back'),
     h(Box, {marginBottom: 1}),
     // Agent field
     h(

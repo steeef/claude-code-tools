@@ -561,12 +561,20 @@ def continue_with_options(
 
     print(f"\nℹ️  Continuing with {continue_agent.upper()}")
 
-    # Step 4: Prompt for custom instructions (unless preset)
+    # Step 4: Prompt for custom instructions (unless preset provided)
+    # preset_prompt can be:
+    #   None - not from Node UI, so prompt the user
+    #   "" (empty string) - from Node UI, user chose to skip, don't prompt
+    #   "some text" - from Node UI, user provided custom prompt
     if preset_prompt is not None:
+        # From Node UI - use whatever was provided (even empty means skip)
         custom_prompt = preset_prompt if preset_prompt else None
         if custom_prompt:
             print(f"ℹ️  Using custom prompt: {custom_prompt[:50]}...")
+        else:
+            print("ℹ️  No custom summarization instructions")
     else:
+        # Not from Node UI - prompt the user
         print("\nEnter custom summarization instructions (or press Enter to skip):")
         try:
             custom_prompt = input("> ").strip() or None
