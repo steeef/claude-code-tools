@@ -550,9 +550,15 @@ class SessionIndex:
             last_msg = parsed["last_msg"]
 
             try:
+                session_id = metadata.get("session_id", "")
+                file_path_str = str(jsonl_path)
+
+                # Delete by file path (unique), not sessionId (shared by sub-agents)
+                writer.delete_documents("export_path", file_path_str)
+
                 # Create document
                 doc = tantivy.Document()
-                doc.add_text("session_id", metadata.get("session_id", ""))
+                doc.add_text("session_id", session_id)
                 doc.add_text("agent", metadata.get("agent", ""))
                 doc.add_text("project", metadata.get("project", ""))
                 doc.add_text("branch", metadata.get("branch", "") or "")

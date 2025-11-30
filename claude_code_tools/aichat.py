@@ -886,6 +886,65 @@ def build_index(index, full, verbose):
             print(f"      Error: {failure['error']}")
 
 
+@main.command("index-stats")
+@click.option(
+    "--index", "-i",
+    type=click.Path(),
+    default="~/.cctools/search-index",
+    help="Index directory",
+)
+@click.option("--cwd", "-c", help="Filter to specific cwd path")
+def index_stats(index, cwd):
+    """Show statistics about the Tantivy search index.
+
+    Useful for debugging indexing issues.
+    """
+    from collections import Counter
+    from pathlib import Path
+
+    try:
+        from claude_code_tools.search_index import SessionIndex
+    except ImportError:
+        print("Error: tantivy not installed")
+        return
+
+    index_path = Path(index).expanduser()
+    if not index_path.exists():
+        print(f"Index not found at {index_path}")
+        return
+
+    idx = SessionIndex(index_path)
+    results = idx.get_recent(limit=50000)
+
+    print(f"Total documents: {len(results)}")
+
+    # Count unique sessions
+    session_ids = [r.get("session_id", "") for r in results]
+    unique_sessions = set(session_ids)
+    print(f"Unique sessions: {len(unique_sessions)}")
+
+    if len(results) != len(unique_sessions):
+        # Count duplicates
+        counts = Counter(session_ids)
+        dups = sum(1 for c in counts.values() if c > 1)
+        print(f"Sessions with duplicates: {dups}")
+
+    # Count by cwd if filter specified
+    if cwd:
+        matching = [r for r in results if r.get("cwd") == cwd]
+        matching_unique = set(r.get("session_id") for r in matching)
+        print(f"\nWith cwd '{cwd}':")
+        print(f"  Documents: {len(matching)}")
+        print(f"  Unique sessions: {len(matching_unique)}")
+
+    # Top cwds
+    cwd_counts = Counter(r.get("cwd", "unknown") for r in results)
+    print("\nTop 5 cwds:")
+    for path, count in cwd_counts.most_common(5):
+        short = path[-50:] if len(path) > 50 else path
+        print(f"  {count:4d} | ...{short}" if len(path) > 50 else f"  {count:4d} | {short}")
+
+
 @main.command("search")
 @click.argument("query", required=False, default="")
 @click.option(
