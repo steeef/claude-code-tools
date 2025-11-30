@@ -968,68 +968,17 @@ def index_stats(index, cwd):
 
 
 @main.command("search")
-@click.argument("query", required=False, default="")
-@click.option(
-    "--index", "-i",
-    type=click.Path(),
-    default="~/.cctools/search-index",
-    help="Index directory",
-)
-@click.option("-n", "--limit", default=20, help="Max results")
-@click.option("--project", "-p", help="Filter to project name")
-def search(query, index, limit, project):
-    """Search sessions using Tantivy full-text index (POC).
-
-    If no query provided, shows recent sessions.
-    """
-    from pathlib import Path
-    from claude_code_tools.search_index import SessionIndex
-
-    index_path = Path(index).expanduser()
-
-    if not index_path.exists():
-        print(f"Error: Index not found at: {index_path}")
-        print("Run 'aichat export-all && aichat build-index' first.")
-        return
-
-    idx = SessionIndex(index_path)
-
-    if query:
-        print(f"Searching for: {query}\n")
-        results = idx.search(query, limit=limit, project=project)
-    else:
-        print("Recent sessions:\n")
-        results = idx.get_recent(limit=limit, project=project)
-
-    if not results:
-        print("No results found.")
-        return
-
-    # Simple CLI output for POC
-    for i, r in enumerate(results, 1):
-        agent_icon = "●" if r["agent"] == "claude" else "■"
-        lines = r.get("lines", 0)
-        print(f"{i:2}. {agent_icon} {r['project']} | {r['session_id'][:12]}... | {lines}L")
-        print(f"    {r['snippet'][:80]}...")
-        print()
-
-
-@main.command("search-ui")
 @click.option(
     '--claude-home',
     'claude_home_arg',
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     help='Path to Claude home directory (overrides CLAUDE_CONFIG_DIR env var)',
 )
-def search_ui(claude_home_arg):
-    """Launch Rust TUI for session search with Node action menu handoff.
+def search(claude_home_arg):
+    """Launch interactive TUI for full-text session search.
 
-    This is a POC demonstrating Rust → Node handoff:
-    1. Rust TUI displays sessions from Tantivy index
-    2. User selects a session
-    3. Selected session is passed to Node action menu
-    4. Escape from Node menu returns to Rust TUI
-    5. Quit (q/Esc) from Rust TUI exits
+    Provides fast Tantivy-based search across all Claude and Codex sessions
+    with auto-indexing, keyword highlighting, and session actions.
 
     The --claude-home option takes precedence over CLAUDE_CONFIG_DIR env var.
     """
