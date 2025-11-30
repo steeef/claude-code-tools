@@ -136,7 +136,7 @@ impl Session {
         format_time_ago(&self.modified)
     }
 
-    /// Session ID display with annotations: abc123.. (t) (c) (sub)
+    /// Session ID display with annotations: abc123.. (t) (c) (s)
     /// For Codex, extracts UUID (last 36 chars) from session_id
     fn session_id_display(&self) -> String {
         // UUIDs are always 36 characters (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
@@ -160,7 +160,7 @@ impl Session {
             display.push_str(" (c)");
         }
         if self.is_sidechain {
-            display.push_str(" (sub)");
+            display.push_str(" (s)");
         }
         display
     }
@@ -654,6 +654,58 @@ fn render(frame: &mut Frame, app: &mut App) {
     if app.filter_modal_open {
         render_filter_modal(frame, app, &t, area);
     }
+
+    // View/Actions modal overlay
+    if matches!(app.action_mode, Some(ActionMode::ViewOrActions)) {
+        render_view_actions_modal(frame, &t, area);
+    }
+}
+
+fn render_view_actions_modal(frame: &mut Frame, t: &Theme, area: Rect) {
+    use ratatui::widgets::{Block, Borders, Clear};
+
+    // Center the modal
+    let modal_width = 60u16;
+    let modal_height = 7u16; // 3 options + 2 border + 2 padding
+    let x = (area.width.saturating_sub(modal_width)) / 2;
+    let y = (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    // Clear the area behind the modal
+    frame.render_widget(Clear, modal_area);
+
+    // Modal border
+    let block = Block::default()
+        .title(" Session ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(t.search_bg));
+    frame.render_widget(block, modal_area);
+
+    // Inner content area
+    let inner = Rect::new(x + 2, y + 1, modal_width - 4, modal_height - 2);
+
+    let keycap = Style::default().bg(t.keycap_bg);
+    let label = Style::default();
+    let dim = Style::default().fg(t.dim_fg);
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(" (v) ", keycap),
+            Span::styled(" view full session", label),
+        ]),
+        Line::from(vec![
+            Span::styled(" (a) ", keycap),
+            Span::styled(" actions ", label),
+            Span::styled("(session operations/info, trim, resume, transfer context...)", dim),
+        ]),
+        Line::from(vec![
+            Span::styled(" Esc ", keycap),
+            Span::styled(" cancel and return", label),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 fn render_filter_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
@@ -800,7 +852,7 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
         max_date_len = max_date_len.max(s.date_display().len());
     }
     // Ensure minimums and reasonable maximums for very long names
-    // Session ID: "abcd1234.." (10) + " (c)" (4) or " (t)" (4) or " (sub)" (6) = max ~16
+    // Session ID: "abcd1234.." (10) + " (c)" (4) or " (t)" (4) or " (s)" (4) = max ~14
     max_session_id_len = max_session_id_len.max(10).min(20);
     max_project_len = max_project_len.max(7).min(30);
     max_branch_len = max_branch_len.max(6).min(25);
@@ -1022,13 +1074,9 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
 
     let mut spans: Vec<Span> = Vec::new();
 
-    // Action mode indicator (view/actions)
-    if let Some(ref mode) = app.action_mode {
-        let prompt = match mode {
-            ActionMode::ViewOrActions => " 1=View  2=Actions  Esc=Cancel ".to_string(),
-        };
-        spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
-    } else if let Some(ref mode) = app.input_mode {
+    // Note: action_mode (ViewOrActions) renders its own modal overlay, no status bar indicator needed
+
+    if let Some(ref mode) = app.input_mode {
         // Input mode indicator
         let prompt = match mode {
             InputMode::MinLines => format!(" Min lines: {}█ ", app.input_buffer),
@@ -1119,7 +1167,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             Span::styled(" continued  ", dim),
             Span::styled("(t)", Style::default().fg(t.dim_fg)),
             Span::styled(" trimmed  ", dim),
-            Span::styled("(sub)", Style::default().fg(t.dim_fg)),
+            Span::styled("(s)", Style::default().fg(t.dim_fg)),
             Span::styled(" sub-agent", dim),
         ];
         let legend = Paragraph::new(Line::from(legend_spans));
@@ -1173,25 +1221,24 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
         frame.render_widget(Paragraph::new(header), layout[0]);
     }
 
-    // Determine agent label and colors for assistant messages
+    // Determine agent label (with icon) and colors for assistant messages
     let (agent_label, assistant_bg, assistant_fg) = if let Some(s) = app.selected_session() {
         if s.agent == "claude" {
-            ("Claude", t.claude_bubble_bg, t.claude_source)
+            ("● Claude", t.claude_bubble_bg, t.claude_source)
         } else {
-            ("Codex", t.codex_bubble_bg, t.codex_source)
+            ("■ Codex", t.codex_bubble_bg, t.codex_source)
         }
     } else {
-        ("Assistant", t.claude_bubble_bg, t.claude_source)
+        ("● Assistant", t.claude_bubble_bg, t.claude_source)
     };
 
     let content_width = layout[1].width.saturating_sub(2) as usize;
 
     // Content - full conversation with styled messages
+    // Process all lines (scrolling handled by Paragraph widget)
     let content_lines: Vec<Line> = app
         .full_content
         .lines()
-        .skip(app.full_content_scroll)
-        .take(layout[1].height as usize)
         .map(|line| {
             if line.starts_with("> ") {
                 // User message - skip "> " (2 chars)
@@ -1228,13 +1275,13 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
         })
         .collect();
 
-    // Clamp scroll to content bounds
+    // Track total lines for footer display
     let total_lines = app.full_content.lines().count();
-    let visible = layout[1].height as usize;
-    let max_scroll = total_lines.saturating_sub(visible);
-    app.full_content_scroll = app.full_content_scroll.min(max_scroll);
 
-    let content = Paragraph::new(content_lines);
+    // Use Paragraph's scroll for proper handling with wrapped content
+    let content = Paragraph::new(content_lines)
+        .wrap(ratatui::widgets::Wrap { trim: false })
+        .scroll((app.full_content_scroll as u16, 0));
     frame.render_widget(content, layout[1]);
 
     // Footer - navigation hints
@@ -1685,7 +1732,7 @@ fn main() -> Result<()> {
                             KeyCode::Esc => {
                                 app.action_mode = None;
                             }
-                            KeyCode::Char('1') if mode == ActionMode::ViewOrActions => {
+                            KeyCode::Char('v') if mode == ActionMode::ViewOrActions => {
                                 // View: enter full view mode
                                 if let Some(session) = app.selected_session() {
                                     app.full_content = std::fs::read_to_string(&session.export_path)
@@ -1695,7 +1742,7 @@ fn main() -> Result<()> {
                                 }
                                 app.action_mode = None;
                             }
-                            KeyCode::Char('2') if mode == ActionMode::ViewOrActions => {
+                            KeyCode::Char('a') if mode == ActionMode::ViewOrActions => {
                                 // Actions: select session and quit to show actions menu
                                 app.on_enter();
                                 app.action_mode = None;

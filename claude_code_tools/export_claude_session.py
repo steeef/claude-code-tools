@@ -5,9 +5,13 @@ import argparse
 import json
 import os
 import sys
+import textwrap
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, TextIO
+
+# Max line width for exported content (for better display in view mode)
+EXPORT_WRAP_WIDTH = 100
 
 from claude_code_tools.session_utils import (
     get_claude_home,
@@ -15,6 +19,41 @@ from claude_code_tools.session_utils import (
     resolve_session_path,
     default_export_path,
 )
+
+
+def wrap_text_preserve_prefix(
+    text: str,
+    prefix: str,
+    width: int = EXPORT_WRAP_WIDTH,
+) -> list[str]:
+    """
+    Wrap text to specified width, preserving the prefix on the first line.
+
+    Subsequent lines are indented to align with the first line's content.
+
+    Args:
+        text: Text to wrap
+        prefix: Prefix for first line (e.g., "> " or "⏺ ")
+        width: Maximum line width
+
+    Returns:
+        List of wrapped lines
+    """
+    if not text.strip():
+        return [prefix]
+
+    # Calculate subsequent indent (spaces to align with content after prefix)
+    subsequent_indent = " " * len(prefix)
+
+    wrapped = textwrap.fill(
+        text,
+        width=width,
+        initial_indent=prefix,
+        subsequent_indent=subsequent_indent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped.split("\n")
 
 
 def export_session_programmatic(
@@ -254,22 +293,22 @@ def export_session_to_markdown(
             if isinstance(content, str):
                 text = content.strip()
                 if role == "user":
-                    # Format: "> " prefix on first line only, rest are plain text
-                    lines = text.split('\n')
-                    if lines:
-                        output_file.write(f"> {lines[0]}\n")
-                        for line in lines[1:]:
-                            output_file.write(f"{line}\n")
-                        output_file.write("\n")
+                    # Wrap and write user message with "> " prefix
+                    for para in text.split('\n\n'):
+                        if para.strip():
+                            wrapped = wrap_text_preserve_prefix(para, "> ")
+                            for line in wrapped:
+                                output_file.write(f"{line}\n")
+                            output_file.write("\n")
                     stats["user_messages"] += 1
                 elif role == "assistant":
-                    # Format: "⏺ " prefix on first line only, rest are plain text
-                    lines = text.split('\n')
-                    if lines:
-                        output_file.write(f"⏺ {lines[0]}\n")
-                        for line in lines[1:]:
-                            output_file.write(f"{line}\n")
-                        output_file.write("\n")
+                    # Wrap and write assistant message with "⏺ " prefix
+                    for para in text.split('\n\n'):
+                        if para.strip():
+                            wrapped = wrap_text_preserve_prefix(para, "⏺ ")
+                            for line in wrapped:
+                                output_file.write(f"{line}\n")
+                            output_file.write("\n")
                     stats["assistant_messages"] += 1
                 continue
 
@@ -281,23 +320,23 @@ def export_session_to_markdown(
             # Process each content block
             for content_block in content:
                 if isinstance(content_block, str):
-                    # String content block
+                    # String content block - wrap text
                     text = content_block.strip()
                     if role == "user":
-                        lines = text.split('\n')
-                        if lines:
-                            output_file.write(f"> {lines[0]}\n")
-                            for line in lines[1:]:
-                                output_file.write(f"{line}\n")
-                            output_file.write("\n")
+                        for para in text.split('\n\n'):
+                            if para.strip():
+                                wrapped = wrap_text_preserve_prefix(para, "> ")
+                                for line in wrapped:
+                                    output_file.write(f"{line}\n")
+                                output_file.write("\n")
                         stats["user_messages"] += 1
                     elif role == "assistant":
-                        lines = text.split('\n')
-                        if lines:
-                            output_file.write(f"⏺ {lines[0]}\n")
-                            for line in lines[1:]:
-                                output_file.write(f"{line}\n")
-                            output_file.write("\n")
+                        for para in text.split('\n\n'):
+                            if para.strip():
+                                wrapped = wrap_text_preserve_prefix(para, "⏺ ")
+                                for line in wrapped:
+                                    output_file.write(f"{line}\n")
+                                output_file.write("\n")
                         stats["assistant_messages"] += 1
                     continue
 
@@ -311,22 +350,24 @@ def export_session_to_markdown(
                 if role == "user" and block_type == "text":
                     text = content_block.get("text", "").strip()
                     if text:
-                        lines = text.split('\n')
-                        output_file.write(f"> {lines[0]}\n")
-                        for line in lines[1:]:
-                            output_file.write(f"{line}\n")
-                        output_file.write("\n")
+                        for para in text.split('\n\n'):
+                            if para.strip():
+                                wrapped = wrap_text_preserve_prefix(para, "> ")
+                                for line in wrapped:
+                                    output_file.write(f"{line}\n")
+                                output_file.write("\n")
                         stats["user_messages"] += 1
 
                 # ASSISTANT TEXT MESSAGE
                 elif role == "assistant" and block_type == "text":
                     text = content_block.get("text", "").strip()
                     if text:
-                        lines = text.split('\n')
-                        output_file.write(f"⏺ {lines[0]}\n")
-                        for line in lines[1:]:
-                            output_file.write(f"{line}\n")
-                        output_file.write("\n")
+                        for para in text.split('\n\n'):
+                            if para.strip():
+                                wrapped = wrap_text_preserve_prefix(para, "⏺ ")
+                                for line in wrapped:
+                                    output_file.write(f"{line}\n")
+                                output_file.write("\n")
                         stats["assistant_messages"] += 1
 
                 # TOOL CALL

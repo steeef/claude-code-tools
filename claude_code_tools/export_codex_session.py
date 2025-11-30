@@ -5,11 +5,50 @@ import argparse
 import json
 import os
 import sys
+import textwrap
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, TextIO
 
 from claude_code_tools.session_utils import default_export_path
+
+# Max line width for exported content (for better display in view mode)
+EXPORT_WRAP_WIDTH = 100
+
+
+def wrap_text_preserve_prefix(
+    text: str,
+    prefix: str,
+    width: int = EXPORT_WRAP_WIDTH,
+) -> list[str]:
+    """
+    Wrap text to specified width, preserving the prefix on the first line.
+
+    Subsequent lines are indented to align with the first line's content.
+
+    Args:
+        text: Text to wrap
+        prefix: Prefix for first line (e.g., "> " or "⏺ ")
+        width: Maximum line width
+
+    Returns:
+        List of wrapped lines
+    """
+    if not text.strip():
+        return [prefix]
+
+    # Calculate subsequent indent (spaces to align with content after prefix)
+    subsequent_indent = " " * len(prefix)
+
+    wrapped = textwrap.fill(
+        text,
+        width=width,
+        initial_indent=prefix,
+        subsequent_indent=subsequent_indent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped.split("\n")
 
 
 def export_session_programmatic(
@@ -242,20 +281,22 @@ def export_session_to_markdown(
 
                     # USER TEXT MESSAGE (input_text)
                     if role == "user" and block_type == "input_text" and text:
-                        lines = text.split('\n')
-                        output_file.write(f"> {lines[0]}\n")
-                        for line in lines[1:]:
-                            output_file.write(f"{line}\n")
-                        output_file.write("\n")
+                        for para in text.split('\n\n'):
+                            if para.strip():
+                                wrapped = wrap_text_preserve_prefix(para, "> ")
+                                for line in wrapped:
+                                    output_file.write(f"{line}\n")
+                                output_file.write("\n")
                         stats["user_messages"] += 1
 
                     # ASSISTANT TEXT MESSAGE (output_text)
                     elif role == "assistant" and block_type == "output_text" and text:
-                        lines = text.split('\n')
-                        output_file.write(f"⏺ {lines[0]}\n")
-                        for line in lines[1:]:
-                            output_file.write(f"{line}\n")
-                        output_file.write("\n")
+                        for para in text.split('\n\n'):
+                            if para.strip():
+                                wrapped = wrap_text_preserve_prefix(para, "⏺ ")
+                                for line in wrapped:
+                                    output_file.write(f"{line}\n")
+                                output_file.write("\n")
                         stats["assistant_messages"] += 1
 
             # Process FUNCTION_CALL type
