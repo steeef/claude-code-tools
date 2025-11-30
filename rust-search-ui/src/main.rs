@@ -1235,41 +1235,79 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
     let content_width = layout[1].width.saturating_sub(2) as usize;
 
     // Content - full conversation with styled messages
-    // Process all lines (scrolling handled by Paragraph widget)
+    // Track current message context for continuation lines
+    #[derive(Clone, Copy, PartialEq)]
+    enum MsgContext { None, User, Assistant }
+    let mut context = MsgContext::None;
+
     let content_lines: Vec<Line> = app
         .full_content
         .lines()
         .map(|line| {
             if line.starts_with("> ") {
                 // User message - skip "> " (2 chars)
+                context = MsgContext::User;
                 let msg_content: String = line.chars().skip(2).collect();
-                let padding = content_width.saturating_sub(msg_content.chars().count() + 7);
+                let used = 6 + 1 + msg_content.chars().count(); // " User " + " " + content
+                let padding = content_width.saturating_sub(used);
                 Line::from(vec![
                     Span::styled(" User ", Style::default().fg(t.user_label).add_modifier(Modifier::BOLD)),
                     Span::styled(" ", Style::default().bg(t.user_bubble_bg)),
                     Span::styled(msg_content, Style::default().bg(t.user_bubble_bg)),
-                    Span::styled(" ".repeat(padding.min(50)), Style::default().bg(t.user_bubble_bg)),
+                    Span::styled(" ".repeat(padding), Style::default().bg(t.user_bubble_bg)),
                 ])
             } else if line.starts_with("⏺ ") {
                 // Assistant message - ⏺ is 3 bytes + space = 4 bytes
+                context = MsgContext::Assistant;
                 let msg_content: String = line.chars().skip(2).collect(); // Skip icon + space
                 let label_with_space = format!(" {} ", agent_label);
-                let padding = content_width.saturating_sub(msg_content.chars().count() + label_with_space.len() + 1);
+                let used = label_with_space.chars().count() + 1 + msg_content.chars().count();
+                let padding = content_width.saturating_sub(used);
                 Line::from(vec![
                     Span::styled(label_with_space, Style::default().fg(assistant_fg).add_modifier(Modifier::BOLD)),
                     Span::styled(" ", Style::default().bg(assistant_bg)),
                     Span::styled(msg_content, Style::default().bg(assistant_bg)),
-                    Span::styled(" ".repeat(padding.min(50)), Style::default().bg(assistant_bg)),
+                    Span::styled(" ".repeat(padding), Style::default().bg(assistant_bg)),
                 ])
             } else if line.starts_with("  ⎿") {
                 // Tool result - style as dimmed (2 spaces + ⎿ character)
+                context = MsgContext::None;
                 let content: String = line.chars().skip(3).collect(); // Skip "  ⎿"
                 Line::from(Span::styled(
                     format!("      {}", content),
                     Style::default().fg(t.dim_fg),
                 ))
+            } else if line.is_empty() {
+                // Empty line - keep context for multi-paragraph messages
+                Line::from("")
+            } else if context != MsgContext::None {
+                // Continuation line within a message block (indented or not)
+                match context {
+                    MsgContext::User => {
+                        let used = 6 + 1 + line.chars().count(); // prefix + " " + content
+                        let padding = content_width.saturating_sub(used);
+                        Line::from(vec![
+                            Span::styled("      ", Style::default()),
+                            Span::styled(" ", Style::default().bg(t.user_bubble_bg)),
+                            Span::styled(line.to_string(), Style::default().bg(t.user_bubble_bg)),
+                            Span::styled(" ".repeat(padding), Style::default().bg(t.user_bubble_bg)),
+                        ])
+                    }
+                    MsgContext::Assistant => {
+                        let label_width = agent_label.chars().count() + 2; // " ● Claude " chars
+                        let used = label_width + 1 + line.chars().count();
+                        let padding = content_width.saturating_sub(used);
+                        Line::from(vec![
+                            Span::styled(" ".repeat(label_width), Style::default()),
+                            Span::styled(" ", Style::default().bg(assistant_bg)),
+                            Span::styled(line.to_string(), Style::default().bg(assistant_bg)),
+                            Span::styled(" ".repeat(padding), Style::default().bg(assistant_bg)),
+                        ])
+                    }
+                    MsgContext::None => Line::from(line.to_string()),
+                }
             } else {
-                // Plain line (metadata, continuation, etc.)
+                // Plain line outside message context (metadata, etc.)
                 Line::from(line.to_string())
             }
         })
