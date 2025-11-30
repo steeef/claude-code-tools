@@ -391,42 +391,24 @@ class SessionIndex:
 
         return stats
 
-    def _parse_jsonl_session(self, jsonl_path: Path) -> Optional[dict[str, Any]]:
+    def _extract_session_content(
+        self, jsonl_path: Path, agent: str
+    ) -> tuple[str, int]:
         """
-        Parse a JSONL session file directly (no export step).
+        Extract searchable content from a session file.
 
-        Extracts metadata and content from the raw JSONL session format.
+        Handles both Claude and Codex JSONL formats.
 
         Args:
-            jsonl_path: Path to the session JSONL file
+            jsonl_path: Path to session JSONL file
+            agent: Agent type ('claude' or 'codex')
 
         Returns:
-            Dict with metadata and content suitable for indexing, or None on failure
+            Tuple of (content_string, message_count)
         """
+        messages = []
+
         try:
-            messages = []
-            metadata: dict[str, Any] = {
-                "session_id": "",
-                "agent": "claude",  # Default, can detect codex from path
-                "project": "",
-                "branch": "",
-                "cwd": "",
-                "created": "",
-                "modified": "",
-                "is_sidechain": False,
-                "derivation_type": "",
-            }
-
-            first_msg: dict[str, str] = {"role": "", "content": ""}
-            last_msg: dict[str, str] = {"role": "", "content": ""}
-            first_timestamp = None
-            last_timestamp = None
-
-            # Detect agent from path
-            path_str = str(jsonl_path)
-            if ".codex" in path_str or "codex" in path_str.lower():
-                metadata["agent"] = "codex"
-
             with open(jsonl_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
@@ -438,79 +420,119 @@ class SessionIndex:
                     except json.JSONDecodeError:
                         continue
 
-                    # Extract metadata - session_id from first entry, but keep
-                    # looking for cwd/branch until found (may be on later lines)
-                    if not metadata["session_id"]:
-                        metadata["session_id"] = data.get("sessionId", "")
-                    if not metadata["cwd"] and data.get("cwd"):
-                        metadata["cwd"] = data.get("cwd", "")
-                        metadata["project"] = Path(metadata["cwd"]).name
-                    if not metadata["branch"] and data.get("gitBranch"):
-                        metadata["branch"] = data.get("gitBranch", "")
-                    if data.get("isSidechain"):
-                        metadata["is_sidechain"] = True
+                    role: Optional[str] = None
+                    text: str = ""
 
-                    # Track timestamps
-                    timestamp = data.get("timestamp", "")
-                    if timestamp:
-                        if first_timestamp is None:
-                            first_timestamp = timestamp
-                        last_timestamp = timestamp
+                    if agent == "claude":
+                        # Claude format: type is "user" or "assistant"
+                        msg_type = data.get("type")
+                        if msg_type not in ("user", "assistant"):
+                            continue
 
-                    # Process message content
-                    msg_type = data.get("type")
-                    if msg_type not in ("user", "assistant"):
-                        continue
+                        role = msg_type
+                        message = data.get("message", {})
+                        content = message.get("content")
 
-                    message = data.get("message", {})
-                    role = message.get("role", "")
-                    content = message.get("content")
+                        if not content:
+                            continue
 
-                    if not content:
-                        continue
+                        # Extract text content
+                        if isinstance(content, str):
+                            text = content
+                        elif isinstance(content, list):
+                            for block in content:
+                                if isinstance(block, str):
+                                    text += block + "\n"
+                                elif isinstance(block, dict):
+                                    if block.get("type") == "text":
+                                        text += block.get("text", "") + "\n"
+                                    elif block.get("type") == "tool_use":
+                                        tool_name = block.get("name", "")
+                                        text += f"[Tool: {tool_name}]\n"
+                                    elif block.get("type") == "tool_result":
+                                        result = block.get("content", "")
+                                        if isinstance(result, str):
+                                            text += result[:500] + "\n"
 
-                    # Extract text content
-                    text = ""
-                    if isinstance(content, str):
-                        text = content
-                    elif isinstance(content, list):
-                        # Extract text from content blocks
+                    elif agent == "codex":
+                        # Codex format: type is "response_item" with payload
+                        if data.get("type") != "response_item":
+                            continue
+
+                        payload = data.get("payload", {})
+                        if payload.get("type") != "message":
+                            continue
+
+                        role = payload.get("role")
+                        content = payload.get("content", [])
+
+                        if not isinstance(content, list):
+                            continue
+
                         for block in content:
-                            if isinstance(block, str):
-                                text += block + "\n"
-                            elif isinstance(block, dict):
-                                if block.get("type") == "text":
-                                    text += block.get("text", "") + "\n"
-                                elif block.get("type") == "tool_use":
-                                    # Include tool name for searchability
-                                    tool_name = block.get("name", "")
-                                    text += f"[Tool: {tool_name}]\n"
-                                elif block.get("type") == "tool_result":
-                                    result = block.get("content", "")
-                                    if isinstance(result, str):
-                                        text += result[:500] + "\n"  # Truncate long results
+                            if not isinstance(block, dict):
+                                continue
+                            block_type = block.get("type")
+                            # input_text (user) and output_text (assistant)
+                            if block_type in ("input_text", "output_text"):
+                                text += block.get("text", "") + "\n"
 
-                    if text.strip():
+                    if role and text.strip():
                         messages.append(f"[{role}] {text.strip()}")
 
-                        # Track first/last message
-                        if not first_msg["role"]:
-                            first_msg = {"role": role, "content": text[:200].strip()}
-                        last_msg = {"role": role, "content": text[:200].strip()}
+        except (OSError, IOError):
+            pass
 
-            if not messages:
+        return "\n\n".join(messages), len(messages)
+
+    def _parse_jsonl_session(self, jsonl_path: Path) -> Optional[dict[str, Any]]:
+        """
+        Parse a JSONL session file directly (no export step).
+
+        Uses extract_session_metadata() from export_session.py for metadata,
+        and handles both Claude and Codex JSONL formats for content.
+
+        Args:
+            jsonl_path: Path to the session JSONL file
+
+        Returns:
+            Dict with metadata and content suitable for indexing, or None on failure
+        """
+        try:
+            # Detect agent from path
+            path_str = str(jsonl_path)
+            agent = "codex" if ".codex" in path_str else "claude"
+
+            # Use existing helper for metadata extraction
+            from claude_code_tools.export_session import extract_session_metadata
+            metadata = extract_session_metadata(jsonl_path, agent)
+
+            # Extract content for full-text search
+            content, msg_count = self._extract_session_content(jsonl_path, agent)
+
+            if msg_count == 0:
                 return None
 
-            # Set timestamps
-            metadata["created"] = first_timestamp or ""
-            metadata["modified"] = last_timestamp or ""
+            # Map metadata fields to expected format
+            first_msg = metadata.get("first_msg") or {"role": "", "content": ""}
+            last_msg = metadata.get("last_msg") or {"role": "", "content": ""}
 
             return {
-                "metadata": metadata,
-                "content": "\n\n".join(messages),
+                "metadata": {
+                    "session_id": metadata.get("session_id", ""),
+                    "agent": agent,
+                    "project": metadata.get("project", ""),
+                    "branch": metadata.get("branch", "") or "",
+                    "cwd": metadata.get("cwd", "") or "",
+                    "created": metadata.get("created", "") or "",
+                    "modified": metadata.get("modified", "") or "",
+                    "is_sidechain": metadata.get("is_sidechain", False),
+                    "derivation_type": metadata.get("derivation_type", "") or "",
+                },
+                "content": content,
                 "first_msg": first_msg,
                 "last_msg": last_msg,
-                "lines": len(messages),
+                "lines": msg_count,
                 "file_path": str(jsonl_path),
             }
         except Exception:
@@ -537,6 +559,7 @@ class SessionIndex:
             Stats dict: {indexed, skipped, failed}
         """
         claude_home_str = str(claude_home) if claude_home else ""
+        codex_home_str = str(Path.home() / ".codex")  # Default codex home
         stats = {"indexed": 0, "skipped": 0, "failed": 0}
 
         writer = self.get_writer()
@@ -591,8 +614,15 @@ class SessionIndex:
                     "true" if metadata.get("is_sidechain") else "false"
                 )
 
-                # Claude home (for filtering by source directory)
-                doc.add_text("claude_home", claude_home_str)
+                # Source home (for filtering by source directory)
+                # Detect from path whether this is a Claude or Codex session
+                agent = metadata.get("agent", "")
+                if agent == "codex" or ".codex" in file_path_str:
+                    # Codex session - store codex home
+                    doc.add_text("claude_home", codex_home_str)
+                else:
+                    # Claude session - store claude home
+                    doc.add_text("claude_home", claude_home_str)
 
                 doc.add_text("content", parsed["content"])
 

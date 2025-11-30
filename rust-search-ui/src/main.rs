@@ -248,6 +248,7 @@ struct App {
     filter_after_date: Option<String>,  // YYYYMMDD - modified date must be >= this
     filter_before_date: Option<String>, // YYYYMMDD - modified date must be <= this
     filter_claude_home: Option<String>, // Filter to sessions from this Claude home
+    filter_codex_home: Option<String>,  // Filter Codex sessions to this Codex home
 
     // Command mode (: prefix)
     command_mode: bool,
@@ -358,7 +359,7 @@ impl FilterMenuItem {
 }
 
 impl App {
-    fn new(sessions: Vec<Session>, index_path: String, filter_claude_home: Option<String>) -> Self {
+    fn new(sessions: Vec<Session>, index_path: String, filter_claude_home: Option<String>, filter_codex_home: Option<String>) -> Self {
         let total = sessions.len();
         let launch_cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
@@ -388,6 +389,7 @@ impl App {
             filter_after_date: None,
             filter_before_date: None,
             filter_claude_home,
+            filter_codex_home,
             // Command mode
             command_mode: false,
             // Full view mode
@@ -420,10 +422,20 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, s)| {
-                // Claude home filter - only show sessions from specified home
-                if let Some(ref home) = self.filter_claude_home {
-                    if !s.claude_home.is_empty() && s.claude_home != *home {
-                        return false;
+                // Home filter - apply based on session agent type
+                if s.agent == "codex" {
+                    // Codex session: filter by codex_home
+                    if let Some(ref codex_home) = self.filter_codex_home {
+                        if !s.claude_home.is_empty() && s.claude_home != *codex_home {
+                            return false;
+                        }
+                    }
+                } else {
+                    // Claude session: filter by claude_home
+                    if let Some(ref home) = self.filter_claude_home {
+                        if !s.claude_home.is_empty() && s.claude_home != *home {
+                            return false;
+                        }
                     }
                 }
 
@@ -2481,6 +2493,14 @@ fn main() -> Result<()> {
         .and_then(|i| args.get(i + 1))
         .map(|s| s.to_string());
 
+    // Parse --codex-home argument (priority: CLI arg > CODEX_HOME env > ~/.codex default)
+    let filter_codex_home = args.iter()
+        .position(|a| a == "--codex-home")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("CODEX_HOME").ok())
+        .or_else(|| dirs::home_dir().map(|h| h.join(".codex").to_string_lossy().to_string()));
+
     const SESSION_LIMIT: usize = 100_000;
     let sessions = load_sessions(index_path.to_str().unwrap(), SESSION_LIMIT)?;
 
@@ -2497,20 +2517,18 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Show claude home being used and session counts per home
+    // Show home filters being used
     if let Some(ref home) = filter_claude_home {
-        eprintln!("Filtering to Claude home: {}", home);
+        eprintln!("Claude home filter: {}", home);
     }
-    let claude_home_counts: std::collections::HashMap<String, usize> = sessions.iter()
-        .fold(std::collections::HashMap::new(), |mut acc, s| {
-            *acc.entry(s.claude_home.clone()).or_insert(0) += 1;
-            acc
-        });
-    eprintln!("Sessions in index:");
-    for (home, count) in claude_home_counts.iter() {
-        let display = if home.is_empty() { "(unknown)" } else { home.as_str() };
-        eprintln!("  {:5} from {}", count, display);
+    if let Some(ref home) = filter_codex_home {
+        eprintln!("Codex home filter: {}", home);
     }
+
+    // Count sessions by agent type
+    let claude_count = sessions.iter().filter(|s| s.agent != "codex").count();
+    let codex_count = sessions.iter().filter(|s| s.agent == "codex").count();
+    eprintln!("Sessions in index: {} Claude, {} Codex", claude_count, codex_count);
 
     enable_raw_mode()?;
     let mut stdout = stdout();
@@ -2518,7 +2536,7 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(sessions, index_path.to_string_lossy().to_string(), filter_claude_home);
+    let mut app = App::new(sessions, index_path.to_string_lossy().to_string(), filter_claude_home, filter_codex_home);
 
     loop {
         terminal.draw(|f| render(f, &mut app))?;
