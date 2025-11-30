@@ -1136,6 +1136,30 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
         lines.push(Line::from(""));
     }
 
+    // Search snippet - show matching content when searching
+    if !app.query.is_empty() {
+        if let Some(snippet) = app.search_snippets.get(&s.session_id) {
+            if !snippet.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled(" ── MATCH ── ", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+                ]));
+
+                // Use a distinct background for the match snippet
+                let match_bg = Color::Rgb(50, 40, 30); // Warm/highlighted background
+                for wrapped in wrap_text(snippet, bubble_width).iter().take(8) {
+                    let padding = bubble_width.saturating_sub(wrapped.chars().count());
+                    lines.push(Line::from(vec![
+                        Span::styled(" ", Style::default().bg(match_bg)),
+                        Span::styled(wrapped.clone(), Style::default().bg(match_bg).fg(t.accent)),
+                        Span::styled(" ".repeat(padding + 1), Style::default().bg(match_bg)),
+                    ]));
+                }
+
+                lines.push(Line::from(""));
+            }
+        }
+    }
+
     // Last message - labeled as "LAST MESSAGE" (if different from first)
     if !s.last_msg_content.is_empty() && s.last_msg_content != s.first_msg_content {
         let (role_label, label_color, bubble_bg) = if s.last_msg_role == "user" {
