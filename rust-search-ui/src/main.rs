@@ -24,9 +24,11 @@ use ratatui::{
 use serde::Serialize;
 use std::io::{self, stdout};
 use std::time::Duration;
+use std::collections::{HashMap, HashSet};
 use tantivy::{
     collector::TopDocs,
     query::AllQuery,
+    query::QueryParser,
     schema::{Schema, Value, STORED, TEXT},
     Index, ReloadPolicy,
 };
@@ -233,6 +235,8 @@ struct App {
     total_sessions: usize,
     scope_global: bool,
     launch_cwd: String,
+    index_path: String, // Path to Tantivy index for keyword search
+    search_snippets: HashMap<String, String>, // session_id -> matching snippet from content
 
     // Filter state - inclusion-based (true = include this type)
     include_original: bool,   // true by default - include original sessions
@@ -353,7 +357,7 @@ impl FilterMenuItem {
 }
 
 impl App {
-    fn new(sessions: Vec<Session>) -> Self {
+    fn new(sessions: Vec<Session>, index_path: String) -> Self {
         let total = sessions.len();
         let launch_cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
@@ -371,6 +375,8 @@ impl App {
             total_sessions: total,
             scope_global: false,
             launch_cwd,
+            index_path,
+            search_snippets: HashMap::new(),
             // Filter state
             include_original: true,   // Include original by default
             include_sub: false,       // Exclude sub-agents by default
@@ -407,7 +413,6 @@ impl App {
     }
 
     fn filter(&mut self) {
-        let query_lower = self.query.to_lowercase();
         self.filtered = self
             .sessions
             .iter()
@@ -470,31 +475,31 @@ impl App {
                     }
                 }
 
-                // Query filter - split into keywords, ALL must match (across any field)
-                if query_lower.is_empty() {
-                    return true;
-                }
-
-                // Split query into keywords
-                let keywords: Vec<&str> = query_lower.split_whitespace().collect();
-                if keywords.is_empty() {
-                    return true;
-                }
-
-                // Build combined searchable text
-                let searchable = format!(
-                    "{} {} {} {}",
-                    s.project.to_lowercase(),
-                    s.first_msg_content.to_lowercase(),
-                    s.last_msg_content.to_lowercase(),
-                    s.session_id.to_lowercase()
-                );
-
-                // ALL keywords must be found somewhere in the searchable text
-                keywords.iter().all(|kw| searchable.contains(kw))
+                // No query filter at this stage - handled by tantivy_matches below
+                true
             })
             .map(|(i, _)| i)
             .collect();
+
+        // If there's a keyword query, use Tantivy full-text search
+        if !self.query.trim().is_empty() {
+            let search_results = search_tantivy(&self.index_path, &self.query);
+            if !search_results.is_empty() {
+                // Store snippets for rendering
+                self.search_snippets = search_results.clone();
+                // Filter to only sessions that match the Tantivy search
+                self.filtered.retain(|&i| {
+                    search_results.contains_key(&self.sessions[i].session_id)
+                });
+            } else {
+                // No Tantivy matches - clear results and snippets
+                self.search_snippets.clear();
+                self.filtered.clear();
+            }
+        } else {
+            // Clear snippets when no query
+            self.search_snippets.clear();
+        }
 
         self.selected = 0;
         self.list_scroll = 0;
@@ -1039,10 +1044,16 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
                 let snippet = truncate(&s.last_msg_content, snippet_width);
                 Line::from(Span::styled(format!("{}...{}", indent, snippet), snippet_style))
             } else {
-                // With query: find matching text and highlight keywords
-                let combined_content = format!("{} {}", s.first_msg_content, s.last_msg_content);
+                // With query: use Tantivy snippet if available, else fall back to metadata
+                let content_to_search = app
+                    .search_snippets
+                    .get(&s.session_id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        format!("{} {}", s.first_msg_content, s.last_msg_content)
+                    });
                 if let Some(mut spans) = find_matching_snippet(
-                    &combined_content,
+                    &content_to_search,
                     &app.query,
                     snippet_width,
                     snippet_style,
@@ -1936,6 +1947,121 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
     Ok(sessions)
 }
 
+/// Search Tantivy index for sessions matching keyword query.
+/// Returns a map of session_id -> snippet containing the matching text.
+fn search_tantivy(index_path: &str, query_str: &str) -> HashMap<String, String> {
+    // Return empty map if query is empty
+    if query_str.trim().is_empty() {
+        return HashMap::new();
+    }
+
+    let result: Option<HashMap<String, String>> = (|| {
+        let index = Index::open_in_dir(index_path).ok()?;
+        let schema = index.schema();
+
+        // Get the content field for full-text search
+        let content_field = schema.get_field("content").ok()?;
+        let session_id_field = schema.get_field("session_id").ok()?;
+
+        let reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::OnCommitWithDelay)
+            .try_into()
+            .ok()?;
+        let searcher = reader.searcher();
+
+        // Create query parser for content field
+        let query_parser = QueryParser::for_index(&index, vec![content_field]);
+
+        // Parse the query - use lenient parsing to handle user input
+        let query = query_parser.parse_query_lenient(query_str).0;
+
+        // Search with high limit to get all matching sessions
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(5000)).ok()?;
+
+        // Extract session IDs and snippets from results
+        let query_lower = query_str.to_lowercase();
+        let keywords: Vec<&str> = query_lower.split_whitespace().collect();
+
+        let results: HashMap<String, String> = top_docs
+            .iter()
+            .filter_map(|(_, doc_address)| {
+                let doc: tantivy::TantivyDocument = searcher.doc(*doc_address).ok()?;
+                let session_id = doc.get_first(session_id_field)?.as_str()?.to_string();
+                let content = doc.get_first(content_field)?.as_str()?;
+
+                // Find a snippet containing the first keyword
+                let snippet = extract_snippet(content, &keywords, 100);
+                Some((session_id, snippet))
+            })
+            .collect();
+
+        Some(results)
+    })();
+
+    result.unwrap_or_default()
+}
+
+/// Extract a snippet from content containing one of the keywords.
+/// Returns a window of text around the first keyword match.
+fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> String {
+    let content_lower = content.to_lowercase();
+    let chars: Vec<char> = content.chars().collect();
+    let chars_lower: Vec<char> = content_lower.chars().collect();
+
+    // Find the first keyword occurrence (by character index)
+    for keyword in keywords {
+        let kw_chars: Vec<char> = keyword.chars().collect();
+        if kw_chars.is_empty() {
+            continue;
+        }
+
+        // Search for keyword in lowercased char array
+        for i in 0..chars_lower.len().saturating_sub(kw_chars.len() - 1) {
+            let matches = kw_chars
+                .iter()
+                .enumerate()
+                .all(|(j, &kc)| chars_lower.get(i + j) == Some(&kc));
+            if matches {
+                // Found at char index i
+                let half_window = window_chars / 2;
+                let start_idx = i.saturating_sub(half_window);
+                let end_idx = (i + kw_chars.len() + half_window).min(chars.len());
+
+                // Find word boundaries (whitespace)
+                let snippet_start = (0..start_idx)
+                    .rev()
+                    .find(|&idx| chars[idx].is_whitespace())
+                    .map(|idx| idx + 1)
+                    .unwrap_or(start_idx);
+                let snippet_end = (end_idx..chars.len())
+                    .find(|&idx| chars[idx].is_whitespace())
+                    .unwrap_or(end_idx);
+
+                let snippet_text: String = chars[snippet_start..snippet_end].iter().collect();
+                let mut snippet = String::new();
+                if snippet_start > 0 {
+                    snippet.push_str("...");
+                }
+                snippet.push_str(snippet_text.trim());
+                if snippet_end < chars.len() {
+                    snippet.push_str("...");
+                }
+                return snippet;
+            }
+        }
+    }
+
+    // Fallback: return start of content
+    let end_idx = window_chars.min(chars.len());
+    let snippet_end = (0..end_idx)
+        .rev()
+        .find(|&idx| chars[idx].is_whitespace())
+        .unwrap_or(end_idx);
+    let snippet_text: String = chars[..snippet_end].iter().collect();
+    format!("{}...", snippet_text)
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -1962,7 +2088,7 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(sessions);
+    let mut app = App::new(sessions, index_path.to_string_lossy().to_string());
 
     loop {
         terminal.draw(|f| render(f, &mut app))?;
