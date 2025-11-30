@@ -190,16 +190,24 @@ impl Session {
 
         match (created_dt, modified_dt) {
             (Some(created), Some(modified)) => {
+                // Ensure earlier date comes first (handle data inconsistencies)
+                let (earlier, later) = if created <= modified {
+                    (created, modified)
+                } else {
+                    (modified, created)
+                };
+
                 // Check if same day
-                if created.format("%m/%d").to_string() == modified.format("%m/%d").to_string() {
-                    // Same day: just show "11/29 15:23"
-                    modified.format("%m/%d %H:%M").to_string()
+                if earlier.format("%m/%d").to_string() == later.format("%m/%d").to_string() {
+                    // Same day: just show "11/29 15:23" (use the later/modified timestamp)
+                    later.format("%m/%d %H:%M").to_string()
                 } else {
                     // Different days: show range "11/27 - 11/29 15:23"
+                    // Earlier date without time, later date with time
                     format!(
                         "{} - {}",
-                        created.format("%m/%d"),
-                        modified.format("%m/%d %H:%M")
+                        earlier.format("%m/%d"),
+                        later.format("%m/%d %H:%M")
                     )
                 }
             }
@@ -226,13 +234,15 @@ struct App {
     scope_global: bool,
     launch_cwd: String,
 
-    // Filter state
-    filter_original_only: bool,
-    filter_show_sub: bool,  // false = hide sub-agents (default), true = show them
-    filter_no_trim: bool,
-    filter_no_cont: bool,
+    // Filter state - inclusion-based (true = include this type)
+    include_original: bool,   // true by default - include original sessions
+    include_sub: bool,        // false by default - exclude sub-agents
+    include_trimmed: bool,    // true by default - include trimmed sessions
+    include_continued: bool,  // true by default - include continued sessions
     filter_agent: Option<String>, // None = all, Some("claude"), Some("codex")
     filter_min_lines: Option<i64>,
+    filter_after_date: Option<String>,  // YYYYMMDD - modified date must be >= this
+    filter_before_date: Option<String>, // YYYYMMDD - modified date must be <= this
 
     // Command mode (: prefix)
     command_mode: bool,
@@ -241,6 +251,12 @@ struct App {
     full_view_mode: bool,
     full_content: String,
     full_content_scroll: usize,
+
+    // View mode search (/pattern like less)
+    view_search_mode: bool,      // Entering search pattern
+    view_search_pattern: String, // Current search pattern
+    view_search_matches: Vec<usize>, // Line numbers with matches
+    view_search_current: usize,  // Current match index
 
     // Jump mode (num+Enter)
     jump_input: String,
@@ -262,6 +278,8 @@ enum InputMode {
     MinLines,   // :m - waiting for number
     Agent,      // :a - waiting for 1 or 2
     JumpToLine, // C-g - waiting for line number
+    AfterDate,  // :> - waiting for date
+    BeforeDate, // :< - waiting for date
 }
 
 #[derive(Clone, PartialEq)]
@@ -272,56 +290,64 @@ enum ActionMode {
 #[derive(Clone, PartialEq)]
 enum FilterMenuItem {
     ClearAll,
-    OriginalOnly,
-    ShowSubAgents,
-    NoTrimmed,
-    NoContinued,
+    IncludeOriginal,
+    IncludeSub,
+    IncludeTrimmed,
+    IncludeContinued,
     AgentAll,
     AgentClaude,
     AgentCodex,
     MinLines,
+    AfterDate,
+    BeforeDate,
 }
 
 impl FilterMenuItem {
     fn all() -> Vec<FilterMenuItem> {
         vec![
             FilterMenuItem::ClearAll,
-            FilterMenuItem::OriginalOnly,
-            FilterMenuItem::ShowSubAgents,
-            FilterMenuItem::NoTrimmed,
-            FilterMenuItem::NoContinued,
+            FilterMenuItem::IncludeOriginal,
+            FilterMenuItem::IncludeSub,
+            FilterMenuItem::IncludeTrimmed,
+            FilterMenuItem::IncludeContinued,
             FilterMenuItem::AgentAll,
             FilterMenuItem::AgentClaude,
             FilterMenuItem::AgentCodex,
             FilterMenuItem::MinLines,
+            FilterMenuItem::AfterDate,
+            FilterMenuItem::BeforeDate,
         ]
     }
 
     fn label(&self) -> &str {
         match self {
-            FilterMenuItem::ClearAll => "(x) Clear all filters",
-            FilterMenuItem::OriginalOnly => "(o) Original sessions only",
-            FilterMenuItem::ShowSubAgents => "(s) Include sub-agent sessions",
-            FilterMenuItem::NoTrimmed => "(t) Exclude trimmed sessions",
-            FilterMenuItem::NoContinued => "(c) Exclude continued sessions",
+            FilterMenuItem::ClearAll => "(x) Reset to defaults",
+            FilterMenuItem::IncludeOriginal => "(o) Include original sessions",
+            FilterMenuItem::IncludeSub => "(s) Include sub-agent sessions",
+            FilterMenuItem::IncludeTrimmed => "(t) Include trimmed sessions",
+            FilterMenuItem::IncludeContinued => "(c) Include continued sessions",
             FilterMenuItem::AgentAll => "(a) All agents",
             FilterMenuItem::AgentClaude => "(d) Claude only",
             FilterMenuItem::AgentCodex => "(e) Codex only",
             FilterMenuItem::MinLines => "(l) Minimum lines",
+            FilterMenuItem::AfterDate => "(>) After date",
+            FilterMenuItem::BeforeDate => "(<) Before date",
         }
     }
 
     fn shortcut(&self) -> char {
         match self {
             FilterMenuItem::ClearAll => 'x',
-            FilterMenuItem::OriginalOnly => 'o',
-            FilterMenuItem::ShowSubAgents => 's',
-            FilterMenuItem::NoTrimmed => 't',
-            FilterMenuItem::NoContinued => 'c',
+            FilterMenuItem::IncludeOriginal => 'o',
+            FilterMenuItem::IncludeSub => 's',
+            FilterMenuItem::IncludeTrimmed => 't',
+            FilterMenuItem::IncludeContinued => 'c',
             FilterMenuItem::AgentAll => 'a',
             FilterMenuItem::AgentClaude => 'd',
             FilterMenuItem::AgentCodex => 'e',
             FilterMenuItem::MinLines => 'l',
+            FilterMenuItem::AfterDate => '>',
+            FilterMenuItem::BeforeDate => '<',
         }
     }
 }
@@ -346,18 +372,25 @@ impl App {
             scope_global: false,
             launch_cwd,
             // Filter state
-            filter_original_only: false,
-            filter_show_sub: false,  // Default: hide sub-agents
-            filter_no_trim: false,
-            filter_no_cont: false,
+            include_original: true,   // Include original by default
+            include_sub: false,       // Exclude sub-agents by default
+            include_trimmed: true,    // Include trimmed by default
+            include_continued: true,  // Include continued by default
             filter_agent: None,
             filter_min_lines: None,
+            filter_after_date: None,
+            filter_before_date: None,
             // Command mode
             command_mode: false,
             // Full view mode
             full_view_mode: false,
             full_content: String::new(),
             full_content_scroll: 0,
+            // View mode search
+            view_search_mode: false,
+            view_search_pattern: String::new(),
+            view_search_matches: Vec::new(),
+            view_search_current: 0,
             // Jump mode
             jump_input: String::new(),
             // Input mode
@@ -385,26 +418,26 @@ impl App {
                     return false;
                 }
 
-                // Original only: exclude derived and sidechain sessions
-                if self.filter_original_only {
-                    if !s.derivation_type.is_empty() || s.is_sidechain {
+                // Inclusion-based filtering: check if session type is included
+
+                // Sub-agent sessions are handled separately from derivation type
+                if s.is_sidechain {
+                    // Sub-agent: include only if include_sub is true
+                    // (derivation type filter does NOT apply to sub-agents)
+                    if !self.include_sub {
                         return false;
                     }
-                }
-
-                // Sub-agent filter: hide by default, show only if filter_show_sub is true
-                if !self.filter_show_sub && s.is_sidechain {
-                    return false;
-                }
-
-                // No trimmed filter
-                if self.filter_no_trim && s.derivation_type == "trimmed" {
-                    return false;
-                }
-
-                // No continued filter
-                if self.filter_no_cont && s.derivation_type == "continued" {
-                    return false;
+                } else {
+                    // Non-sub-agent: apply derivation type filter
+                    let derivation_included = match s.derivation_type.as_str() {
+                        "" => self.include_original,           // Original session
+                        "trimmed" => self.include_trimmed,     // Trimmed session
+                        "continued" => self.include_continued, // Continued session
+                        _ => true, // Unknown type, include by default
+                    };
+                    if !derivation_included {
+                        return false;
+                    }
                 }
 
                 // Agent filter
@@ -418,6 +451,22 @@ impl App {
                 if let Some(min) = self.filter_min_lines {
                     if s.lines < min {
                         return false;
+                    }
+                }
+
+                // Date filters (applied to modified date)
+                if let Some(ref after_date) = self.filter_after_date {
+                    if let Some(session_date) = extract_date_for_comparison(&s.modified) {
+                        if session_date < *after_date {
+                            return false;
+                        }
+                    }
+                }
+                if let Some(ref before_date) = self.filter_before_date {
+                    if let Some(session_date) = extract_date_for_comparison(&s.modified) {
+                        if session_date > *before_date {
+                            return false;
+                        }
                     }
                 }
 
@@ -569,6 +618,49 @@ impl App {
             let s = &self.sessions[idx];
             !s.derivation_type.is_empty() || s.is_sidechain
         })
+    }
+
+    /// Update search matches for view mode search
+    fn update_view_search_matches(&mut self) {
+        self.view_search_matches.clear();
+        self.view_search_current = 0;
+
+        if self.view_search_pattern.is_empty() {
+            return;
+        }
+
+        let pattern_lower = self.view_search_pattern.to_lowercase();
+        for (i, line) in self.full_content.lines().enumerate() {
+            if line.to_lowercase().contains(&pattern_lower) {
+                self.view_search_matches.push(i);
+            }
+        }
+    }
+
+    /// Jump to next search match in view mode
+    fn view_search_next(&mut self) {
+        if self.view_search_matches.is_empty() {
+            return;
+        }
+
+        // Move to next match index (wrap around if at end)
+        self.view_search_current = (self.view_search_current + 1) % self.view_search_matches.len();
+        self.full_content_scroll = self.view_search_matches[self.view_search_current];
+    }
+
+    /// Jump to previous search match in view mode
+    fn view_search_prev(&mut self) {
+        if self.view_search_matches.is_empty() {
+            return;
+        }
+
+        // Move to previous match index (wrap around if at beginning)
+        if self.view_search_current == 0 {
+            self.view_search_current = self.view_search_matches.len() - 1;
+        } else {
+            self.view_search_current -= 1;
+        }
+        self.full_content_scroll = self.view_search_matches[self.view_search_current];
     }
 }
 
@@ -740,16 +832,24 @@ fn render_filter_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
         // Show current state for toggleable filters
         let state_indicator = match item {
             FilterMenuItem::ClearAll => "".to_string(),
-            FilterMenuItem::OriginalOnly => if app.filter_original_only { " [ON]" } else { " [off]" }.to_string(),
-            FilterMenuItem::ShowSubAgents => if app.filter_show_sub { " [ON]" } else { " [off]" }.to_string(),
-            FilterMenuItem::NoTrimmed => if app.filter_no_trim { " [ON]" } else { " [off]" }.to_string(),
-            FilterMenuItem::NoContinued => if app.filter_no_cont { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::IncludeOriginal => if app.include_original { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::IncludeSub => if app.include_sub { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::IncludeTrimmed => if app.include_trimmed { " [ON]" } else { " [off]" }.to_string(),
+            FilterMenuItem::IncludeContinued => if app.include_continued { " [ON]" } else { " [off]" }.to_string(),
             FilterMenuItem::AgentAll => if app.filter_agent.is_none() { " ●" } else { " ○" }.to_string(),
             FilterMenuItem::AgentClaude => if app.filter_agent.as_deref() == Some("claude") { " ●" } else { " ○" }.to_string(),
             FilterMenuItem::AgentCodex => if app.filter_agent.as_deref() == Some("codex") { " ●" } else { " ○" }.to_string(),
             FilterMenuItem::MinLines => match app.filter_min_lines {
                 Some(n) => format!(" [≥{}]", n),
                 None => " [Any]".to_string(),
+            },
+            FilterMenuItem::AfterDate => match &app.filter_after_date {
+                Some(d) => format!(" [>{}]", d),
+                None => " [None]".to_string(),
+            },
+            FilterMenuItem::BeforeDate => match &app.filter_before_date {
+                Some(d) => format!(" [<{}]", d),
+                None => " [None]".to_string(),
             },
         };
 
@@ -772,9 +872,16 @@ fn render_filter_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
 }
 
 fn render_search_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
+    // Layout: [search...] [N sessions] / ~/path/to/dir
+    // Give more space to directory path by making search box smaller
     let scope_label = app.scope_display();
-    let scope_width = 3 + 3 + 1 + scope_label.len() + 1;
-    let search_width = (area.width as usize).saturating_sub(scope_width + 1);
+    let session_count = format!("{} sessions", app.filtered.len());
+
+    // Right side: " | N | / path "
+    // Calculate widths: separator(3) + count + separator(3) + keycap(3) + scope + padding(2)
+    let right_side_width = 3 + session_count.len() + 3 + 3 + scope_label.len() + 2;
+    // Make search box smaller to give more space to directory path
+    let search_width = (area.width as usize).saturating_sub(right_side_width + 12);
 
     let middle_line = if app.query.is_empty() {
         let placeholder = " Search...";
@@ -782,10 +889,11 @@ fn render_search_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
         Line::from(vec![
             Span::styled(placeholder, Style::default().fg(t.placeholder_fg)),
             Span::raw(" ".repeat(padding)),
-            Span::raw(" "),
+            Span::styled(" │ ", Style::default().fg(t.separator_fg)),
+            Span::styled(&session_count, Style::default().fg(t.dim_fg)),
             Span::styled(" │ ", Style::default().fg(t.separator_fg)),
             Span::styled(" / ", Style::default().bg(t.keycap_bg)),
-            Span::styled(format!(" {} ", scope_label), Style::default().fg(t.scope_label_fg)),
+            Span::styled(format!(" {}", scope_label), Style::default().fg(t.scope_label_fg)),
         ])
     } else {
         let query_len = 1 + app.query.chars().count() + 1;
@@ -795,14 +903,15 @@ fn render_search_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
             Span::raw(&app.query),
             Span::styled("█", Style::default().fg(t.accent)),
             Span::raw(" ".repeat(padding)),
-            Span::raw(" "),
+            Span::styled(" │ ", Style::default().fg(t.separator_fg)),
+            Span::styled(&session_count, Style::default().fg(t.dim_fg)),
             Span::styled(" │ ", Style::default().fg(t.separator_fg)),
             Span::styled(" / ", Style::default().bg(t.keycap_bg)),
-            Span::styled(format!(" {} ", scope_label), Style::default().fg(t.scope_label_fg)),
+            Span::styled(format!(" {}", scope_label), Style::default().fg(t.scope_label_fg)),
         ])
     };
 
-    let separator_pos = search_width + 1;
+    let separator_pos = search_width;
     let lines = vec![
         Line::from(vec![
             Span::raw(" ".repeat(separator_pos)),
@@ -854,8 +963,8 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
     // Ensure minimums and reasonable maximums for very long names
     // Session ID: "abcd1234.." (10) + " (c)" (4) or " (t)" (4) or " (s)" (4) = max ~14
     max_session_id_len = max_session_id_len.max(10).min(20);
-    max_project_len = max_project_len.max(7).min(30);
-    max_branch_len = max_branch_len.max(6).min(25);
+    max_project_len = max_project_len.max(10).min(40);  // Increased from 30 to 40
+    max_branch_len = max_branch_len.max(8).min(35);     // Increased from 25 to 35
     max_lines_len = max_lines_len.max(4);
     max_date_len = max_date_len.max(11); // "MM/DD HH:MM" is 11 chars
 
@@ -1052,8 +1161,20 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_legend: bool) {
-    // Split area into main status bar and optional legend line
-    let status_layout = if show_legend {
+    // Check if we have any active filters (need second row for legend or filters)
+    let has_filters = !app.include_original
+        || app.include_sub
+        || !app.include_trimmed
+        || !app.include_continued
+        || app.filter_agent.is_some()
+        || app.filter_min_lines.is_some()
+        || app.filter_after_date.is_some()
+        || app.filter_before_date.is_some();
+
+    let needs_second_row = show_legend || has_filters;
+
+    // Split area into main status bar and optional second line (legend + filters)
+    let status_layout = if needs_second_row {
         Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Length(1)])
@@ -1082,35 +1203,43 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             InputMode::MinLines => format!(" Min lines: {}█ ", app.input_buffer),
             InputMode::Agent => " Agent: 1=Claude 2=Codex 0=All ".to_string(),
             InputMode::JumpToLine => format!(" Go to row: {}█ ", app.input_buffer),
+            InputMode::AfterDate => format!(" After date: {}█ (any format) ", app.input_buffer),
+            InputMode::BeforeDate => format!(" Before date: {}█ (any format) ", app.input_buffer),
         };
         spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
     } else if app.command_mode {
         // Command mode indicator
         spans.push(Span::styled(" CMD ", Style::default().bg(t.accent).fg(Color::Black)));
-        spans.push(Span::styled(" :x clear :o orig :s sub :t trim :c cont :a agent :m lines ", label));
+        spans.push(Span::styled(" :x clear :o orig :s sub :t trim :c cont :a agent :m lines :> after :< before ", label));
     } else {
-        // Normal keybindings
+        // Normal keybindings - ordered: nav, page, home/end, C-g goto, Enter, /, C-f, Esc
         let has_selection = !app.filtered.is_empty();
+
+        // nav, page
         spans.extend([
             Span::styled(" ↑↓ ", keycap),
             Span::styled(" nav ", label),
             Span::styled(" │ ", dim),
-            Span::styled(" C-u/d/PgUp/Dn ", keycap),
+            Span::styled(" PgUp/Dn ", keycap),
             Span::styled(" page ", label),
         ]);
 
         if has_selection {
+            // home/end jump, C-g goto, Enter view/actions
             spans.extend([
+                Span::styled(" │ ", dim),
+                Span::styled(" Home/End ", keycap),
+                Span::styled(" jump ", label),
+                Span::styled(" │ ", dim),
+                Span::styled(" C-g ", keycap),
+                Span::styled(" goto ", label),
                 Span::styled(" │ ", dim),
                 Span::styled(" Enter ", keycap),
                 Span::styled(" view/actions ", label),
-                Span::styled(" │ ", dim),
-                Span::styled(" C-g ", keycap),
-                Span::styled(" jump ", label),
             ]);
         }
 
-        // Scope toggle with current state
+        // / scope toggle
         let scope_indicator = if app.scope_global { "global" } else { "local" };
         spans.extend([
             Span::styled(" │ ", dim),
@@ -1118,6 +1247,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             Span::styled(format!(" {} ", scope_indicator), label),
         ]);
 
+        // C-f filter, Esc quit
         spans.extend([
             Span::styled(" │ ", dim),
             Span::styled(" C-f ", keycap),
@@ -1126,42 +1256,17 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             Span::styled(" Esc ", keycap),
             Span::styled(" quit", label),
         ]);
-
-        // Active filters (only show when non-default)
-        if app.filter_original_only {
-            spans.push(Span::styled(" [orig]", filter_active));
-        }
-        if app.filter_show_sub {
-            spans.push(Span::styled(" [+sub]", filter_active));
-        }
-        if app.filter_no_trim {
-            spans.push(Span::styled(" [-trim]", filter_active));
-        }
-        if app.filter_no_cont {
-            spans.push(Span::styled(" [-cont]", filter_active));
-        }
-        if let Some(ref agent) = app.filter_agent {
-            spans.push(Span::styled(format!(" [{}]", agent), filter_active));
-        }
-        if let Some(min) = app.filter_min_lines {
-            spans.push(Span::styled(format!(" [≥{}L]", min), filter_active));
-        }
     }
 
     let hints = Line::from(spans);
-    let count = Span::styled(format!(" {} sessions", app.filtered.len()), dim);
+    frame.render_widget(Paragraph::new(hints), main_area);
 
-    let layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(count.width() as u16)])
-        .split(main_area);
+    // Second row: annotation legend (if needed) + active filter indicators (always)
+    let mut row2_spans: Vec<Span> = Vec::new();
 
-    frame.render_widget(Paragraph::new(hints), layout[0]);
-    frame.render_widget(Paragraph::new(count), layout[1]);
-
-    // Render annotation legend if needed
+    // Annotation legend (if annotations exist in results)
     if show_legend {
-        let legend_spans = vec![
+        row2_spans.extend([
             Span::styled("  ", dim),
             Span::styled("(c)", Style::default().fg(t.dim_fg)),
             Span::styled(" continued  ", dim),
@@ -1169,9 +1274,39 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             Span::styled(" trimmed  ", dim),
             Span::styled("(s)", Style::default().fg(t.dim_fg)),
             Span::styled(" sub-agent", dim),
-        ];
-        let legend = Paragraph::new(Line::from(legend_spans));
-        frame.render_widget(legend, status_layout[1]);
+        ]);
+    }
+
+    // Active filters (always show on second row when non-default)
+    if !app.include_original {
+        row2_spans.push(Span::styled(" [-orig]", filter_active));
+    }
+    if app.include_sub {
+        row2_spans.push(Span::styled(" [+sub]", filter_active));
+    }
+    if !app.include_trimmed {
+        row2_spans.push(Span::styled(" [-trim]", filter_active));
+    }
+    if !app.include_continued {
+        row2_spans.push(Span::styled(" [-cont]", filter_active));
+    }
+    if let Some(ref agent) = app.filter_agent {
+        row2_spans.push(Span::styled(format!(" [{}]", agent), filter_active));
+    }
+    if let Some(min) = app.filter_min_lines {
+        row2_spans.push(Span::styled(format!(" [≥{}L]", min), filter_active));
+    }
+    if let Some(ref date) = app.filter_after_date {
+        row2_spans.push(Span::styled(format!(" [>{}]", date), filter_active));
+    }
+    if let Some(ref date) = app.filter_before_date {
+        row2_spans.push(Span::styled(format!(" [<{}]", date), filter_active));
+    }
+
+    // Render second row if we have legend or filters
+    if needs_second_row {
+        let row2 = Paragraph::new(Line::from(row2_spans));
+        frame.render_widget(row2, status_layout[1]);
     }
 }
 
@@ -1234,6 +1369,10 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
 
     let content_width = layout[1].width.saturating_sub(2) as usize;
 
+    // Search highlighting style - yellow background
+    let search_pattern = &app.view_search_pattern;
+    let search_highlight = Style::default().bg(Color::Yellow).fg(Color::Black);
+
     // Content - full conversation with styled messages
     // Track current message context for continuation lines
     #[derive(Clone, Copy, PartialEq)]
@@ -1250,12 +1389,14 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                 let msg_content: String = line.chars().skip(2).collect();
                 let used = 6 + 1 + msg_content.chars().count(); // " User " + " " + content
                 let padding = content_width.saturating_sub(used);
-                Line::from(vec![
+                let base_style = Style::default().bg(t.user_bubble_bg);
+                let mut spans = vec![
                     Span::styled(" User ", Style::default().fg(t.user_label).add_modifier(Modifier::BOLD)),
-                    Span::styled(" ", Style::default().bg(t.user_bubble_bg)),
-                    Span::styled(msg_content, Style::default().bg(t.user_bubble_bg)),
-                    Span::styled(" ".repeat(padding), Style::default().bg(t.user_bubble_bg)),
-                ])
+                    Span::styled(" ", base_style),
+                ];
+                spans.extend(highlight_search_in_text(&msg_content, search_pattern, base_style, search_highlight));
+                spans.push(Span::styled(" ".repeat(padding), base_style));
+                Line::from(spans)
             } else if line.starts_with("⏺ ") {
                 // Assistant message - ⏺ is 3 bytes + space = 4 bytes
                 context = MsgContext::Assistant;
@@ -1263,20 +1404,22 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                 let label_with_space = format!(" {} ", agent_label);
                 let used = label_with_space.chars().count() + 1 + msg_content.chars().count();
                 let padding = content_width.saturating_sub(used);
-                Line::from(vec![
+                let base_style = Style::default().bg(assistant_bg);
+                let mut spans = vec![
                     Span::styled(label_with_space, Style::default().fg(assistant_fg).add_modifier(Modifier::BOLD)),
-                    Span::styled(" ", Style::default().bg(assistant_bg)),
-                    Span::styled(msg_content, Style::default().bg(assistant_bg)),
-                    Span::styled(" ".repeat(padding), Style::default().bg(assistant_bg)),
-                ])
+                    Span::styled(" ", base_style),
+                ];
+                spans.extend(highlight_search_in_text(&msg_content, search_pattern, base_style, search_highlight));
+                spans.push(Span::styled(" ".repeat(padding), base_style));
+                Line::from(spans)
             } else if line.starts_with("  ⎿") {
                 // Tool result - style as dimmed (2 spaces + ⎿ character)
                 context = MsgContext::None;
                 let content: String = line.chars().skip(3).collect(); // Skip "  ⎿"
-                Line::from(Span::styled(
-                    format!("      {}", content),
-                    Style::default().fg(t.dim_fg),
-                ))
+                let base_style = Style::default().fg(t.dim_fg);
+                let mut spans = vec![Span::styled("      ", base_style)];
+                spans.extend(highlight_search_in_text(&content, search_pattern, base_style, search_highlight));
+                Line::from(spans)
             } else if line.is_empty() {
                 // Empty line - keep context for multi-paragraph messages
                 Line::from("")
@@ -1286,29 +1429,37 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                     MsgContext::User => {
                         let used = 6 + 1 + line.chars().count(); // prefix + " " + content
                         let padding = content_width.saturating_sub(used);
-                        Line::from(vec![
+                        let base_style = Style::default().bg(t.user_bubble_bg);
+                        let mut spans = vec![
                             Span::styled("      ", Style::default()),
-                            Span::styled(" ", Style::default().bg(t.user_bubble_bg)),
-                            Span::styled(line.to_string(), Style::default().bg(t.user_bubble_bg)),
-                            Span::styled(" ".repeat(padding), Style::default().bg(t.user_bubble_bg)),
-                        ])
+                            Span::styled(" ", base_style),
+                        ];
+                        spans.extend(highlight_search_in_text(line, search_pattern, base_style, search_highlight));
+                        spans.push(Span::styled(" ".repeat(padding), base_style));
+                        Line::from(spans)
                     }
                     MsgContext::Assistant => {
                         let label_width = agent_label.chars().count() + 2; // " ● Claude " chars
                         let used = label_width + 1 + line.chars().count();
                         let padding = content_width.saturating_sub(used);
-                        Line::from(vec![
+                        let base_style = Style::default().bg(assistant_bg);
+                        let mut spans = vec![
                             Span::styled(" ".repeat(label_width), Style::default()),
-                            Span::styled(" ", Style::default().bg(assistant_bg)),
-                            Span::styled(line.to_string(), Style::default().bg(assistant_bg)),
-                            Span::styled(" ".repeat(padding), Style::default().bg(assistant_bg)),
-                        ])
+                            Span::styled(" ", base_style),
+                        ];
+                        spans.extend(highlight_search_in_text(line, search_pattern, base_style, search_highlight));
+                        spans.push(Span::styled(" ".repeat(padding), base_style));
+                        Line::from(spans)
                     }
-                    MsgContext::None => Line::from(line.to_string()),
+                    MsgContext::None => {
+                        let base_style = Style::default();
+                        Line::from(highlight_search_in_text(line, search_pattern, base_style, search_highlight))
+                    }
                 }
             } else {
                 // Plain line outside message context (metadata, etc.)
-                Line::from(line.to_string())
+                let base_style = Style::default();
+                Line::from(highlight_search_in_text(line, search_pattern, base_style, search_highlight))
             }
         })
         .collect();
@@ -1316,34 +1467,88 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
     // Track total lines for footer display
     let total_lines = app.full_content.lines().count();
 
-    // Use Paragraph's scroll for proper handling with wrapped content
-    let content = Paragraph::new(content_lines)
-        .wrap(ratatui::widgets::Wrap { trim: false })
-        .scroll((app.full_content_scroll as u16, 0));
+    // Clamp scroll to valid range
+    let max_scroll = content_lines.len().saturating_sub(1);
+    if app.full_content_scroll > max_scroll {
+        app.full_content_scroll = max_scroll;
+    }
+
+    // Manually skip lines to scroll (so scroll works on content lines, not visual lines)
+    // This ensures search navigation jumps to the correct content line
+    let visible_lines: Vec<Line> = content_lines
+        .into_iter()
+        .skip(app.full_content_scroll)
+        .collect();
+
+    let content = Paragraph::new(visible_lines)
+        .wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(content, layout[1]);
 
-    // Footer - navigation hints
+    // Footer - navigation hints or search input
     let keycap = Style::default().bg(t.keycap_bg);
     let label = Style::default();
     let dim = Style::default().fg(t.dim_fg);
+    let highlight = Style::default().fg(t.match_fg);
 
-    let footer = Line::from(vec![
-        Span::styled(" ↑↓/jk ", keycap),
-        Span::styled(" scroll ", label),
-        Span::styled(" │ ", dim),
-        Span::styled(" PgUp/Dn ", keycap),
-        Span::styled(" page ", label),
-        Span::styled(" │ ", dim),
-        Span::styled(" Home/End ", keycap),
-        Span::styled(" jump ", label),
-        Span::styled(" │ ", dim),
-        Span::styled(" Space/Esc/q ", keycap),
-        Span::styled(" back", label),
-        Span::styled(
-            format!("  Line {}/{}", app.full_content_scroll + 1, total_lines),
-            dim,
-        ),
-    ]);
+    let footer = if app.view_search_mode {
+        // Search input mode
+        Line::from(vec![
+            Span::styled(" /", Style::default().fg(t.accent)),
+            Span::styled(&app.view_search_pattern, label),
+            Span::styled("█", Style::default().fg(t.accent)),
+            Span::styled("  (Enter to search, Esc to cancel)", dim),
+        ])
+    } else if !app.view_search_pattern.is_empty() {
+        // Active search - show match count and navigation
+        let match_info = if app.view_search_matches.is_empty() {
+            "No matches".to_string()
+        } else {
+            format!(
+                "Match {}/{}",
+                app.view_search_current + 1,
+                app.view_search_matches.len()
+            )
+        };
+        Line::from(vec![
+            Span::styled(" /", Style::default().fg(t.accent)),
+            Span::styled(&app.view_search_pattern, highlight),
+            Span::styled(format!("  {} ", match_info), dim),
+            Span::styled(" │ ", dim),
+            Span::styled(" n ", keycap),
+            Span::styled(" next ", label),
+            Span::styled(" N ", keycap),
+            Span::styled(" prev ", label),
+            Span::styled(" │ ", dim),
+            Span::styled(" Esc ", keycap),
+            Span::styled(" clear ", label),
+            Span::styled(
+                format!("  Line {}/{}", app.full_content_scroll + 1, total_lines),
+                dim,
+            ),
+        ])
+    } else {
+        // Normal mode - show navigation hints
+        Line::from(vec![
+            Span::styled(" ↑↓/jk ", keycap),
+            Span::styled(" scroll ", label),
+            Span::styled(" │ ", dim),
+            Span::styled(" PgUp/Dn ", keycap),
+            Span::styled(" page ", label),
+            Span::styled(" │ ", dim),
+            Span::styled(" / ", keycap),
+            Span::styled(" search ", label),
+            Span::styled(" │ ", dim),
+            Span::styled(" Home/End ", keycap),
+            Span::styled(" jump ", label),
+            Span::styled(" │ ", dim),
+            Span::styled(" Space/Esc/q ", keycap),
+            Span::styled(" back", label),
+            Span::styled(
+                format!("  Line {}/{}", app.full_content_scroll + 1, total_lines),
+                dim,
+            ),
+        ])
+    };
     frame.render_widget(Paragraph::new(footer), layout[2]);
 }
 
@@ -1468,6 +1673,123 @@ fn find_matching_snippet<'a>(
     }
 
     Some(spans)
+}
+
+/// Highlight search pattern matches in text, returning spans with base and highlight styles
+fn highlight_search_in_text<'a>(
+    text: &str,
+    pattern: &str,
+    base_style: Style,
+    highlight_style: Style,
+) -> Vec<Span<'a>> {
+    if pattern.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+
+    let pattern_lower = pattern.to_lowercase();
+    let text_lower = text.to_lowercase();
+    let mut spans: Vec<Span> = Vec::new();
+    let mut last_end = 0;
+
+    // Find all occurrences of pattern (case-insensitive)
+    let text_chars: Vec<char> = text.chars().collect();
+    let pattern_chars: Vec<char> = pattern_lower.chars().collect();
+    let text_lower_chars: Vec<char> = text_lower.chars().collect();
+
+    let mut i = 0;
+    while i + pattern_chars.len() <= text_lower_chars.len() {
+        let match_found = (0..pattern_chars.len())
+            .all(|j| text_lower_chars[i + j] == pattern_chars[j]);
+
+        if match_found {
+            // Add text before match
+            if i > last_end {
+                let before: String = text_chars[last_end..i].iter().collect();
+                spans.push(Span::styled(before, base_style));
+            }
+            // Add highlighted match
+            let matched: String = text_chars[i..i + pattern_chars.len()].iter().collect();
+            spans.push(Span::styled(matched, highlight_style));
+            last_end = i + pattern_chars.len();
+            i = last_end;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Add remaining text
+    if last_end < text_chars.len() {
+        let remaining: String = text_chars[last_end..].iter().collect();
+        spans.push(Span::styled(remaining, base_style));
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(text.to_string(), base_style));
+    }
+
+    spans
+}
+
+/// Parse a flexible date string into YYYYMMDD format for comparison
+/// Accepts: YYYYMMDD, YYYY-MM-DD, MM/DD/YYYY, MM/DD, etc.
+fn parse_flexible_date(input: &str) -> Option<String> {
+    use chrono::NaiveDate;
+
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
+
+    // Try various formats
+    let formats = [
+        "%Y%m%d",      // 20251129
+        "%Y-%m-%d",    // 2025-11-29
+        "%Y/%m/%d",    // 2025/11/29
+        "%m/%d/%Y",    // 11/29/2025
+        "%m-%d-%Y",    // 11-29-2025
+        "%m/%d/%y",    // 11/29/25
+        "%m-%d-%y",    // 11-29-25
+    ];
+
+    for fmt in formats {
+        if let Ok(date) = NaiveDate::parse_from_str(input, fmt) {
+            return Some(date.format("%Y%m%d").to_string());
+        }
+    }
+
+    // Try MM/DD or MM-DD with current year
+    let short_formats = ["%m/%d", "%m-%d"];
+    let current_year = chrono::Utc::now().format("%Y").to_string();
+    for fmt in short_formats {
+        if let Ok(date) = NaiveDate::parse_from_str(
+            &format!("{}/{}", input, current_year),
+            &format!("{}/{}", fmt, "%Y"),
+        ) {
+            return Some(date.format("%Y%m%d").to_string());
+        }
+    }
+
+    None
+}
+
+/// Extract YYYYMMDD from an ISO timestamp for comparison
+fn extract_date_for_comparison(timestamp: &str) -> Option<String> {
+    // Try to parse as RFC3339 or similar
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        return Some(dt.format("%Y%m%d").to_string());
+    }
+    // Try naive datetime
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S%.f") {
+        return Some(dt.format("%Y%m%d").to_string());
+    }
+    // Just try to extract YYYY-MM-DD
+    if timestamp.len() >= 10 {
+        let date_part = &timestamp[..10];
+        if let Ok(date) = chrono::NaiveDate::parse_from_str(date_part, "%Y-%m-%d") {
+            return Some(date.format("%Y%m%d").to_string());
+        }
+    }
+    None
 }
 
 fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
@@ -1654,33 +1976,119 @@ fn main() -> Result<()> {
                 if key.kind == KeyEventKind::Press {
                     // Handle full view mode separately
                     if app.full_view_mode {
-                        match key.code {
-                            KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => {
-                                app.full_view_mode = false;
+                        if app.view_search_mode {
+                            // Search input mode
+                            match key.code {
+                                KeyCode::Esc => {
+                                    // Cancel search input, keep existing pattern if any
+                                    app.view_search_mode = false;
+                                }
+                                KeyCode::Enter => {
+                                    // Confirm search and jump to first match
+                                    app.view_search_mode = false;
+                                    app.update_view_search_matches();
+                                    if !app.view_search_matches.is_empty() {
+                                        app.view_search_current = 0;
+                                        app.full_content_scroll = app.view_search_matches[0];
+                                    }
+                                }
+                                KeyCode::Backspace => {
+                                    app.view_search_pattern.pop();
+                                }
+                                KeyCode::Char(c) => {
+                                    app.view_search_pattern.push(c);
+                                }
+                                _ => {}
                             }
-                            KeyCode::Up | KeyCode::Char('k') => {
-                                app.full_content_scroll = app.full_content_scroll.saturating_sub(1);
+                        } else if !app.view_search_pattern.is_empty() {
+                            // Active search - handle search navigation
+                            match key.code {
+                                KeyCode::Char('n') => {
+                                    app.view_search_next();
+                                }
+                                KeyCode::Char('N') => {
+                                    app.view_search_prev();
+                                }
+                                KeyCode::Enter => {
+                                    // Enter also goes to next match
+                                    app.view_search_next();
+                                }
+                                KeyCode::Esc => {
+                                    // Clear search pattern
+                                    app.view_search_pattern.clear();
+                                    app.view_search_matches.clear();
+                                    app.view_search_current = 0;
+                                }
+                                KeyCode::Char('/') => {
+                                    // Start new search
+                                    app.view_search_pattern.clear();
+                                    app.view_search_mode = true;
+                                }
+                                KeyCode::Char(' ') | KeyCode::Char('q') => {
+                                    // Exit view mode, clear search
+                                    app.view_search_pattern.clear();
+                                    app.view_search_matches.clear();
+                                    app.view_search_mode = false;
+                                    app.full_view_mode = false;
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_sub(1);
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_add(1);
+                                }
+                                KeyCode::PageUp => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_sub(20);
+                                }
+                                KeyCode::PageDown => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_add(20);
+                                }
+                                KeyCode::Home => {
+                                    app.full_content_scroll = 0;
+                                }
+                                KeyCode::End => {
+                                    let lines = app.full_content.lines().count();
+                                    app.full_content_scroll = lines.saturating_sub(20);
+                                }
+                                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                    app.should_quit = true;
+                                }
+                                _ => {}
                             }
-                            KeyCode::Down | KeyCode::Char('j') => {
-                                app.full_content_scroll = app.full_content_scroll.saturating_add(1);
+                        } else {
+                            // Normal view mode (no active search)
+                            match key.code {
+                                KeyCode::Char('/') => {
+                                    app.view_search_mode = true;
+                                    app.view_search_pattern.clear();
+                                }
+                                KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => {
+                                    app.full_view_mode = false;
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_sub(1);
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_add(1);
+                                }
+                                KeyCode::PageUp => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_sub(20);
+                                }
+                                KeyCode::PageDown => {
+                                    app.full_content_scroll = app.full_content_scroll.saturating_add(20);
+                                }
+                                KeyCode::Home => {
+                                    app.full_content_scroll = 0;
+                                }
+                                KeyCode::End => {
+                                    let lines = app.full_content.lines().count();
+                                    app.full_content_scroll = lines.saturating_sub(20);
+                                }
+                                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                    app.should_quit = true;
+                                }
+                                _ => {}
                             }
-                            KeyCode::PageUp => {
-                                app.full_content_scroll = app.full_content_scroll.saturating_sub(20);
-                            }
-                            KeyCode::PageDown => {
-                                app.full_content_scroll = app.full_content_scroll.saturating_add(20);
-                            }
-                            KeyCode::Home => {
-                                app.full_content_scroll = 0;
-                            }
-                            KeyCode::End => {
-                                let lines = app.full_content.lines().count();
-                                app.full_content_scroll = lines.saturating_sub(20);
-                            }
-                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                app.should_quit = true;
-                            }
-                            _ => {}
                         }
                     } else if app.filter_modal_open {
                         // Handle filter modal
@@ -1690,28 +2098,29 @@ fn main() -> Result<()> {
                         let apply_filter = |app: &mut App, item: &FilterMenuItem| {
                             match item {
                                 FilterMenuItem::ClearAll => {
-                                    app.filter_original_only = false;
-                                    app.filter_show_sub = false;
-                                    app.filter_no_trim = false;
-                                    app.filter_no_cont = false;
+                                    // Reset to defaults
+                                    app.include_original = true;
+                                    app.include_sub = false;
+                                    app.include_trimmed = true;
+                                    app.include_continued = true;
                                     app.filter_agent = None;
                                     app.filter_min_lines = None;
                                     app.filter();
                                 }
-                                FilterMenuItem::OriginalOnly => {
-                                    app.filter_original_only = !app.filter_original_only;
+                                FilterMenuItem::IncludeOriginal => {
+                                    app.include_original = !app.include_original;
                                     app.filter();
                                 }
-                                FilterMenuItem::ShowSubAgents => {
-                                    app.filter_show_sub = !app.filter_show_sub;
+                                FilterMenuItem::IncludeSub => {
+                                    app.include_sub = !app.include_sub;
                                     app.filter();
                                 }
-                                FilterMenuItem::NoTrimmed => {
-                                    app.filter_no_trim = !app.filter_no_trim;
+                                FilterMenuItem::IncludeTrimmed => {
+                                    app.include_trimmed = !app.include_trimmed;
                                     app.filter();
                                 }
-                                FilterMenuItem::NoContinued => {
-                                    app.filter_no_cont = !app.filter_no_cont;
+                                FilterMenuItem::IncludeContinued => {
+                                    app.include_continued = !app.include_continued;
                                     app.filter();
                                 }
                                 FilterMenuItem::AgentAll => {
@@ -1729,6 +2138,16 @@ fn main() -> Result<()> {
                                 FilterMenuItem::MinLines => {
                                     app.filter_modal_open = false;
                                     app.input_mode = Some(InputMode::MinLines);
+                                    app.input_buffer.clear();
+                                }
+                                FilterMenuItem::AfterDate => {
+                                    app.filter_modal_open = false;
+                                    app.input_mode = Some(InputMode::AfterDate);
+                                    app.input_buffer.clear();
+                                }
+                                FilterMenuItem::BeforeDate => {
+                                    app.filter_modal_open = false;
+                                    app.input_mode = Some(InputMode::BeforeDate);
                                     app.input_buffer.clear();
                                 }
                             }
@@ -1777,6 +2196,11 @@ fn main() -> Result<()> {
                                         .unwrap_or_else(|_| "Error loading content".to_string());
                                     app.full_content_scroll = 0;
                                     app.full_view_mode = true;
+                                    // Clear any previous search state
+                                    app.view_search_mode = false;
+                                    app.view_search_pattern.clear();
+                                    app.view_search_matches.clear();
+                                    app.view_search_current = 0;
                                 }
                                 app.action_mode = None;
                             }
@@ -1809,6 +2233,22 @@ fn main() -> Result<()> {
                                             app.jump_to_row(row);
                                         }
                                     }
+                                    InputMode::AfterDate => {
+                                        if app.input_buffer.is_empty() {
+                                            app.filter_after_date = None;
+                                        } else if let Some(date) = parse_flexible_date(&app.input_buffer) {
+                                            app.filter_after_date = Some(date);
+                                        }
+                                        app.filter();
+                                    }
+                                    InputMode::BeforeDate => {
+                                        if app.input_buffer.is_empty() {
+                                            app.filter_before_date = None;
+                                        } else if let Some(date) = parse_flexible_date(&app.input_buffer) {
+                                            app.filter_before_date = Some(date);
+                                        }
+                                        app.filter();
+                                    }
                                 }
                                 app.input_mode = None;
                                 app.input_buffer.clear();
@@ -1834,7 +2274,11 @@ fn main() -> Result<()> {
                             KeyCode::Char(c) if c.is_ascii_digit() && (mode == InputMode::MinLines || mode == InputMode::JumpToLine) => {
                                 app.input_buffer.push(c);
                             }
-                            KeyCode::Backspace if mode == InputMode::MinLines || mode == InputMode::JumpToLine => {
+                            KeyCode::Char(c) if mode == InputMode::AfterDate || mode == InputMode::BeforeDate => {
+                                // Accept any character for flexible date input
+                                app.input_buffer.push(c);
+                            }
+                            KeyCode::Backspace if mode == InputMode::MinLines || mode == InputMode::JumpToLine || mode == InputMode::AfterDate || mode == InputMode::BeforeDate => {
                                 app.input_buffer.pop();
                             }
                             _ => {}
@@ -1844,29 +2288,31 @@ fn main() -> Result<()> {
                         app.command_mode = false;
                         match key.code {
                             KeyCode::Char('x') | KeyCode::Char('0') => {
-                                // Clear all filters
-                                app.filter_original_only = false;
-                                app.filter_show_sub = false;
-                                app.filter_no_trim = false;
-                                app.filter_no_cont = false;
+                                // Reset to defaults
+                                app.include_original = true;
+                                app.include_sub = false;
+                                app.include_trimmed = true;
+                                app.include_continued = true;
                                 app.filter_agent = None;
                                 app.filter_min_lines = None;
+                                app.filter_after_date = None;
+                                app.filter_before_date = None;
                                 app.filter();
                             }
                             KeyCode::Char('o') => {
-                                app.filter_original_only = !app.filter_original_only;
+                                app.include_original = !app.include_original;
                                 app.filter();
                             }
                             KeyCode::Char('s') => {
-                                app.filter_show_sub = !app.filter_show_sub;
+                                app.include_sub = !app.include_sub;
                                 app.filter();
                             }
                             KeyCode::Char('t') => {
-                                app.filter_no_trim = !app.filter_no_trim;
+                                app.include_trimmed = !app.include_trimmed;
                                 app.filter();
                             }
                             KeyCode::Char('c') => {
-                                app.filter_no_cont = !app.filter_no_cont;
+                                app.include_continued = !app.include_continued;
                                 app.filter();
                             }
                             KeyCode::Char('a') => {
@@ -1877,6 +2323,16 @@ fn main() -> Result<()> {
                             KeyCode::Char('m') => {
                                 // Enter min-lines input mode
                                 app.input_mode = Some(InputMode::MinLines);
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Char('>') => {
+                                // Enter after-date input mode
+                                app.input_mode = Some(InputMode::AfterDate);
+                                app.input_buffer.clear();
+                            }
+                            KeyCode::Char('<') => {
+                                // Enter before-date input mode
+                                app.input_mode = Some(InputMode::BeforeDate);
                                 app.input_buffer.clear();
                             }
                             KeyCode::Esc => {} // Just exit command mode
@@ -1926,6 +2382,18 @@ fn main() -> Result<()> {
                             KeyCode::Down => app.on_down(),
                             KeyCode::PageUp => app.page_up(10),
                             KeyCode::PageDown => app.page_down(10),
+                            KeyCode::Home => {
+                                // Jump to first result
+                                app.selected = 0;
+                                app.preview_scroll = 0;
+                            }
+                            KeyCode::End => {
+                                // Jump to last result
+                                if !app.filtered.is_empty() {
+                                    app.selected = app.filtered.len() - 1;
+                                    app.preview_scroll = 0;
+                                }
+                            }
                             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_up(10),
                             KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_down(10),
                             KeyCode::Backspace => app.on_backspace(),
