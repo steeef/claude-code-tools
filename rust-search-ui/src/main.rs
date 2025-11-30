@@ -2001,27 +2001,28 @@ fn format_time_ago(modified: &str) -> String {
 // ============================================================================
 
 fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
-    let mut schema_builder = Schema::builder();
-    let session_id_field = schema_builder.add_text_field("session_id", TEXT | STORED);
-    let agent_field = schema_builder.add_text_field("agent", TEXT | STORED);
-    let project_field = schema_builder.add_text_field("project", TEXT | STORED);
-    let branch_field = schema_builder.add_text_field("branch", TEXT | STORED);
-    let cwd_field = schema_builder.add_text_field("cwd", TEXT | STORED);
-    let created_field = schema_builder.add_text_field("created", TEXT | STORED);
-    let modified_field = schema_builder.add_text_field("modified", TEXT | STORED);
-    let lines_field = schema_builder.add_i64_field("lines", STORED);
-    let export_path_field = schema_builder.add_text_field("export_path", TEXT | STORED);
-    let first_msg_role_field = schema_builder.add_text_field("first_msg_role", TEXT | STORED);
-    let first_msg_content_field = schema_builder.add_text_field("first_msg_content", TEXT | STORED);
-    let last_msg_role_field = schema_builder.add_text_field("last_msg_role", TEXT | STORED);
-    let last_msg_content_field = schema_builder.add_text_field("last_msg_content", TEXT | STORED);
-    let derivation_type_field = schema_builder.add_text_field("derivation_type", TEXT | STORED);
-    let is_sidechain_field = schema_builder.add_text_field("is_sidechain", TEXT | STORED);
-    let _content_field = schema_builder.add_text_field("content", TEXT | STORED);
-    let _schema = schema_builder.build();
-
+    // Open index FIRST, then get schema from it (not build our own!)
     let index = Index::open_in_dir(index_path)
         .context("Failed to open index. Run 'aichat build-index' first.")?;
+
+    let schema = index.schema();
+
+    // Look up fields by name from the actual index schema
+    let session_id_field = schema.get_field("session_id").context("missing session_id")?;
+    let agent_field = schema.get_field("agent").context("missing agent")?;
+    let project_field = schema.get_field("project").context("missing project")?;
+    let branch_field = schema.get_field("branch").context("missing branch")?;
+    let cwd_field = schema.get_field("cwd").context("missing cwd")?;
+    let created_field = schema.get_field("created").context("missing created")?;
+    let modified_field = schema.get_field("modified").context("missing modified")?;
+    let lines_field = schema.get_field("lines").context("missing lines")?;
+    let export_path_field = schema.get_field("export_path").context("missing export_path")?;
+    let first_msg_role_field = schema.get_field("first_msg_role").context("missing first_msg_role")?;
+    let first_msg_content_field = schema.get_field("first_msg_content").context("missing first_msg_content")?;
+    let last_msg_role_field = schema.get_field("last_msg_role").context("missing last_msg_role")?;
+    let last_msg_content_field = schema.get_field("last_msg_content").context("missing last_msg_content")?;
+    let derivation_type_field = schema.get_field("derivation_type").context("missing derivation_type")?;
+    let is_sidechain_field = schema.get_field("is_sidechain").context("missing is_sidechain")?;
 
     let reader = index
         .reader_builder()
