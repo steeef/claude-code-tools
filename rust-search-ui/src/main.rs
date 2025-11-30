@@ -1136,7 +1136,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
         lines.push(Line::from(""));
     }
 
-    // Search snippet - show matching content when searching
+    // Search snippet - show matching content when searching (with keyword highlighting)
     if !app.query.is_empty() {
         if let Some(snippet) = app.search_snippets.get(&s.session_id) {
             if !snippet.is_empty() {
@@ -1144,15 +1144,25 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
                     Span::styled(" ── MATCH ── ", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
                 ]));
 
-                // Use a distinct background for the match snippet
+                // Styles for the match snippet
                 let match_bg = Color::Rgb(50, 40, 30); // Warm/highlighted background
-                for wrapped in wrap_text(snippet, bubble_width).iter().take(8) {
+                let base_style = Style::default().bg(match_bg).fg(t.accent);
+                let highlight_style = Style::default().bg(Color::Yellow).fg(Color::Black).add_modifier(Modifier::BOLD);
+
+                // Display 12 lines (50% more than original 8)
+                for wrapped in wrap_text(snippet, bubble_width).iter().take(12) {
                     let padding = bubble_width.saturating_sub(wrapped.chars().count());
-                    lines.push(Line::from(vec![
-                        Span::styled(" ", Style::default().bg(match_bg)),
-                        Span::styled(wrapped.clone(), Style::default().bg(match_bg).fg(t.accent)),
-                        Span::styled(" ".repeat(padding + 1), Style::default().bg(match_bg)),
-                    ]));
+
+                    // Build line with keyword highlighting
+                    let mut line_spans: Vec<Span> = Vec::new();
+                    line_spans.push(Span::styled(" ", Style::default().bg(match_bg)));
+
+                    // Highlight keywords in this line
+                    let highlighted = highlight_keywords_in_line(wrapped, &app.query, base_style, highlight_style);
+                    line_spans.extend(highlighted);
+
+                    line_spans.push(Span::styled(" ".repeat(padding + 1), Style::default().bg(match_bg)));
+                    lines.push(Line::from(line_spans));
                 }
 
                 lines.push(Line::from(""));
@@ -1710,6 +1720,87 @@ fn find_matching_snippet<'a>(
     Some(spans)
 }
 
+/// Highlight multiple keywords in text (from space-separated query), returning styled spans.
+fn highlight_keywords_in_line<'a>(
+    text: &str,
+    query: &str,
+    base_style: Style,
+    highlight_style: Style,
+) -> Vec<Span<'a>> {
+    if query.is_empty() || text.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+
+    let query_lower = query.to_lowercase();
+    let keywords: Vec<&str> = query_lower.split_whitespace().collect();
+    if keywords.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+
+    let text_lower = text.to_lowercase();
+    let text_chars: Vec<char> = text.chars().collect();
+    let text_lower_chars: Vec<char> = text_lower.chars().collect();
+
+    // Find all keyword positions
+    let mut highlights: Vec<(usize, usize)> = Vec::new();
+    for keyword in &keywords {
+        let kw_chars: Vec<char> = keyword.chars().collect();
+        if kw_chars.is_empty() {
+            continue;
+        }
+        let mut search_pos = 0;
+        while search_pos + kw_chars.len() <= text_lower_chars.len() {
+            let match_found = (0..kw_chars.len())
+                .all(|i| text_lower_chars[search_pos + i] == kw_chars[i]);
+            if match_found {
+                highlights.push((search_pos, search_pos + kw_chars.len()));
+                search_pos += kw_chars.len();
+            } else {
+                search_pos += 1;
+            }
+        }
+    }
+
+    // No highlights found
+    if highlights.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+
+    // Sort and merge overlapping highlights
+    highlights.sort_by_key(|h| h.0);
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (start, end) in highlights {
+        if let Some(last) = merged.last_mut() {
+            if start <= last.1 {
+                last.1 = last.1.max(end);
+                continue;
+            }
+        }
+        merged.push((start, end));
+    }
+
+    // Build spans
+    let mut spans: Vec<Span> = Vec::new();
+    let mut current_pos = 0;
+
+    for (start, end) in merged {
+        if current_pos < start {
+            let normal_text: String = text_chars[current_pos..start].iter().collect();
+            spans.push(Span::styled(normal_text, base_style));
+        }
+        let highlight_text: String = text_chars[start..end].iter().collect();
+        spans.push(Span::styled(highlight_text, highlight_style));
+        current_pos = end;
+    }
+
+    if current_pos < text_chars.len() {
+        let remaining: String = text_chars[current_pos..].iter().collect();
+        spans.push(Span::styled(remaining, base_style));
+    }
+
+    spans
+}
+
 /// Highlight search pattern matches in text, returning spans with base and highlight styles
 fn highlight_search_in_text<'a>(
     text: &str,
@@ -2087,6 +2178,190 @@ fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> Str
 }
 
 // ============================================================================
+// JSONL Parsing for Full Conversation View
+// ============================================================================
+
+/// Parse JSONL file content into conversational text format.
+/// Handles both Claude and Codex JSONL formats.
+/// Returns text with "> " prefix for user messages and "⏺ " for assistant messages.
+fn parse_jsonl_to_conversation(content: &str) -> String {
+    let mut output = String::new();
+    let mut last_role: Option<String> = None;
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Parse JSON line
+        let json: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Try to extract message based on format
+        let (role, text) = extract_message_from_json(&json);
+
+        if let (Some(role), Some(text)) = (role, text) {
+            // Skip empty messages
+            if text.trim().is_empty() {
+                continue;
+            }
+
+            // Add blank line between different roles
+            if let Some(ref last) = last_role {
+                if last != &role && !output.is_empty() {
+                    output.push('\n');
+                }
+            }
+
+            // Format based on role
+            let prefix = if role == "user" { "> " } else { "⏺ " };
+
+            // Split text into lines and prefix the first line
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                if i == 0 {
+                    output.push_str(prefix);
+                    output.push_str(line);
+                } else {
+                    // Continuation lines - indent to align with content
+                    output.push_str("  ");
+                    output.push_str(line);
+                }
+                output.push('\n');
+            }
+
+            last_role = Some(role);
+        }
+    }
+
+    output
+}
+
+/// Extract role and text from a JSON entry (handles Claude and Codex formats).
+fn extract_message_from_json(json: &serde_json::Value) -> (Option<String>, Option<String>) {
+    let entry_type = json.get("type").and_then(|v| v.as_str());
+
+    match entry_type {
+        // Claude format: {"type": "user" | "assistant", "message": {...}}
+        Some("user") | Some("assistant") => {
+            let role = entry_type.map(|s| s.to_string());
+            let text = extract_claude_message_text(json);
+            (role, text)
+        }
+
+        // Codex format: {"type": "response_item", "payload": {"role": "user" | "assistant", ...}}
+        Some("response_item") => {
+            if let Some(payload) = json.get("payload") {
+                let role = payload
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let text = extract_codex_message_text(payload);
+                (role, text)
+            } else {
+                (None, None)
+            }
+        }
+
+        // Codex format: {"type": "event_msg", "payload": {"type": "user_message", "message": "..."}}
+        Some("event_msg") => {
+            if let Some(payload) = json.get("payload") {
+                let msg_type = payload.get("type").and_then(|v| v.as_str());
+                match msg_type {
+                    Some("user_message") => {
+                        let text = payload
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        (Some("user".to_string()), text)
+                    }
+                    _ => (None, None),
+                }
+            } else {
+                (None, None)
+            }
+        }
+
+        _ => (None, None),
+    }
+}
+
+/// Extract text from Claude message format.
+/// User: {"message": {"content": "text"}}
+/// Assistant: {"message": {"content": [{"type": "text", "text": "..."}]}}
+fn extract_claude_message_text(json: &serde_json::Value) -> Option<String> {
+    let message = json.get("message")?;
+    let content = message.get("content")?;
+
+    // User messages have string content
+    if let Some(text) = content.as_str() {
+        return Some(text.to_string());
+    }
+
+    // Assistant messages have array of content blocks
+    if let Some(blocks) = content.as_array() {
+        let mut texts = Vec::new();
+        for block in blocks {
+            if let Some(block_type) = block.get("type").and_then(|v| v.as_str()) {
+                match block_type {
+                    "text" => {
+                        if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                            texts.push(text.to_string());
+                        }
+                    }
+                    "tool_use" => {
+                        // Optionally show tool calls (condensed)
+                        if let Some(name) = block.get("name").and_then(|v| v.as_str()) {
+                            texts.push(format!("[Tool: {}]", name));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if !texts.is_empty() {
+            return Some(texts.join("\n"));
+        }
+    }
+
+    None
+}
+
+/// Extract text from Codex message format.
+/// {"content": [{"type": "input_text" | "output_text", "text": "..."}]}
+fn extract_codex_message_text(payload: &serde_json::Value) -> Option<String> {
+    let content = payload.get("content")?.as_array()?;
+
+    let mut texts = Vec::new();
+    for block in content {
+        if let Some(block_type) = block.get("type").and_then(|v| v.as_str()) {
+            match block_type {
+                "input_text" | "output_text" => {
+                    if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                        texts.push(text.to_string());
+                    }
+                }
+                "tool_use" | "function_call" => {
+                    if let Some(name) = block.get("name").and_then(|v| v.as_str()) {
+                        texts.push(format!("[Tool: {}]", name));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if !texts.is_empty() {
+        Some(texts.join("\n"))
+    } else {
+        None
+    }
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -2342,8 +2617,14 @@ fn main() -> Result<()> {
                             KeyCode::Char('v') if mode == ActionMode::ViewOrActions => {
                                 // View: enter full view mode
                                 if let Some(session) = app.selected_session() {
-                                    app.full_content = std::fs::read_to_string(&session.export_path)
+                                    let raw_content = std::fs::read_to_string(&session.export_path)
                                         .unwrap_or_else(|_| "Error loading content".to_string());
+                                    // Parse JSONL files into conversational format
+                                    app.full_content = if session.export_path.ends_with(".jsonl") {
+                                        parse_jsonl_to_conversation(&raw_content)
+                                    } else {
+                                        raw_content
+                                    };
                                     app.full_content_scroll = 0;
                                     app.full_view_mode = true;
                                     // Clear any previous search state
