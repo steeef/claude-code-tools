@@ -944,6 +944,13 @@ def index_stats(index, cwd):
         short = path[-50:] if len(path) > 50 else path
         print(f"  {count:4d} | ...{short}" if len(path) > 50 else f"  {count:4d} | {short}")
 
+    # Claude home stats
+    claude_home_counts = Counter(r.get("claude_home", "") for r in results)
+    print("\nClaude homes:")
+    for home, count in claude_home_counts.most_common(10):
+        home_display = home if home else "(empty)"
+        print(f"  {count:4d} | {home_display}")
+
 
 @main.command("search")
 @click.argument("query", required=False, default="")
@@ -1071,8 +1078,12 @@ def search_ui(claude_home_arg):
         os.close(fd)
 
         # Run Rust TUI (interactive - needs TTY)
+        # Pass resolved claude_home for filtering (CLI arg > env var > default)
         try:
-            result = subprocess.run([str(rust_binary), out_path])
+            result = subprocess.run([
+                str(rust_binary), out_path,
+                "--claude-home", str(claude_home)
+            ])
         except Exception as e:
             print(f"Error running Rust TUI: {e}")
             try:

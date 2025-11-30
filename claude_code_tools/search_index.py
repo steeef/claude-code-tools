@@ -144,6 +144,9 @@ class SessionIndex:
         self.schema_builder.add_text_field("derivation_type", stored=True)
         self.schema_builder.add_text_field("is_sidechain", stored=True)  # "true"/"false"
 
+        # Claude home field (for filtering by source Claude home directory)
+        self.schema_builder.add_text_field("claude_home", stored=True)
+
         # Searchable content field
         self.schema_builder.add_text_field("content", stored=True)
 
@@ -514,7 +517,10 @@ class SessionIndex:
             return None
 
     def index_from_jsonl(
-        self, jsonl_files: list[Path], incremental: bool = True
+        self,
+        jsonl_files: list[Path],
+        incremental: bool = True,
+        claude_home: Optional[Path] = None,
     ) -> dict[str, int]:
         """
         Build or update index directly from JSONL session files.
@@ -525,10 +531,12 @@ class SessionIndex:
         Args:
             jsonl_files: List of paths to session JSONL files
             incremental: If True, only index new/modified files
+            claude_home: Claude home directory (stored for filtering)
 
         Returns:
             Stats dict: {indexed, skipped, failed}
         """
+        claude_home_str = str(claude_home) if claude_home else ""
         stats = {"indexed": 0, "skipped": 0, "failed": 0}
 
         writer = self.get_writer()
@@ -582,6 +590,9 @@ class SessionIndex:
                     "is_sidechain",
                     "true" if metadata.get("is_sidechain") else "false"
                 )
+
+                # Claude home (for filtering by source directory)
+                doc.add_text("claude_home", claude_home_str)
 
                 doc.add_text("content", parsed["content"])
 
@@ -816,6 +827,7 @@ class SessionIndex:
                 "first_msg_content": doc.get_first("first_msg_content") or "",
                 "last_msg_role": doc.get_first("last_msg_role") or "",
                 "last_msg_content": doc.get_first("last_msg_content") or "",
+                "claude_home": doc.get_first("claude_home") or "",
             })
 
         # Sort by modified timestamp (most recent first)
@@ -877,7 +889,9 @@ def auto_index(
 
     # Create/open index and run incremental indexing
     index = SessionIndex(index_path)
-    stats = index.index_from_jsonl(jsonl_files, incremental=True)
+    stats = index.index_from_jsonl(
+        jsonl_files, incremental=True, claude_home=claude_home
+    )
     stats["total_files"] = len(jsonl_files)
 
     if verbose:

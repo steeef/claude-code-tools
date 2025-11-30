@@ -103,6 +103,7 @@ struct Session {
     last_msg_content: String,
     derivation_type: String,  // "trimmed", "continued", or ""
     is_sidechain: bool,       // Sub-agent session
+    claude_home: String,      // Source Claude home directory
 }
 
 impl Session {
@@ -246,6 +247,7 @@ struct App {
     filter_min_lines: Option<i64>,
     filter_after_date: Option<String>,  // YYYYMMDD - modified date must be >= this
     filter_before_date: Option<String>, // YYYYMMDD - modified date must be <= this
+    filter_claude_home: Option<String>, // Filter to sessions from this Claude home
 
     // Command mode (: prefix)
     command_mode: bool,
@@ -356,7 +358,7 @@ impl FilterMenuItem {
 }
 
 impl App {
-    fn new(sessions: Vec<Session>, index_path: String) -> Self {
+    fn new(sessions: Vec<Session>, index_path: String, filter_claude_home: Option<String>) -> Self {
         let total = sessions.len();
         let launch_cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
@@ -385,6 +387,7 @@ impl App {
             filter_min_lines: None,
             filter_after_date: None,
             filter_before_date: None,
+            filter_claude_home,
             // Command mode
             command_mode: false,
             // Full view mode
@@ -417,6 +420,13 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, s)| {
+                // Claude home filter - only show sessions from specified home
+                if let Some(ref home) = self.filter_claude_home {
+                    if !s.claude_home.is_empty() && s.claude_home != *home {
+                        return false;
+                    }
+                }
+
                 // Scope filter
                 if !self.scope_global && !s.cwd.is_empty() && s.cwd != self.launch_cwd {
                     return false;
@@ -2023,6 +2033,8 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
     let last_msg_content_field = schema.get_field("last_msg_content").context("missing last_msg_content")?;
     let derivation_type_field = schema.get_field("derivation_type").context("missing derivation_type")?;
     let is_sidechain_field = schema.get_field("is_sidechain").context("missing is_sidechain")?;
+    // claude_home may not exist in older indexes, so make it optional
+    let claude_home_field = schema.get_field("claude_home").ok();
 
     let reader = index
         .reader_builder()
@@ -2053,6 +2065,11 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
 
         let is_sidechain_str = get_text(is_sidechain_field);
 
+        // Get claude_home if field exists, otherwise empty string
+        let claude_home = claude_home_field
+            .map(|f| get_text(f))
+            .unwrap_or_default();
+
         sessions.push(Session {
             session_id: get_text(session_id_field),
             agent: get_text(agent_field),
@@ -2069,6 +2086,7 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
             last_msg_content: get_text(last_msg_content_field),
             derivation_type: get_text(derivation_type_field),
             is_sidechain: is_sidechain_str == "true",
+            claude_home,
         });
     }
 
@@ -2457,11 +2475,41 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let output_file = args.get(1).map(std::path::PathBuf::from);
 
-    let sessions = load_sessions(index_path.to_str().unwrap(), 5000)?;
+    // Parse --claude-home argument (format: binary out_path --claude-home /path/to/home)
+    let filter_claude_home = args.iter()
+        .position(|a| a == "--claude-home")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.to_string());
+
+    const SESSION_LIMIT: usize = 100_000;
+    let sessions = load_sessions(index_path.to_str().unwrap(), SESSION_LIMIT)?;
+
+    // Warn if we hit the limit - sessions may have been truncated
+    if sessions.len() >= SESSION_LIMIT {
+        eprintln!("⚠️  WARNING: Session limit ({}) reached!", SESSION_LIMIT);
+        eprintln!("⚠️  Some sessions may have been dropped. You may not see expected results.");
+        eprintln!("⚠️  Consider clearing old sessions or increasing SESSION_LIMIT.");
+        eprintln!();
+    }
 
     if sessions.is_empty() {
         eprintln!("No sessions found. Run 'aichat export-all && aichat build-index' first.");
         return Ok(());
+    }
+
+    // Show claude home being used and session counts per home
+    if let Some(ref home) = filter_claude_home {
+        eprintln!("Filtering to Claude home: {}", home);
+    }
+    let claude_home_counts: std::collections::HashMap<String, usize> = sessions.iter()
+        .fold(std::collections::HashMap::new(), |mut acc, s| {
+            *acc.entry(s.claude_home.clone()).or_insert(0) += 1;
+            acc
+        });
+    eprintln!("Sessions in index:");
+    for (home, count) in claude_home_counts.iter() {
+        let display = if home.is_empty() { "(unknown)" } else { home.as_str() };
+        eprintln!("  {:5} from {}", count, display);
     }
 
     enable_raw_mode()?;
@@ -2470,7 +2518,7 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(sessions, index_path.to_string_lossy().to_string());
+    let mut app = App::new(sessions, index_path.to_string_lossy().to_string(), filter_claude_home);
 
     loop {
         terminal.draw(|f| render(f, &mut app))?;
