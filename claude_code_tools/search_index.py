@@ -388,6 +388,207 @@ class SessionIndex:
 
         return stats
 
+    def _parse_jsonl_session(self, jsonl_path: Path) -> Optional[dict[str, Any]]:
+        """
+        Parse a JSONL session file directly (no export step).
+
+        Extracts metadata and content from the raw JSONL session format.
+
+        Args:
+            jsonl_path: Path to the session JSONL file
+
+        Returns:
+            Dict with metadata and content suitable for indexing, or None on failure
+        """
+        try:
+            messages = []
+            metadata: dict[str, Any] = {
+                "session_id": "",
+                "agent": "claude",  # Default, can detect codex from path
+                "project": "",
+                "branch": "",
+                "cwd": "",
+                "created": "",
+                "modified": "",
+                "is_sidechain": False,
+                "derivation_type": "",
+            }
+
+            first_msg: dict[str, str] = {"role": "", "content": ""}
+            last_msg: dict[str, str] = {"role": "", "content": ""}
+            first_timestamp = None
+            last_timestamp = None
+
+            # Detect agent from path
+            path_str = str(jsonl_path)
+            if ".codex" in path_str or "codex" in path_str.lower():
+                metadata["agent"] = "codex"
+
+            with open(jsonl_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    # Extract metadata - session_id from first entry, but keep
+                    # looking for cwd/branch until found (may be on later lines)
+                    if not metadata["session_id"]:
+                        metadata["session_id"] = data.get("sessionId", "")
+                    if not metadata["cwd"] and data.get("cwd"):
+                        metadata["cwd"] = data.get("cwd", "")
+                        metadata["project"] = Path(metadata["cwd"]).name
+                    if not metadata["branch"] and data.get("gitBranch"):
+                        metadata["branch"] = data.get("gitBranch", "")
+                    if data.get("isSidechain"):
+                        metadata["is_sidechain"] = True
+
+                    # Track timestamps
+                    timestamp = data.get("timestamp", "")
+                    if timestamp:
+                        if first_timestamp is None:
+                            first_timestamp = timestamp
+                        last_timestamp = timestamp
+
+                    # Process message content
+                    msg_type = data.get("type")
+                    if msg_type not in ("user", "assistant"):
+                        continue
+
+                    message = data.get("message", {})
+                    role = message.get("role", "")
+                    content = message.get("content")
+
+                    if not content:
+                        continue
+
+                    # Extract text content
+                    text = ""
+                    if isinstance(content, str):
+                        text = content
+                    elif isinstance(content, list):
+                        # Extract text from content blocks
+                        for block in content:
+                            if isinstance(block, str):
+                                text += block + "\n"
+                            elif isinstance(block, dict):
+                                if block.get("type") == "text":
+                                    text += block.get("text", "") + "\n"
+                                elif block.get("type") == "tool_use":
+                                    # Include tool name for searchability
+                                    tool_name = block.get("name", "")
+                                    text += f"[Tool: {tool_name}]\n"
+                                elif block.get("type") == "tool_result":
+                                    result = block.get("content", "")
+                                    if isinstance(result, str):
+                                        text += result[:500] + "\n"  # Truncate long results
+
+                    if text.strip():
+                        messages.append(f"[{role}] {text.strip()}")
+
+                        # Track first/last message
+                        if not first_msg["role"]:
+                            first_msg = {"role": role, "content": text[:200].strip()}
+                        last_msg = {"role": role, "content": text[:200].strip()}
+
+            if not messages:
+                return None
+
+            # Set timestamps
+            metadata["created"] = first_timestamp or ""
+            metadata["modified"] = last_timestamp or ""
+
+            return {
+                "metadata": metadata,
+                "content": "\n\n".join(messages),
+                "first_msg": first_msg,
+                "last_msg": last_msg,
+                "lines": len(messages),
+                "file_path": str(jsonl_path),
+            }
+        except Exception:
+            return None
+
+    def index_from_jsonl(
+        self, jsonl_files: list[Path], incremental: bool = True
+    ) -> dict[str, int]:
+        """
+        Build or update index directly from JSONL session files.
+
+        This is the "zero-config" approach - no export step needed.
+        Parses JSONL directly and indexes to Tantivy.
+
+        Args:
+            jsonl_files: List of paths to session JSONL files
+            incremental: If True, only index new/modified files
+
+        Returns:
+            Stats dict: {indexed, skipped, failed}
+        """
+        stats = {"indexed": 0, "skipped": 0, "failed": 0}
+
+        writer = self.get_writer()
+
+        for jsonl_path in jsonl_files:
+            # Check if needs indexing
+            if incremental and not self.state.needs_reindex(jsonl_path):
+                stats["skipped"] += 1
+                continue
+
+            # Parse JSONL file
+            parsed = self._parse_jsonl_session(jsonl_path)
+            if parsed is None:
+                stats["failed"] += 1
+                continue
+
+            metadata = parsed["metadata"]
+            first_msg = parsed["first_msg"]
+            last_msg = parsed["last_msg"]
+
+            try:
+                # Create document
+                doc = tantivy.Document()
+                doc.add_text("session_id", metadata.get("session_id", ""))
+                doc.add_text("agent", metadata.get("agent", ""))
+                doc.add_text("project", metadata.get("project", ""))
+                doc.add_text("branch", metadata.get("branch", "") or "")
+                doc.add_text("cwd", metadata.get("cwd", "") or "")
+                doc.add_text("created", metadata.get("created", "") or "")
+                doc.add_text("modified", metadata.get("modified", ""))
+                doc.add_integer("lines", parsed.get("lines", 0))
+                doc.add_text("export_path", parsed["file_path"])  # Store JSONL path
+
+                # First and last message fields
+                doc.add_text("first_msg_role", first_msg.get("role", ""))
+                doc.add_text("first_msg_content", first_msg.get("content", ""))
+                doc.add_text("last_msg_role", last_msg.get("role", ""))
+                doc.add_text("last_msg_content", last_msg.get("content", ""))
+
+                # Session type fields
+                doc.add_text(
+                    "derivation_type", metadata.get("derivation_type", "") or ""
+                )
+                doc.add_text(
+                    "is_sidechain",
+                    "true" if metadata.get("is_sidechain") else "false"
+                )
+
+                doc.add_text("content", parsed["content"])
+
+                writer.add_document(doc)
+                self.state.mark_indexed(jsonl_path)
+                stats["indexed"] += 1
+            except Exception:
+                stats["failed"] += 1
+
+        self.commit_and_reload(writer)
+
+        return stats
+
     def _generate_snippet(
         self, content: str, query: str, max_len: int = 200
     ) -> str:
@@ -615,3 +816,68 @@ class SessionIndex:
         results.sort(key=lambda x: x["modified"] or "", reverse=True)
 
         return results[:limit]
+
+
+def auto_index(
+    index_path: Optional[Path] = None,
+    claude_home: Optional[Path] = None,
+    codex_home: Optional[Path] = None,
+    verbose: bool = False,
+) -> dict[str, Any]:
+    """
+    Automatically index new/changed session files on launch.
+
+    This implements the "zero-config" Recall model approach:
+    - Scans session directories for JSONL files
+    - Indexes new/modified files incrementally
+    - Returns quickly if nothing changed
+
+    Args:
+        index_path: Path to Tantivy index (default: ~/.cctools/search-index)
+        claude_home: Claude home directory (default: ~/.claude)
+        codex_home: Codex home directory (default: ~/.codex)
+        verbose: If True, print progress messages
+
+    Returns:
+        Dict with stats: {indexed, skipped, failed, total_files}
+    """
+    _require_deps()
+
+    # Default paths
+    if index_path is None:
+        index_path = Path.home() / ".cctools" / "search-index"
+    if claude_home is None:
+        claude_home = Path.home() / ".claude"
+    if codex_home is None:
+        codex_home = Path.home() / ".codex"
+
+    # Find all JSONL session files
+    jsonl_files: list[Path] = []
+
+    # Claude sessions: ~/.claude/projects/**/*.jsonl
+    claude_projects = claude_home / "projects"
+    if claude_projects.exists():
+        jsonl_files.extend(claude_projects.glob("**/*.jsonl"))
+
+    # Codex sessions: ~/.codex/**/*.jsonl (various subdirs)
+    if codex_home.exists():
+        jsonl_files.extend(codex_home.glob("**/*.jsonl"))
+
+    if verbose:
+        print(f"Found {len(jsonl_files)} session files to check")
+
+    if not jsonl_files:
+        return {"indexed": 0, "skipped": 0, "failed": 0, "total_files": 0}
+
+    # Create/open index and run incremental indexing
+    index = SessionIndex(index_path)
+    stats = index.index_from_jsonl(jsonl_files, incremental=True)
+    stats["total_files"] = len(jsonl_files)
+
+    if verbose:
+        if stats["indexed"] > 0:
+            print(f"Indexed {stats['indexed']} new/modified sessions")
+        else:
+            print("Index up to date")
+
+    return stats

@@ -218,3 +218,211 @@ class TestSearchIndex:
         assert len(results) >= 1
         assert "score" in results[0]
         assert isinstance(results[0]["score"], float)
+
+
+@pytest.fixture
+def sample_jsonl_sessions(tmp_path: Path) -> list[Path]:
+    """Create sample JSONL session files (raw Claude Code format)."""
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir(parents=True)
+
+    # Session 1: Simple user/assistant exchange
+    session1 = sessions_dir / "session-jsonl-001.jsonl"
+    session1_lines = [
+        {
+            "sessionId": "jsonl-session-001",
+            "cwd": "/Users/test/my-project",
+            "gitBranch": "main",
+            "isSidechain": False,
+            "type": "user",
+            "message": {"role": "user", "content": "How do I use Python decorators?"},
+            "timestamp": "2025-11-28T10:00:00Z",
+        },
+        {
+            "sessionId": "jsonl-session-001",
+            "cwd": "/Users/test/my-project",
+            "gitBranch": "main",
+            "isSidechain": False,
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Python decorators are functions that modify other functions."}
+                ],
+            },
+            "timestamp": "2025-11-28T10:01:00Z",
+        },
+    ]
+    with open(session1, "w") as f:
+        for line in session1_lines:
+            f.write(json.dumps(line) + "\n")
+
+    # Session 2: With tool use
+    session2 = sessions_dir / "session-jsonl-002.jsonl"
+    session2_lines = [
+        {
+            "sessionId": "jsonl-session-002",
+            "cwd": "/Users/test/rust-project",
+            "gitBranch": "feature-branch",
+            "isSidechain": True,
+            "type": "user",
+            "message": {"role": "user", "content": "Help me fix this Rust borrow checker error"},
+            "timestamp": "2025-11-29T08:00:00Z",
+        },
+        {
+            "sessionId": "jsonl-session-002",
+            "cwd": "/Users/test/rust-project",
+            "gitBranch": "feature-branch",
+            "isSidechain": True,
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me read the file first."},
+                    {"type": "tool_use", "name": "Read", "input": {"path": "src/main.rs"}},
+                ],
+            },
+            "timestamp": "2025-11-29T08:01:00Z",
+        },
+    ]
+    with open(session2, "w") as f:
+        for line in session2_lines:
+            f.write(json.dumps(line) + "\n")
+
+    return [session1, session2]
+
+
+class TestIndexFromJsonl:
+    """Tests for direct JSONL indexing (Recall model approach)."""
+
+    def test_parse_jsonl_session_extracts_metadata(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Should extract metadata from JSONL session file."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        parsed = index._parse_jsonl_session(sample_jsonl_sessions[0])
+
+        assert parsed is not None
+        assert parsed["metadata"]["session_id"] == "jsonl-session-001"
+        assert parsed["metadata"]["cwd"] == "/Users/test/my-project"
+        assert parsed["metadata"]["branch"] == "main"
+        assert parsed["metadata"]["project"] == "my-project"
+        assert parsed["metadata"]["is_sidechain"] is False
+
+    def test_parse_jsonl_session_extracts_timestamps(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Should extract first and last timestamps."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        parsed = index._parse_jsonl_session(sample_jsonl_sessions[0])
+
+        assert parsed is not None
+        assert parsed["metadata"]["created"] == "2025-11-28T10:00:00Z"
+        assert parsed["metadata"]["modified"] == "2025-11-28T10:01:00Z"
+
+    def test_parse_jsonl_session_extracts_content(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Should concatenate message content for indexing."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        parsed = index._parse_jsonl_session(sample_jsonl_sessions[0])
+
+        assert parsed is not None
+        assert "Python decorators" in parsed["content"]
+        assert "functions that modify" in parsed["content"]
+
+    def test_parse_jsonl_session_includes_tool_names(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Should include tool names in content for searchability."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        parsed = index._parse_jsonl_session(sample_jsonl_sessions[1])
+
+        assert parsed is not None
+        assert "[Tool: Read]" in parsed["content"]
+
+    def test_parse_jsonl_session_tracks_first_last_msg(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Should track first and last message for preview."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        parsed = index._parse_jsonl_session(sample_jsonl_sessions[0])
+
+        assert parsed is not None
+        assert parsed["first_msg"]["role"] == "user"
+        assert "decorators" in parsed["first_msg"]["content"]
+        assert parsed["last_msg"]["role"] == "assistant"
+
+    def test_index_from_jsonl_indexes_sessions(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Should index JSONL sessions directly."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        stats = index.index_from_jsonl(sample_jsonl_sessions)
+
+        assert stats["indexed"] == 2
+        assert stats["failed"] == 0
+
+    def test_index_from_jsonl_is_searchable(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Indexed JSONL sessions should be searchable."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        index.index_from_jsonl(sample_jsonl_sessions)
+
+        # Search for Python content
+        results = index.search("Python decorators")
+        assert len(results) >= 1
+        assert "jsonl-session-001" in results[0]["session_id"]
+
+        # Search for Rust content
+        results = index.search("Rust borrow checker")
+        assert len(results) >= 1
+        assert "jsonl-session-002" in results[0]["session_id"]
+
+    def test_index_from_jsonl_incremental(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Incremental indexing should skip unchanged files."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+
+        # First index
+        stats1 = index.index_from_jsonl(sample_jsonl_sessions)
+        assert stats1["indexed"] == 2
+
+        # Second index (no changes)
+        stats2 = index.index_from_jsonl(sample_jsonl_sessions)
+        assert stats2["indexed"] == 0
+        assert stats2["skipped"] == 2
+
+    def test_index_from_jsonl_detects_sidechain(
+        self, sample_jsonl_sessions: list[Path], index_path: Path
+    ):
+        """Should correctly detect sidechain sessions."""
+        from claude_code_tools.search_index import SessionIndex
+
+        index = SessionIndex(index_path)
+        index.index_from_jsonl(sample_jsonl_sessions)
+
+        # Search for sidechain session
+        results = index.search("Rust")
+        assert len(results) >= 1
+        # The is_sidechain field should be "true" for session 2
+        rust_result = next(r for r in results if "002" in r["session_id"])
+        # Note: is_sidechain is stored as string "true"/"false"

@@ -629,8 +629,8 @@ def resume_session(ctx):
 @click.option(
     "--index", "-i",
     type=click.Path(),
-    default="~/.claude/search-index",
-    help="Index directory (default: ~/.claude/search-index/)",
+    default="~/.cctools/search-index",
+    help="Index directory (default: ~/.cctools/search-index/)",
 )
 @click.option("--dry-run", "-n", is_flag=True, help="Show what would be deleted")
 def clear_index(index, dry_run):
@@ -780,8 +780,8 @@ def export_all(force, verbose):
 @click.option(
     "--index", "-i",
     type=click.Path(),
-    default="~/.claude/search-index",
-    help="Index directory (default: ~/.claude/search-index/)",
+    default="~/.cctools/search-index",
+    help="Index directory (default: ~/.cctools/search-index/)",
 )
 @click.option("--full", is_flag=True, help="Full rebuild (not incremental)")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress and failures")
@@ -891,7 +891,7 @@ def build_index(index, full, verbose):
 @click.option(
     "--index", "-i",
     type=click.Path(),
-    default="~/.claude/search-index",
+    default="~/.cctools/search-index",
     help="Index directory",
 )
 @click.option("-n", "--limit", default=20, help="Max results")
@@ -956,6 +956,18 @@ def search_ui():
         print(f"Error: Rust binary not found at: {rust_binary}")
         print("Build it with: cd rust-search-ui && cargo build --release")
         return
+
+    # Auto-index new/changed sessions before launching TUI (Recall model)
+    try:
+        from claude_code_tools.search_index import auto_index
+        stats = auto_index(verbose=False)
+        if stats["indexed"] > 0:
+            print(f"Indexed {stats['indexed']} new/modified sessions")
+    except ImportError:
+        # Tantivy not installed - skip auto-indexing
+        pass
+    except Exception as e:
+        print(f"Warning: Auto-indexing failed: {e}")
 
     # Import once outside the loop
     from claude_code_tools.node_menu_ui import run_node_menu_ui

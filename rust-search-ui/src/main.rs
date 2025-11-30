@@ -2069,7 +2069,7 @@ fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> Str
 fn main() -> Result<()> {
     let index_path = dirs::home_dir()
         .context("Could not find home directory")?
-        .join(".claude")
+        .join(".cctools")
         .join("search-index");
 
     let args: Vec<String> = std::env::args().collect();
