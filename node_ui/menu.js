@@ -832,7 +832,8 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
       clearScreen();
       return onBack();
     }
-    if (key.return) {
+    // Down arrow or Enter: advance to next field (or submit on last)
+    if (key.downArrow || key.return) {
       if (field === 'tools') setField('threshold');
       else if (field === 'threshold') setField('assistant');
       else if (field === 'assistant') {
@@ -842,6 +843,12 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
           trim_assistant: assistant ? Number(assistant) : null,
         });
       }
+      return;
+    }
+    // Up arrow: go back to previous field
+    if (key.upArrow) {
+      if (field === 'threshold') setField('tools');
+      else if (field === 'assistant') setField('threshold');
       return;
     }
     if (key.backspace || key.delete) {
@@ -885,7 +892,7 @@ function TrimForm({onSubmit, onBack, clearScreen, session}) {
       renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
-    h(Text, {dimColor: true}, 'Enter: next field | Esc: back | Submit on last field'),
+    h(Text, {dimColor: true}, '↑↓/Enter: navigate fields | Esc: back | Submit on last field'),
     h(Box, {marginBottom: 1}),
     // Tools field
     h(
@@ -1077,11 +1084,17 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       clearScreen();
       return onBack();
     }
-    if (key.return) {
+    // Down arrow or Enter: advance to next field (or submit on last)
+    if (key.downArrow || key.return) {
       if (field === 'agent') setField('prompt');
       else if (field === 'prompt') {
         onSubmit({agent, prompt: prompt || null});
       }
+      return;
+    }
+    // Up arrow: go back to previous field
+    if (key.upArrow) {
+      if (field === 'prompt') setField('agent');
       return;
     }
     if (key.backspace || key.delete) {
@@ -1126,7 +1139,7 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
-    h(Text, {dimColor: true}, 'Enter: next field | Esc: back | Submit on last field'),
+    h(Text, {dimColor: true}, '↑↓/Enter: navigate fields | Esc: back | Submit on last field'),
     h(Box, {marginBottom: 1}),
     // Agent field
     h(

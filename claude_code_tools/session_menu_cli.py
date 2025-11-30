@@ -64,6 +64,7 @@ def execute_action(
     claude_home: Optional[str] = None,
     codex_home: Optional[str] = None,
     action_kwargs: Optional[dict] = None,
+    session_id: Optional[str] = None,
 ) -> None:
     """
     Execute the selected action by delegating to appropriate tool.
@@ -75,7 +76,12 @@ def execute_action(
         project_path: Project directory path
         claude_home: Optional custom Claude home
         codex_home: Optional custom Codex home
+        action_kwargs: Optional action-specific arguments
+        session_id: Optional session ID (required for Codex, uses file stem for Claude)
     """
+    # For Claude, session_id is the file stem; for Codex, it must be passed explicitly
+    if session_id is None:
+        session_id = session_file.stem
     if action == "path":
         print(f"\nSession file path:")
         print(f"{session_file}")
@@ -103,7 +109,6 @@ def execute_action(
         handle_export_session(str(session_file))
 
     elif action == "clone":
-        session_id = session_file.stem
         if agent == "claude":
             from claude_code_tools.find_claude_session import clone_session
             clone_session(
@@ -120,7 +125,6 @@ def execute_action(
             )
 
     elif action == "resume":
-        session_id = session_file.stem
         if agent == "claude":
             from claude_code_tools.find_claude_session import resume_session
             resume_session(
@@ -128,7 +132,7 @@ def execute_action(
             )
         else:
             from claude_code_tools.find_codex_session import resume_session
-            resume_session(str(session_file), shell_mode=False)
+            resume_session(session_id, project_path, shell_mode=False)
 
     elif action == "suppress_resume":
         action_kwargs = action_kwargs or {}
@@ -145,7 +149,6 @@ def execute_action(
             from claude_code_tools.find_claude_session import (
                 handle_suppress_resume_claude,
             )
-            session_id = session_file.stem
             handle_suppress_resume_claude(
                 session_id,
                 project_path,
@@ -171,7 +174,6 @@ def execute_action(
             from claude_code_tools.find_claude_session import (
                 handle_smart_trim_resume_claude,
             )
-            session_id = session_file.stem
             handle_smart_trim_resume_claude(
                 session_id, project_path, claude_home
             )
@@ -342,6 +344,7 @@ Examples:
                 project_path,
                 args.claude_home,
                 args.codex_home,
+                session_id=session_id,
             )
     else:
         # Default: Node interactive UI
@@ -389,6 +392,7 @@ Examples:
                 args.claude_home,
                 args.codex_home,
                 action_kwargs=kwargs,
+                session_id=session_id,
             )
 
         rpc_path = str(Path(__file__).parent / "action_rpc.py")

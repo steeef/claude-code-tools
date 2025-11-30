@@ -137,7 +137,7 @@ def _find_and_run_session_ui(
     )
     from claude_code_tools.node_menu_ui import run_node_menu_ui
     from claude_code_tools.session_menu_cli import execute_action
-    from claude_code_tools.session_utils import default_export_path
+    from claude_code_tools.session_utils import default_export_path, is_valid_session
 
     if session_id:
         # Route to session_menu_cli with appropriate start screen
@@ -169,9 +169,16 @@ def _find_and_run_session_ui(
         if current_branch and claude_sessions:
             claude_sessions = [s for s in claude_sessions if s[7] == current_branch]
 
+        # Filter to only resumable sessions (excludes sub-agents, file snapshots, etc.)
+        claude_dir = get_claude_project_dir()
         if claude_sessions:
-            s = claude_sessions[0]  # Most recent
-            claude_dir = get_claude_project_dir()
+            claude_sessions = [
+                s for s in claude_sessions
+                if is_valid_session(claude_dir / f"{s[0]}.jsonl")
+            ]
+
+        if claude_sessions:
+            s = claude_sessions[0]  # Most recent valid session
             session_file = claude_dir / f"{s[0]}.jsonl"
 
             candidates.append({
@@ -202,8 +209,15 @@ def _find_and_run_session_ui(
                     s for s in codex_sessions if s.get("branch") == current_branch
                 ]
 
+            # Filter to only resumable sessions
             if codex_sessions:
-                s = codex_sessions[0]  # Most recent
+                codex_sessions = [
+                    s for s in codex_sessions
+                    if is_valid_session(Path(s.get("file_path", "")))
+                ]
+
+            if codex_sessions:
+                s = codex_sessions[0]  # Most recent valid session
                 codex_file = Path(s.get("file_path", ""))
                 candidates.append({
                     "agent": "codex",
@@ -247,6 +261,7 @@ def _find_and_run_session_ui(
             session_file,
             sess["cwd"],
             action_kwargs=merged_kwargs if merged_kwargs else None,
+            session_id=sess.get("session_id"),
         )
 
     rpc_path = str(Path(__file__).parent / "action_rpc.py")
@@ -1069,6 +1084,7 @@ def search_ui(claude_home_arg):
             session_file=Path(file_path),
             project_path=cwd,
             action_kwargs=kwargs,
+            session_id=sess.get("session_id"),
         )
 
     # Main loop: Rust TUI → Node menu → back to Rust TUI

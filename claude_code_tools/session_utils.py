@@ -621,14 +621,14 @@ def detect_agent_from_path(file_path: Path) -> Optional[str]:
 
 def is_valid_session(filepath: Path) -> bool:
     """
-    Check if a session file is a valid Claude Code session (WHITELIST approach).
+    Check if a session file is a valid resumable session (WHITELIST approach).
 
-    A session is valid if it contains at least ONE line with a resumable message type
-    (user, assistant, tool_result, tool_use). Sessions containing ONLY metadata types
-    (file-history-snapshot, queue-operation) are invalid.
+    Supports both Claude Code and Codex session formats:
+    - Claude: user, assistant, tool_result, tool_use (with sessionId)
+    - Codex: event_msg, response_item, turn_context (with session_meta)
 
-    Real Claude sessions often start with file-history-snapshot lines (with null sessionId)
-    followed by actual conversation messages. We must scan ALL lines to determine validity.
+    Sessions containing ONLY metadata types (file-history-snapshot, queue-operation,
+    session_meta alone) are invalid.
 
     Args:
         filepath: Path to session JSONL file.
@@ -640,7 +640,10 @@ def is_valid_session(filepath: Path) -> bool:
         return False
 
     # Whitelist of resumable message types
-    valid_types = ["user", "assistant", "tool_result", "tool_use"]
+    # Claude Code types (require sessionId)
+    claude_valid_types = {"user", "assistant", "tool_result", "tool_use"}
+    # Codex types (conversation content types)
+    codex_valid_types = {"event_msg", "response_item", "turn_context"}
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -656,10 +659,14 @@ def is_valid_session(filepath: Path) -> bool:
                 try:
                     data = json.loads(line)
                     entry_type = data.get("type", "")
-                    session_id = data.get("sessionId")
 
-                    # Found a valid resumable message type with non-null sessionId
-                    if entry_type in valid_types and session_id is not None:
+                    # Claude Code: valid type with non-null sessionId
+                    session_id = data.get("sessionId")
+                    if entry_type in claude_valid_types and session_id is not None:
+                        return True
+
+                    # Codex: valid conversation content type
+                    if entry_type in codex_valid_types:
                         return True
 
                 except json.JSONDecodeError:

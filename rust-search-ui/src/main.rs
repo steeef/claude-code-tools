@@ -246,7 +246,9 @@ struct App {
     filter_agent: Option<String>, // None = all, Some("claude"), Some("codex")
     filter_min_lines: Option<i64>,
     filter_after_date: Option<String>,  // YYYYMMDD - modified date must be >= this
+    filter_after_date_display: Option<String>, // User-friendly display format
     filter_before_date: Option<String>, // YYYYMMDD - modified date must be <= this
+    filter_before_date_display: Option<String>, // User-friendly display format
     filter_claude_home: Option<String>, // Filter to sessions from this Claude home
     filter_codex_home: Option<String>,  // Filter Codex sessions to this Codex home
 
@@ -277,6 +279,9 @@ struct App {
     // Filter modal
     filter_modal_open: bool,
     filter_modal_selected: usize,
+
+    // Exit confirmation
+    confirming_exit: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -387,7 +392,9 @@ impl App {
             filter_agent: None,
             filter_min_lines: None,
             filter_after_date: None,
+            filter_after_date_display: None,
             filter_before_date: None,
+            filter_before_date_display: None,
             filter_claude_home,
             filter_codex_home,
             // Command mode
@@ -411,6 +418,8 @@ impl App {
             // Filter modal
             filter_modal_open: false,
             filter_modal_selected: 0,
+            // Exit confirmation
+            confirming_exit: false,
         };
         app.filter();
         app
@@ -559,9 +568,26 @@ impl App {
         self.filter();
     }
 
+    fn has_active_filters(&self) -> bool {
+        !self.query.is_empty()
+            || self.filter_min_lines.is_some()
+            || self.filter_after_date.is_some()
+            || self.filter_before_date.is_some()
+            || self.filter_agent.is_some()
+            || !self.include_original
+            || self.include_sub
+            || !self.include_trimmed
+            || !self.include_continued
+    }
+
     fn on_escape(&mut self) {
         if self.query.is_empty() {
-            self.should_quit = true;
+            // If there are active filters, show confirmation before exiting
+            if self.has_active_filters() {
+                self.confirming_exit = true;
+            } else {
+                self.should_quit = true;
+            }
         } else {
             self.query.clear();
             self.filter();
@@ -721,9 +747,17 @@ fn render(frame: &mut Frame, app: &mut App) {
 
     let area = frame.area();
 
-    // Status bar height: 1 for main, +1 for annotation legend if annotations exist
+    // Status bar height: 1 for main, +1 if we have annotations OR active filters
     let show_legend = app.has_annotations();
-    let status_height = if show_legend { 2 } else { 1 };
+    let has_filters = !app.include_original
+        || app.include_sub
+        || !app.include_trimmed
+        || !app.include_continued
+        || app.filter_agent.is_some()
+        || app.filter_min_lines.is_some()
+        || app.filter_after_date.is_some()
+        || app.filter_before_date.is_some();
+    let status_height = if show_legend || has_filters { 2 } else { 1 };
 
     // Main layout
     let main_layout = Layout::default()
@@ -793,6 +827,57 @@ fn render(frame: &mut Frame, app: &mut App) {
     if matches!(app.action_mode, Some(ActionMode::ViewOrActions)) {
         render_view_actions_modal(frame, &t, area);
     }
+
+    // Exit confirmation modal overlay
+    if app.confirming_exit {
+        render_exit_confirmation_modal(frame, &t, area);
+    }
+}
+
+fn render_exit_confirmation_modal(frame: &mut Frame, t: &Theme, area: Rect) {
+    use ratatui::widgets::{Block, Borders, Clear};
+
+    // Center the modal
+    let modal_width = 52u16;
+    let modal_height = 7u16; // message + 2 options + 2 border + 2 padding
+    let x = (area.width.saturating_sub(modal_width)) / 2;
+    let y = (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    // Clear the area behind the modal
+    frame.render_widget(Clear, modal_area);
+
+    // Modal border
+    let block = Block::default()
+        .title(" Exit? ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(t.search_bg));
+    frame.render_widget(block, modal_area);
+
+    // Inner content area
+    let inner = Rect::new(x + 2, y + 1, modal_width - 4, modal_height - 2);
+
+    let keycap = Style::default().bg(t.keycap_bg);
+    let label = Style::default();
+    let dim = Style::default().fg(t.dim_fg);
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("You have active filters set.", dim),
+        ]),
+        Line::from(vec![]),
+        Line::from(vec![
+            Span::styled(" Enter ", keycap),
+            Span::styled(" exit and lose filter settings", label),
+        ]),
+        Line::from(vec![
+            Span::styled("  Esc  ", keycap),
+            Span::styled(" cancel and return to search", label),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 fn render_view_actions_modal(frame: &mut Frame, t: &Theme, area: Rect) {
@@ -885,11 +970,11 @@ fn render_filter_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
                 Some(n) => format!(" [≥{}]", n),
                 None => " [Any]".to_string(),
             },
-            FilterMenuItem::AfterDate => match &app.filter_after_date {
+            FilterMenuItem::AfterDate => match &app.filter_after_date_display {
                 Some(d) => format!(" [>{}]", d),
                 None => " [None]".to_string(),
             },
-            FilterMenuItem::BeforeDate => match &app.filter_before_date {
+            FilterMenuItem::BeforeDate => match &app.filter_before_date_display {
                 Some(d) => format!(" [<{}]", d),
                 None => " [None]".to_string(),
             },
@@ -1378,10 +1463,10 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
     if let Some(min) = app.filter_min_lines {
         row2_spans.push(Span::styled(format!(" [≥{}L]", min), filter_active));
     }
-    if let Some(ref date) = app.filter_after_date {
+    if let Some(ref date) = app.filter_after_date_display {
         row2_spans.push(Span::styled(format!(" [>{}]", date), filter_active));
     }
-    if let Some(ref date) = app.filter_before_date {
+    if let Some(ref date) = app.filter_before_date_display {
         row2_spans.push(Span::styled(format!(" [<{}]", date), filter_active));
     }
 
@@ -1893,9 +1978,11 @@ fn highlight_search_in_text<'a>(
     spans
 }
 
-/// Parse a flexible date string into YYYYMMDD format for comparison
-/// Accepts: YYYYMMDD, YYYY-MM-DD, MM/DD/YYYY, MM/DD, etc.
-fn parse_flexible_date(input: &str) -> Option<String> {
+/// Parse a flexible date string into (YYYYMMDD, display_format) for comparison and display
+/// Accepts: YYYYMMDD, YYYY-MM-DD, MM/DD/YYYY, MM/DD/YY, MM/DD, etc.
+/// Returns (comparison_format, display_format) where comparison is YYYYMMDD and display
+/// is a user-friendly format like "11/29/25"
+fn parse_flexible_date(input: &str) -> Option<(String, String)> {
     use chrono::NaiveDate;
 
     let input = input.trim();
@@ -1903,20 +1990,23 @@ fn parse_flexible_date(input: &str) -> Option<String> {
         return None;
     }
 
-    // Try various formats
+    // Try various formats - 2-digit year MUST come before 4-digit for same separator
+    // to avoid "11/29/25" being parsed as year 11, month 29, day 25
     let formats = [
         "%Y%m%d",      // 20251129
         "%Y-%m-%d",    // 2025-11-29
-        "%Y/%m/%d",    // 2025/11/29
+        "%m/%d/%y",    // 11/29/25 (2-digit year FIRST for / separator)
+        "%m-%d-%y",    // 11-29-25 (2-digit year FIRST for - separator)
         "%m/%d/%Y",    // 11/29/2025
         "%m-%d-%Y",    // 11-29-2025
-        "%m/%d/%y",    // 11/29/25
-        "%m-%d-%y",    // 11-29-25
+        "%Y/%m/%d",    // 2025/11/29 (4-digit year LAST for / separator)
     ];
 
     for fmt in formats {
         if let Ok(date) = NaiveDate::parse_from_str(input, fmt) {
-            return Some(date.format("%Y%m%d").to_string());
+            let comparison = date.format("%Y%m%d").to_string();
+            let display = date.format("%m/%d/%y").to_string();
+            return Some((comparison, display));
         }
     }
 
@@ -1928,7 +2018,9 @@ fn parse_flexible_date(input: &str) -> Option<String> {
             &format!("{}/{}", input, current_year),
             &format!("{}/{}", fmt, "%Y"),
         ) {
-            return Some(date.format("%Y%m%d").to_string());
+            let comparison = date.format("%Y%m%d").to_string();
+            let display = date.format("%m/%d/%y").to_string();
+            return Some((comparison, display));
         }
     }
 
@@ -2548,6 +2640,20 @@ fn main() -> Result<()> {
         while event::poll(Duration::from_millis(0))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
+                    // Handle exit confirmation dialog
+                    if app.confirming_exit {
+                        match key.code {
+                            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                app.should_quit = true;
+                            }
+                            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                                app.confirming_exit = false;
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
                     // Handle full view mode separately
                     if app.full_view_mode {
                         if app.view_search_mode {
@@ -2816,16 +2922,20 @@ fn main() -> Result<()> {
                                     InputMode::AfterDate => {
                                         if app.input_buffer.is_empty() {
                                             app.filter_after_date = None;
-                                        } else if let Some(date) = parse_flexible_date(&app.input_buffer) {
-                                            app.filter_after_date = Some(date);
+                                            app.filter_after_date_display = None;
+                                        } else if let Some((cmp, disp)) = parse_flexible_date(&app.input_buffer) {
+                                            app.filter_after_date = Some(cmp);
+                                            app.filter_after_date_display = Some(disp);
                                         }
                                         app.filter();
                                     }
                                     InputMode::BeforeDate => {
                                         if app.input_buffer.is_empty() {
                                             app.filter_before_date = None;
-                                        } else if let Some(date) = parse_flexible_date(&app.input_buffer) {
-                                            app.filter_before_date = Some(date);
+                                            app.filter_before_date_display = None;
+                                        } else if let Some((cmp, disp)) = parse_flexible_date(&app.input_buffer) {
+                                            app.filter_before_date = Some(cmp);
+                                            app.filter_before_date_display = Some(disp);
                                         }
                                         app.filter();
                                     }
@@ -2876,7 +2986,9 @@ fn main() -> Result<()> {
                                 app.filter_agent = None;
                                 app.filter_min_lines = None;
                                 app.filter_after_date = None;
+                                app.filter_after_date_display = None;
                                 app.filter_before_date = None;
+                                app.filter_before_date_display = None;
                                 app.filter();
                             }
                             KeyCode::Char('o') => {
