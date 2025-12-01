@@ -132,7 +132,8 @@ class SessionIndex:
         self.schema_builder.add_text_field("created", stored=True)
         self.schema_builder.add_text_field("modified", stored=True)
         self.schema_builder.add_integer_field("lines", stored=True)
-        self.schema_builder.add_text_field("export_path", stored=True)
+        # export_path needs "raw" tokenizer for exact match deletion
+        self.schema_builder.add_text_field("export_path", stored=True, tokenizer_name="raw")
 
         # First and last message fields (for preview in TUI)
         self.schema_builder.add_text_field("first_msg_role", stored=True)
