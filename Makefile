@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch all-minor release-github lmsh lmsh-install lmsh-publish
+.PHONY: install release patch minor major dev-install help clean all-patch all-minor release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish
 
 help:
 	@echo "Available commands:"
@@ -12,9 +12,12 @@ help:
 	@echo "  make all-minor    - Bump minor, clean, and build (ready for uv publish)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make release-github - Create GitHub release from latest tag"
-	@echo "  make lmsh      - Build lmsh binary (requires Rust)"
+	@echo "  make lmsh         - Build lmsh binary (requires Rust)"
 	@echo "  make lmsh-install - Build and install lmsh to ~/.cargo/bin"
 	@echo "  make lmsh-publish - Publish lmsh to crates.io"
+	@echo "  make aichat-search         - Build aichat-search binary (requires Rust)"
+	@echo "  make aichat-search-install - Build and install aichat-search to ~/.cargo/bin"
+	@echo "  make aichat-search-publish - Publish aichat-search to crates.io"
 
 install:
 	uv tool install --force -e .
@@ -111,6 +114,37 @@ lmsh-install: lmsh
 	fi
 
 lmsh-publish:
+	@if ! command -v cargo-bump >/dev/null 2>&1; then \
+		echo "Installing cargo-bump..."; \
+		cargo install cargo-bump; \
+	fi
+	@echo "Bumping lmsh version..."
+	@cd lmsh && cargo bump patch
 	@echo "Publishing lmsh to crates.io..."
 	@cd lmsh && cargo publish --allow-dirty
 	@echo "Published! Users can now install with: cargo install lmsh"
+
+aichat-search:
+	@echo "Building aichat-search..."
+	@cd rust-search-ui && cargo build --release
+	@echo "aichat-search built at: rust-search-ui/target/release/aichat-search"
+
+aichat-search-install: aichat-search
+	@echo "Installing aichat-search to ~/.cargo/bin..."
+	@mkdir -p ~/.cargo/bin
+	@cp rust-search-ui/target/release/aichat-search ~/.cargo/bin/
+	@echo "aichat-search installed to ~/.cargo/bin/aichat-search"
+	@if ! echo "$$PATH" | grep -q ".cargo/bin"; then \
+		echo "⚠️  Add ~/.cargo/bin to your PATH if not already there"; \
+	fi
+
+aichat-search-publish:
+	@if ! command -v cargo-bump >/dev/null 2>&1; then \
+		echo "Installing cargo-bump..."; \
+		cargo install cargo-bump; \
+	fi
+	@echo "Bumping aichat-search version..."
+	@cd rust-search-ui && cargo bump patch
+	@echo "Publishing aichat-search to crates.io..."
+	@cd rust-search-ui && cargo publish --allow-dirty
+	@echo "Published! Users can now install with: cargo install aichat-search"

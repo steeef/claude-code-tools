@@ -2712,7 +2712,11 @@ fn parse_cli_args() -> CliOptions {
         .find(|a| !a.starts_with('-') && (a.contains('/') || a.ends_with(".json")))
         .map(std::path::PathBuf::from);
 
-    let claude_home = get_arg_value("--claude-home");
+    let claude_home = get_arg_value("--claude-home")
+        .or_else(|| std::env::var("CLAUDE_CONFIG_DIR").ok())
+        .or_else(|| {
+            dirs::home_dir().map(|h| h.join(".claude").to_string_lossy().to_string())
+        });
 
     let codex_home = get_arg_value("--codex-home")
         .or_else(|| std::env::var("CODEX_HOME").ok())

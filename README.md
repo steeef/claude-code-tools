@@ -7,10 +7,17 @@ and other CLI coding agents.
 ## 🚀 Quick Start
 
 ```bash
-uv tool install claude-code-tools
+uv tool install claude-code-tools   # Python package
+cargo install aichat-search         # Rust search TUI (requires Rust)
 ```
 
-**Prerequisites:** Node.js 16+ required for `aichat` interactive UI.
+**Prerequisites:**
+
+- **Node.js 16+** — Required for `aichat` action menus (resume, export, etc.)
+- **Rust/Cargo** — Required for `aichat search` (install via `cargo install`)
+
+Without `aichat-search`, the search command won't be available, but other
+`aichat` commands still work.
 
 ### What You Get
 

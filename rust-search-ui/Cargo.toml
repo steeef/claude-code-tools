@@ -1,7 +1,18 @@
 [package]
-name = "session_search"
-version = "0.1.0"
+name = "aichat-search"
+version = "0.1.1"
 edition = "2021"
+description = "Fast full-text search TUI for Claude Code and Codex sessions using Tantivy"
+license = "MIT"
+repository = "https://github.com/pchalasani/claude-code-tools"
+homepage = "https://github.com/pchalasani/claude-code-tools/tree/main/rust-search-ui"
+readme = "../README.md"
+keywords = ["claude", "codex", "search", "tui", "tantivy"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "aichat-search"
+path = "src/main.rs"
 
 [dependencies]
 # TUI

@@ -12,6 +12,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aichat-search"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "dirs",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "tantivy",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1114,20 +1128,6 @@ dependencies = [
  "ryu",
  "serde",
  "serde_core",
-]
-
-[[package]]
-name = "session_search"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "crossterm",
- "dirs",
- "ratatui",
- "serde",
- "serde_json",
- "tantivy",
 ]
 
 [[package]]
