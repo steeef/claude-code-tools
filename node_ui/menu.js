@@ -1852,12 +1852,16 @@ function App() {
       clearScreen,
     });
   } else if (screen === 'resume') {
-    // If selectTarget was 'resume', we came directly from results; back goes to results
+    // If started directly on resume with single session, quit on back
+    // If selectTarget was 'resume', we came from results; back goes to results
     // Otherwise we came from action menu; back goes to action
     const resumeBackTarget = selectTarget === 'resume' ? 'results' : 'action';
     view = h(ResumeView, {
       session,
-      onBack: () => switchScreen(resumeBackTarget),
+      onBack: () => {
+        if (startScreen === 'resume' && sessions.length === 1) quit();
+        else switchScreen(resumeBackTarget);
+      },
       onDone: (value) => {
         if (value === 'suppress_resume') {
           setTrimSource('resume');

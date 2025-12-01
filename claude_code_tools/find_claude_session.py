@@ -183,46 +183,50 @@ def extract_project_name(original_path: str) -> str:
     """
     # If no keywords, match all files
     if not keywords:
-        line_count = 0
+        msg_count = 0
         git_branch = None
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 for line in f:
-                    line_count += 1
-                    # Extract git branch from JSON if not already found
-                    if git_branch is None:
-                        try:
-                            data = json.loads(line.strip())
+                    try:
+                        data = json.loads(line.strip())
+                        # Only count user/assistant messages
+                        if data.get('type') in ('user', 'assistant'):
+                            msg_count += 1
+                        # Extract git branch from JSON if not already found
+                        if git_branch is None:
                             if 'gitBranch' in data and data['gitBranch']:
                                 git_branch = data['gitBranch']
-                        except (json.JSONDecodeError, KeyError):
-                            pass
+                    except (json.JSONDecodeError, KeyError):
+                        pass
         except Exception:
             return False, 0, None
-        return True, line_count, git_branch
+        return True, msg_count, git_branch
 
     # Convert keywords to lowercase for case-insensitive search
     keywords_lower = [k.lower() for k in keywords]
     found_keywords = set()
-    line_count = 0
+    msg_count = 0
     git_branch = None
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
-                line_count += 1
                 line_lower = line.lower()
 
-                # Extract git branch from JSON if not already found
-                if git_branch is None:
-                    try:
-                        data = json.loads(line.strip())
+                try:
+                    data = json.loads(line.strip())
+                    # Only count user/assistant messages
+                    if data.get('type') in ('user', 'assistant'):
+                        msg_count += 1
+                    # Extract git branch from JSON if not already found
+                    if git_branch is None:
                         if 'gitBranch' in data and data['gitBranch']:
                             git_branch = data['gitBranch']
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+                except (json.JSONDecodeError, KeyError):
+                    pass
 
-                # Check which keywords are in this line
+                # Check which keywords are in this line (search all lines)
                 for keyword in keywords_lower:
                     if keyword in line_lower:
                         found_keywords.add(keyword)
@@ -231,7 +235,7 @@ def extract_project_name(original_path: str) -> str:
         return False, 0, None
 
     matches = len(found_keywords) == len(keywords_lower)
-    return matches, line_count, git_branch
+    return matches, msg_count, git_branch
 
 
 def is_system_message(text: str) -> bool:
@@ -295,46 +299,50 @@ def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, 
     """
     # If no keywords, match all files
     if not keywords:
-        line_count = 0
+        msg_count = 0
         git_branch = None
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 for line in f:
-                    line_count += 1
-                    # Extract git branch from JSON if not already found
-                    if git_branch is None:
-                        try:
-                            data = json.loads(line.strip())
+                    try:
+                        data = json.loads(line.strip())
+                        # Only count user/assistant messages
+                        if data.get('type') in ('user', 'assistant'):
+                            msg_count += 1
+                        # Extract git branch from JSON if not already found
+                        if git_branch is None:
                             if 'gitBranch' in data and data['gitBranch']:
                                 git_branch = data['gitBranch']
-                        except (json.JSONDecodeError, KeyError):
-                            pass
+                    except (json.JSONDecodeError, KeyError):
+                        pass
         except Exception:
             return False, 0, None
-        return True, line_count, git_branch
+        return True, msg_count, git_branch
 
     # Convert keywords to lowercase for case-insensitive search
     keywords_lower = [k.lower() for k in keywords]
     found_keywords = set()
-    line_count = 0
+    msg_count = 0
     git_branch = None
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
-                line_count += 1
                 line_lower = line.lower()
 
-                # Extract git branch from JSON if not already found
-                if git_branch is None:
-                    try:
-                        data = json.loads(line.strip())
+                try:
+                    data = json.loads(line.strip())
+                    # Only count user/assistant messages
+                    if data.get('type') in ('user', 'assistant'):
+                        msg_count += 1
+                    # Extract git branch from JSON if not already found
+                    if git_branch is None:
                         if 'gitBranch' in data and data['gitBranch']:
                             git_branch = data['gitBranch']
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+                except (json.JSONDecodeError, KeyError):
+                    pass
 
-                # Check which keywords are in this line
+                # Check which keywords are in this line (search all lines)
                 for keyword in keywords_lower:
                     if keyword in line_lower:
                         found_keywords.add(keyword)
@@ -343,20 +351,21 @@ def search_keywords_in_file(filepath: Path, keywords: List[str]) -> tuple[bool, 
         return False, 0, None
 
     matches = len(found_keywords) == len(keywords_lower)
-    return matches, line_count, git_branch
+    return matches, msg_count, git_branch
 
 
 def get_session_preview(filepath: Path) -> str:
-    """Get a preview of the session from the LAST user message."""
-    last_user_message = None
+    """Get a preview of the session from the LAST message of any type."""
+    last_message = None  # Tuple of (type_prefix, content)
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
                     data = json.loads(line.strip())
-                    # Check top-level type for user messages
-                    if data.get('type') == 'user':
+                    msg_type = data.get('type')
+                    # Accept user or assistant messages
+                    if msg_type in ('user', 'assistant'):
                         message = data.get('message', {})
                         content = message.get('content', '')
                         text = None
@@ -370,21 +379,24 @@ def get_session_preview(filepath: Path) -> str:
                                     text = item.get('text', '').strip()
                                     break
 
-                        # Filter out system messages and keep updating to get LAST message
+                        # Filter out system messages and keep updating to get LAST
                         if text and not is_system_message(text):
                             cleaned = text.replace('\n', ' ')[:400]
+                            type_prefix = f"[{msg_type}]"
                             # Prefer substantial messages (>20 chars)
                             if len(cleaned) > 20:
-                                last_user_message = cleaned
-                            elif last_user_message is None:
-                                last_user_message = cleaned
+                                last_message = (type_prefix, cleaned)
+                            elif last_message is None:
+                                last_message = (type_prefix, cleaned)
 
                 except (json.JSONDecodeError, KeyError):
                     continue
     except Exception:
         pass
 
-    return last_user_message if last_user_message else "No preview available"
+    if last_message:
+        return f"{last_message[0]} {last_message[1]}"
+    return "No preview available"
 
 
 def find_sessions(

@@ -6,9 +6,8 @@ This provides a grouped command interface for managing Claude Code and
 Codex sessions, following the pattern of tools like git, docker, etc.
 
 All session-related tools are accessible as subcommands:
-    aichat find            - Find sessions across all agents
-    aichat find-claude     - Find Claude sessions
-    aichat find-codex      - Find Codex sessions
+    aichat search          - Full-text search across all sessions
+    aichat resume          - Resume a session (latest or by ID)
     aichat menu            - Interactive session menu
     aichat trim            - Trim session content
     ... and more
@@ -52,8 +51,9 @@ def main(ctx):
     \b
         aichat                        # Action menu for latest session(s)
         aichat abc123-def456          # Shortcut for: aichat menu abc123-def456
-        aichat find "langroid"
-        aichat find-claude "bug fix"
+        aichat search "langroid"      # Full-text search
+        aichat resume                 # Resume latest session
+        aichat resume abc123-def456   # Resume specific session
         aichat menu abc123-def456
         aichat trim session-id.jsonl
     """
@@ -314,7 +314,7 @@ def _find_and_run_session_ui(
         )
 
 
-@main.command("find", context_settings=_FIND_CTX_SETTINGS, add_help_option=False)
+@main.command("find", context_settings=_FIND_CTX_SETTINGS, add_help_option=False, hidden=True)
 @click.pass_context
 def find(ctx):
     """Find sessions across all agents (Claude Code, Codex, etc.)."""
@@ -337,7 +337,7 @@ Examples:
 """
 
 
-@main.command("find-claude", context_settings=_FIND_CTX_SETTINGS, add_help_option=False)
+@main.command("find-claude", context_settings=_FIND_CTX_SETTINGS, add_help_option=False, hidden=True)
 @click.pass_context
 def find_claude(ctx):
     """Find Claude Code sessions by keywords."""
@@ -358,7 +358,7 @@ Examples:
 """
 
 
-@main.command("find-codex", context_settings=_FIND_CTX_SETTINGS, add_help_option=False)
+@main.command("find-codex", context_settings=_FIND_CTX_SETTINGS, add_help_option=False, hidden=True)
 @click.pass_context
 def find_codex(ctx):
     """Find Codex sessions by keywords."""
@@ -674,7 +674,7 @@ def clear_index(index, dry_run):
         print(f"   {file_count} files removed")
 
 
-@main.command("clear-exports")
+@main.command("clear-exports", hidden=True)
 @click.option("--verbose", "-v", is_flag=True, help="Show what's being deleted")
 @click.option("--dry-run", "-n", is_flag=True, help="Show what would be deleted")
 def clear_exports(verbose, dry_run):
@@ -726,7 +726,7 @@ def clear_exports(verbose, dry_run):
               f"from {len(dirs_cleaned)} directories")
 
 
-@main.command("export-all")
+@main.command("export-all", hidden=True)
 @click.option("--force", "-f", is_flag=True, help="Re-export all (ignore mtime)")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress and failures")
 def export_all(force, verbose):
@@ -791,7 +791,7 @@ def export_all(force, verbose):
             print(f"      Error: {failure['error']}")
 
 
-@main.command("build-index")
+@main.command("build-index", hidden=True)
 @click.option(
     "--index", "-i",
     type=click.Path(),
@@ -997,7 +997,10 @@ def index_stats(index, cwd):
 @click.option('--agent', type=click.Choice(['claude', 'codex', 'all']),
               default='all', help='Filter by agent type')
 @click.option('--json', 'json_output', is_flag=True,
-              help='Output results as JSON (for programmatic use)')
+              help='Output as JSONL for AI agents. Fields per line: session_id, '
+                   'agent, project, branch, cwd, lines, created, modified, '
+                   'first_msg, last_msg, file_path, derivation_type, '
+                   'is_sidechain, snippet')
 @click.argument('query', required=False)
 def search(
     claude_home_arg, codex_home_arg, global_search, num_results,
@@ -1028,20 +1031,26 @@ def search(
     import tempfile
     from pathlib import Path
 
-    # Find Rust binary
-    rust_binary = (
-        Path(__file__).parent.parent
-        / "rust-search-ui"
-        / "target"
-        / "release"
-        / "session_search"
-    )
-    if not rust_binary.exists():
-        print(f"Error: Rust binary not found at: {rust_binary}", file=sys.stderr)
-        print(
-            "Build it with: cd rust-search-ui && cargo build --release",
-            file=sys.stderr,
+    # Find Rust binary - check PATH first (cargo install), then local dev build
+    import shutil
+    rust_binary_name = "aichat-search"
+    rust_binary = shutil.which(rust_binary_name)
+    if rust_binary:
+        rust_binary = Path(rust_binary)
+    else:
+        # Fall back to local development build
+        rust_binary = (
+            Path(__file__).parent.parent
+            / "rust-search-ui"
+            / "target"
+            / "release"
+            / rust_binary_name
         )
+    if not rust_binary.exists():
+        print(f"Error: {rust_binary_name} not found.", file=sys.stderr)
+        print("Install with: cargo install aichat-search", file=sys.stderr)
+        print("Or build locally: cd rust-search-ui && cargo build --release",
+              file=sys.stderr)
         return
 
     # Resolve home directories (CLI arg > env var > default)

@@ -198,13 +198,18 @@ If later in this conversation you need more information about what happened duri
 
 When done exploring, state your understanding of the full task history and the most recent work to me."""
 
-    # Append custom instructions if provided
+    # Add directive about analyzing sessions
+    analysis_prompt += """
+
+IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs otherwise (e.g., "only analyze the most recent one", "skip the older sessions", etc.)."""
+
+    # Append custom instructions if provided (with clear demarcation)
     if custom_prompt:
         analysis_prompt += f"""
 
-Below are some special instructions from the user. Prioritize these in combination with the above instructions:
-
-{custom_prompt}"""
+=== USER INSTRUCTIONS (PRIORITIZE THESE) ===
+{custom_prompt}
+=== END USER INSTRUCTIONS ==="""
 
     print(f"   Analyzing {len(all_exported_files)} exported session(s)...")
     print()

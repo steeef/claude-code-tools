@@ -161,85 +161,86 @@ def search_keywords_in_file(
     """
     # If no keywords, match all files
     if not keywords:
-        line_count = 0
-        last_user_message = None
+        msg_count = 0
+        last_message = None  # Tuple of (type_prefix, content)
         try:
             with open(session_file, "r", encoding="utf-8") as f:
                 for line in f:
-                    line_count += 1
                     if not line.strip():
                         continue
                     try:
                         entry = json.loads(line)
-                        # Extract user messages (skip system messages)
-                        if (
-                            entry.get("type") == "response_item"
-                            and entry.get("payload", {}).get("role") == "user"
-                        ):
+                        # Only count and extract user/assistant messages
+                        if entry.get("type") == "response_item":
+                            role = entry.get("payload", {}).get("role")
+                            if role in ("user", "assistant"):
+                                msg_count += 1
+                                content = entry.get("payload", {}).get("content", [])
+                                if isinstance(content, list) and len(content) > 0:
+                                    first_item = content[0]
+                                    if isinstance(first_item, dict):
+                                        text = first_item.get("text", "")
+                                        if text and not is_system_message(text):
+                                            cleaned = text[:400].replace("\n", " ").strip()
+                                            type_prefix = f"[{role}]"
+                                            if len(cleaned) > 20:
+                                                last_message = (type_prefix, cleaned)
+                                            elif last_message is None:
+                                                last_message = (type_prefix, cleaned)
+                    except json.JSONDecodeError:
+                        continue
+            preview = f"{last_message[0]} {last_message[1]}" if last_message else None
+            return True, msg_count, preview
+        except (OSError, IOError):
+            return False, 0, None
+
+    keywords_lower = [k.lower() for k in keywords]
+    found_keywords = set()
+    msg_count = 0
+    last_message = None  # Tuple of (type_prefix, content)
+
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+
+                # Search for keywords in all text content
+                line_lower = line.lower()
+                for kw in keywords_lower:
+                    if kw in line_lower:
+                        found_keywords.add(kw)
+
+                try:
+                    entry = json.loads(line)
+
+                    # Only count and extract user/assistant messages
+                    if entry.get("type") == "response_item":
+                        role = entry.get("payload", {}).get("role")
+                        if role in ("user", "assistant"):
+                            msg_count += 1
                             content = entry.get("payload", {}).get("content", [])
                             if isinstance(content, list) and len(content) > 0:
                                 first_item = content[0]
                                 if isinstance(first_item, dict):
                                     text = first_item.get("text", "")
                                     if text and not is_system_message(text):
+                                        # Keep updating with latest message
                                         cleaned = text[:400].replace("\n", " ").strip()
+                                        type_prefix = f"[{role}]"
+                                        # Only keep if it's substantial (>20 chars)
                                         if len(cleaned) > 20:
-                                            last_user_message = cleaned
-                                        elif last_user_message is None:
-                                            last_user_message = cleaned
-                    except json.JSONDecodeError:
-                        continue
-            return True, line_count, last_user_message
-        except (OSError, IOError):
-            return False, 0, None
-
-    keywords_lower = [k.lower() for k in keywords]
-    found_keywords = set()
-    line_count = 0
-    last_user_message = None  # Keep track of the LAST user message
-
-    try:
-        with open(session_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line_count += 1
-                if not line.strip():
-                    continue
-
-                try:
-                    entry = json.loads(line)
-
-                    # Extract user messages (skip system messages)
-                    # Keep updating to get the LAST one
-                    if (
-                        entry.get("type") == "response_item"
-                        and entry.get("payload", {}).get("role") == "user"
-                    ):
-                        content = entry.get("payload", {}).get("content", [])
-                        if isinstance(content, list) and len(content) > 0:
-                            first_item = content[0]
-                            if isinstance(first_item, dict):
-                                text = first_item.get("text", "")
-                                if text and not is_system_message(text):
-                                    # Keep updating with latest message
-                                    cleaned = text[:400].replace("\n", " ").strip()
-                                    # Only keep if it's substantial (>20 chars)
-                                    if len(cleaned) > 20:
-                                        last_user_message = cleaned
-                                    elif last_user_message is None:
-                                        # Keep even short messages if no better option
-                                        last_user_message = cleaned
-
-                    # Search for keywords in all text content
-                    line_lower = line.lower()
-                    for kw in keywords_lower:
-                        if kw in line_lower:
-                            found_keywords.add(kw)
+                                            last_message = (type_prefix, cleaned)
+                                        elif last_message is None:
+                                            # Keep even short messages if no better option
+                                            last_message = (type_prefix, cleaned)
 
                 except json.JSONDecodeError:
                     continue
 
         all_found = len(found_keywords) == len(keywords_lower)
-        return all_found, line_count, last_user_message
+        preview = f"{last_message[0]} {last_message[1]}" if last_message else None
+        return all_found, msg_count, preview
 
     except (OSError, IOError):
         return False, 0, None
