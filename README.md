@@ -51,7 +51,6 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 - [📚 Documentation](#documentation)
 - [📋 Requirements](#requirements)
 - [🛠️ Development](#development)
-- [👩‍💻 Developer Setup](#developer-setup)
 - [📄 License](#license)
 
 <a id="tmux-cli-terminal-automation"></a>
@@ -509,31 +508,29 @@ each using a different LLM.
 <a id="development"></a>
 ## 🛠️ Development
 
+### Prerequisites
+
+- **UV** - `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Rust/Cargo** - `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **Node.js 16+** - Required for action menus
+
 ### Setup
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/username/claude-code-tools
-   cd claude-code-tools
-   ```
+```bash
+git clone https://github.com/pchalasani/claude-code-tools
+cd claude-code-tools
+uv venv --python 3.11
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv sync
+cd node_ui && npm install && cd ..
+make install                  # Python (editable mode)
+make aichat-search-install    # Rust binary
+```
 
-2. Create and activate a virtual environment with uv:
-   ```bash
-   uv venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
+### Testing Changes
 
-3. Install in development mode:
-   ```bash
-   make install      # Install tools in editable mode
-   make dev-install  # Install with dev dependencies (includes commitizen)
-   ```
-
-### Making Changes
-
-- The tools are installed in editable mode, so changes take effect immediately
-- Test your changes by running the commands directly
-- Follow the existing code style and conventions
+- **Python changes**: No action needed (editable mode - changes apply immediately)
+- **Rust changes**: Run `make aichat-search-install` to rebuild and install
 
 ### Version Management
 
@@ -562,35 +559,6 @@ Run `make help` to see all available commands:
 - `make dev-install` - Install with development dependencies
 - `make release` - Bump patch version and install globally
 - `make patch/minor/major` - Version bump commands
-
-<a id="developer-setup"></a>
-## 👩‍💻 Developer Setup
-
-Quick setup for local development and testing.
-
-### Prerequisites
-
-- **UV** - `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- **Rust/Cargo** - `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **Node.js 16+** - Required for action menus
-
-### Setup
-
-```bash
-git clone https://github.com/pchalasani/claude-code-tools
-cd claude-code-tools
-uv venv --python 3.11
-source .venv/bin/activate
-uv sync
-cd node_ui && npm install && cd ..
-make install                  # Python (editable mode)
-make aichat-search-install    # Rust binary
-```
-
-### Testing Changes
-
-- **Python changes**: No action needed (editable mode - changes apply immediately)
-- **Rust changes**: Run `make aichat-search-install` to rebuild and install
 
 <a id="license"></a>
 ## 📄 License
