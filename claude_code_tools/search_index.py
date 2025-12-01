@@ -888,12 +888,91 @@ class SessionIndex:
 
         return results[:limit]
 
+    def get_latest_session(
+        self,
+        cwd: Optional[str] = None,
+        branch: Optional[str] = None,
+        agent: Optional[str] = None,
+        include_sub_agents: bool = False,
+    ) -> Optional[dict[str, Any]]:
+        """
+        Get the most recent session matching the given criteria.
+
+        Args:
+            cwd: Filter to sessions from this working directory
+            branch: Filter to sessions on this git branch
+            agent: Filter to specific agent ("claude" or "codex")
+            include_sub_agents: If False (default), exclude sub-agent sessions
+
+        Returns:
+            Dict with session info, or None if no matching session found
+        """
+        # Get recent sessions and filter
+        results = self.get_recent(limit=1000)
+
+        for r in results:
+            # Filter by agent
+            if agent and r.get("agent") != agent:
+                continue
+
+            # Filter by cwd
+            if cwd and r.get("cwd") != cwd:
+                continue
+
+            # Filter by branch
+            if branch and r.get("branch") != branch:
+                continue
+
+            # Filter out sub-agents unless requested
+            if not include_sub_agents:
+                export_path = r.get("export_path", "")
+                if "/agent-" in export_path or export_path.startswith("agent-"):
+                    continue
+
+            # Found a match
+            return r
+
+        return None
+
+
+def get_latest_session_from_index(
+    cwd: Optional[str] = None,
+    branch: Optional[str] = None,
+    agent: Optional[str] = None,
+    index_path: Optional[Path] = None,
+) -> Optional[dict[str, Any]]:
+    """
+    Convenience function to get latest session from the index.
+
+    Args:
+        cwd: Filter to sessions from this working directory
+        branch: Filter to sessions on this git branch
+        agent: Filter to specific agent ("claude" or "codex")
+        index_path: Path to index (default: ~/.cctools/search-index)
+
+    Returns:
+        Dict with session info including 'session_id' and 'export_path',
+        or None if no matching session found
+    """
+    if index_path is None:
+        index_path = Path.home() / ".cctools" / "search-index"
+
+    if not index_path.exists():
+        return None
+
+    try:
+        idx = SessionIndex(index_path)
+        return idx.get_latest_session(cwd=cwd, branch=branch, agent=agent)
+    except Exception:
+        return None
+
 
 def auto_index(
     index_path: Optional[Path] = None,
     claude_home: Optional[Path] = None,
     codex_home: Optional[Path] = None,
     verbose: bool = False,
+    silent: bool = False,
 ) -> dict[str, Any]:
     """
     Automatically index new/changed session files on launch.
@@ -908,6 +987,7 @@ def auto_index(
         claude_home: Claude home directory (default: ~/.claude)
         codex_home: Codex home directory (default: ~/.codex)
         verbose: If True, print progress messages
+        silent: If True, suppress ALL output including progress bars (for JSON mode)
 
     Returns:
         Dict with stats: {indexed, skipped, failed, total_files}
@@ -934,24 +1014,25 @@ def auto_index(
     if codex_home.exists():
         jsonl_files.extend(codex_home.glob("**/*.jsonl"))
 
-    if verbose:
+    if verbose and not silent:
         print(f"Found {len(jsonl_files)} session files to check")
 
     if not jsonl_files:
         return {"indexed": 0, "skipped": 0, "failed": 0, "total_files": 0}
 
     # Create/open index and run incremental indexing
+    # In silent mode, suppress tqdm progress bar for clean JSON output
     index = SessionIndex(index_path)
     stats = index.index_from_jsonl(
         jsonl_files,
         incremental=True,
         claude_home=claude_home,
         codex_home=codex_home,
-        show_progress=True,
+        show_progress=not silent,
     )
     stats["total_files"] = len(jsonl_files)
 
-    if verbose:
+    if verbose and not silent:
         if stats["indexed"] > 0:
             print(f"Indexed {stats['indexed']} new/modified sessions")
         else:

@@ -333,8 +333,8 @@ def get_current_session_id(claude_home: Optional[str] = None) -> Optional[str]:
     """
     Get the session ID of the currently active Claude Code or Codex session.
 
-    This finds the most recently modified session file in the current
-    project's session directory.
+    Uses the Tantivy search index to find the most recently modified session
+    for the current working directory.
 
     Args:
         claude_home: Optional custom Claude home directory (default: ~/.claude)
@@ -342,61 +342,41 @@ def get_current_session_id(claude_home: Optional[str] = None) -> Optional[str]:
     Returns:
         Session ID (UUID or timestamped name) if found, None otherwise
     """
-    # Get current working directory
+    from claude_code_tools.search_index import get_latest_session_from_index
+
     cwd = os.getcwd()
 
-    # Try Claude Code first
-    claude_session = _get_claude_session_id(cwd, claude_home)
-    if claude_session:
-        return claude_session
-
-    # Try Codex
-    codex_session = _get_codex_session_id(cwd)
-    if codex_session:
-        return codex_session
+    # Query the index for the latest session in this cwd
+    result = get_latest_session_from_index(cwd=cwd)
+    if result:
+        return result.get("session_id")
 
     return None
 
 
-def _get_claude_session_id(
-    cwd: str, claude_home: Optional[str] = None
-) -> Optional[str]:
-    """Get Claude Code session ID for current directory."""
-    # Convert path to Claude directory format
-    base_dir = get_claude_home(claude_home)
-    encoded_path = encode_claude_project_path(cwd)
-    claude_project_dir = base_dir / "projects" / encoded_path
+def get_latest_session_for_cwd(
+    cwd: Optional[str] = None,
+    branch: Optional[str] = None,
+    agent: Optional[str] = None,
+) -> Optional[dict]:
+    """
+    Get the latest session for the given cwd/branch/agent from the index.
 
-    if not claude_project_dir.exists():
-        return None
+    Args:
+        cwd: Working directory to filter by (default: current directory)
+        branch: Git branch to filter by (optional)
+        agent: Agent type to filter by ("claude" or "codex", optional)
 
-    # Find most recently modified .jsonl file
-    session_files = list(claude_project_dir.glob("*.jsonl"))
-    if not session_files:
-        return None
+    Returns:
+        Dict with session info including 'session_id', 'export_path', etc.
+        or None if no matching session found
+    """
+    from claude_code_tools.search_index import get_latest_session_from_index
 
-    most_recent = max(session_files, key=lambda p: p.stat().st_mtime)
-    return most_recent.stem  # Filename without .jsonl extension
+    if cwd is None:
+        cwd = os.getcwd()
 
-
-def _get_codex_session_id(cwd: str) -> Optional[str]:
-    """Get Codex session ID for current directory."""
-    codex_dir = Path.home() / ".codex" / "sessions"
-
-    if not codex_dir.exists():
-        return None
-
-    # Find most recently modified .jsonl file
-    # Codex sessions are organized by date: 2025/11/14/rollout-...jsonl
-    session_files = list(codex_dir.rglob("*.jsonl"))
-    if not session_files:
-        return None
-
-    # Filter to sessions in current directory
-    # Codex sessions don't have directory-specific organization,
-    # so we just return the most recent one
-    most_recent = max(session_files, key=lambda p: p.stat().st_mtime)
-    return most_recent.stem  # Filename without .jsonl extension
+    return get_latest_session_from_index(cwd=cwd, branch=branch, agent=agent)
 
 
 def display_lineage(

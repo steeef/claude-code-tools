@@ -355,6 +355,9 @@ struct App {
     scope_modal_selected: usize,
     filter_dir: Option<String>, // Custom directory filter (overrides scope_global)
 
+    // Result limit
+    max_results: Option<usize>, // Limit number of displayed results (--num-results / -n)
+
     // Exit confirmation
     confirming_exit: bool,
 }
@@ -498,6 +501,8 @@ impl App {
             scope_modal_open: false,
             scope_modal_selected: 0,
             filter_dir: None,
+            // Result limit
+            max_results: None,
             // Exit confirmation
             confirming_exit: false,
         };
@@ -589,6 +594,8 @@ impl App {
             scope_modal_open: false,
             scope_modal_selected: 0,
             filter_dir: cli.filter_dir.clone(),
+            // Result limit
+            max_results: cli.num_results,
             // Exit confirmation
             confirming_exit: false,
         };
@@ -726,6 +733,11 @@ impl App {
         } else {
             // Clear snippets when no query
             self.search_snippets.clear();
+        }
+
+        // Apply max_results limit if specified
+        if let Some(limit) = self.max_results {
+            self.filtered.truncate(limit);
         }
 
         self.selected = 0;

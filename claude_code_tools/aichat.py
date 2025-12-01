@@ -57,6 +57,18 @@ def main(ctx):
         aichat menu abc123-def456
         aichat trim session-id.jsonl
     """
+    # Auto-index sessions on every aichat command (incremental, fast if up-to-date)
+    # In JSON mode (-j/--json), suppress all output for clean parsing
+    import sys
+    json_mode = any(arg in sys.argv for arg in ['-j', '--json'])
+    try:
+        from claude_code_tools.search_index import auto_index
+        auto_index(verbose=False, silent=json_mode)
+    except ImportError:
+        pass  # tantivy not installed
+    except Exception:
+        pass  # Index errors shouldn't block commands
+
     if ctx.invoked_subcommand is None:
         # No subcommand - find latest sessions and show action menu
         _find_and_run_session_ui(
@@ -1221,19 +1233,6 @@ def search(
     claude_home = get_claude_home(cli_arg=claude_home_arg)
     codex_home = get_codex_home(cli_arg=codex_home_arg)
 
-    # Auto-index new/changed sessions before search (Recall model)
-    try:
-        from claude_code_tools.search_index import auto_index
-        stats = auto_index(claude_home=claude_home, verbose=False)
-        # Only print message in TUI mode
-        if not json_output and stats["indexed"] > 0:
-            print(f"Indexed {stats['indexed']} new/modified sessions")
-    except ImportError:
-        pass
-    except Exception as e:
-        if not json_output:
-            print(f"Warning: Auto-indexing failed: {e}", file=sys.stderr)
-
     # Build CLI args for Rust binary
     rust_args = [str(rust_binary)]
 
@@ -1274,8 +1273,9 @@ def search(
         try:
             result = subprocess.run(rust_args, capture_output=True, text=True)
             # Output JSON to stdout (errors to stderr)
+            # Use end='' to avoid double newline (Rust already adds one)
             if result.stdout:
-                print(result.stdout)
+                print(result.stdout, end='')
             if result.returncode != 0 and result.stderr:
                 print(result.stderr, file=sys.stderr)
             sys.exit(result.returncode)
