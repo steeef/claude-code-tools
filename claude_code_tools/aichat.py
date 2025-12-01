@@ -997,14 +997,14 @@ def _scan_session_files(
 @click.option(
     "--claude-home",
     type=click.Path(),
-    default="~/.claude",
-    help="Claude home directory",
+    default=None,
+    help="Claude home directory (default: ~/.claude or CLAUDE_CONFIG_DIR)",
 )
 @click.option(
     "--codex-home",
     type=click.Path(),
-    default="~/.codex",
-    help="Codex home directory",
+    default=None,
+    help="Codex home directory (default: ~/.codex or CODEX_HOME)",
 )
 def index_stats(index, cwd, claude_home, codex_home):
     """Show statistics about the Tantivy search index with reconciliation.
@@ -1021,9 +1021,11 @@ def index_stats(index, cwd, claude_home, codex_home):
         print("Error: tantivy not installed")
         return
 
+    from claude_code_tools.session_utils import get_claude_home, get_codex_home
+
     index_path = Path(index).expanduser()
-    claude_home_path = Path(claude_home).expanduser()
-    codex_home_path = Path(codex_home).expanduser()
+    claude_home_path = get_claude_home(cli_arg=claude_home)
+    codex_home_path = get_codex_home(cli_arg=codex_home)
 
     if not index_path.exists():
         print(f"Index not found at {index_path}")

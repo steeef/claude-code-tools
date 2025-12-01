@@ -147,7 +147,8 @@ class SessionIndex:
         self.schema_builder.add_text_field("is_sidechain", stored=True)  # "true"/"false"
 
         # Claude home field (for filtering by source Claude home directory)
-        self.schema_builder.add_text_field("claude_home", stored=True)
+        # Use "raw" tokenizer so paths are indexed as single tokens for exact matching
+        self.schema_builder.add_text_field("claude_home", stored=True, tokenizer_name="raw")
 
         # Searchable content field
         self.schema_builder.add_text_field("content", stored=True)

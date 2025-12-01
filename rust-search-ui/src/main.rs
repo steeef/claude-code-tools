@@ -27,8 +27,8 @@ use std::time::Duration;
 use std::collections::{HashMap, HashSet};
 use tantivy::{
     collector::TopDocs,
-    query::{AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, QueryParser},
-    schema::{Schema, Value, STORED, TEXT},
+    query::{AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, QueryParser, TermQuery},
+    schema::{IndexRecordOption, Value},
     Index, ReloadPolicy, Term,
 };
 
@@ -701,7 +701,12 @@ impl App {
 
         // If there's a keyword query, use Tantivy full-text search
         if !self.query.trim().is_empty() {
-            let (snippets, ranked_ids) = search_tantivy(&self.index_path, &self.query);
+            let (snippets, ranked_ids) = search_tantivy(
+                &self.index_path,
+                &self.query,
+                self.filter_claude_home.as_deref(),
+                self.filter_codex_home.as_deref(),
+            );
             if !snippets.is_empty() {
                 // Store snippets for rendering
                 self.search_snippets = snippets.clone();
@@ -2541,7 +2546,12 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
 /// Returns (snippets_map, ranked_session_ids) where:
 /// - snippets_map: session_id -> snippet for lookup
 /// - ranked_session_ids: session_ids in score order (highest first)
-fn search_tantivy(index_path: &str, query_str: &str) -> (HashMap<String, String>, Vec<String>) {
+fn search_tantivy(
+    index_path: &str,
+    query_str: &str,
+    filter_claude_home: Option<&str>,
+    filter_codex_home: Option<&str>,
+) -> (HashMap<String, String>, Vec<String>) {
     // Return empty if query is empty
     if query_str.trim().is_empty() {
         return (HashMap::new(), Vec::new());
@@ -2555,6 +2565,7 @@ fn search_tantivy(index_path: &str, query_str: &str) -> (HashMap<String, String>
         let content_field = schema.get_field("content").ok()?;
         let session_id_field = schema.get_field("session_id").ok()?;
         let modified_field = schema.get_field("modified").ok()?;
+        let claude_home_field = schema.get_field("claude_home").ok();
 
         let reader = index
             .reader_builder()
@@ -2571,7 +2582,7 @@ fn search_tantivy(index_path: &str, query_str: &str) -> (HashMap<String, String>
 
         // Phrase boosting: multi-word queries get 5x boost for exact phrase match
         let words: Vec<&str> = query_str.split_whitespace().collect();
-        let final_query: Box<dyn tantivy::query::Query> = if words.len() > 1 {
+        let content_query: Box<dyn tantivy::query::Query> = if words.len() > 1 {
             // Create phrase query for exact match
             let terms: Vec<Term> = words
                 .iter()
@@ -2589,8 +2600,38 @@ fn search_tantivy(index_path: &str, query_str: &str) -> (HashMap<String, String>
             Box::new(base_query)
         };
 
-        // Search with limit for performance
-        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(100)).ok()?;
+        // Build final query with claude_home filter if field exists and filters provided
+        let final_query: Box<dyn tantivy::query::Query> = if let Some(home_field) = claude_home_field {
+            // Build home filter: match either claude_home OR codex_home
+            let mut home_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
+            if let Some(ch) = filter_claude_home {
+                let term = Term::from_field_text(home_field, ch);
+                home_clauses.push((Occur::Should, Box::new(TermQuery::new(term, IndexRecordOption::Basic))));
+            }
+            if let Some(cx) = filter_codex_home {
+                let term = Term::from_field_text(home_field, cx);
+                home_clauses.push((Occur::Should, Box::new(TermQuery::new(term, IndexRecordOption::Basic))));
+            }
+
+            if home_clauses.is_empty() {
+                // No home filter specified, just use content query
+                content_query
+            } else {
+                // Combine: content query AND (claude_home OR codex_home)
+                let home_filter = BooleanQuery::new(home_clauses);
+                Box::new(BooleanQuery::new(vec![
+                    (Occur::Must, content_query),
+                    (Occur::Must, Box::new(home_filter) as Box<dyn tantivy::query::Query>),
+                ]))
+            }
+        } else {
+            // No claude_home field in schema, just use content query
+            content_query
+        };
+
+        // Search with high limit
+        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(2000)).ok()?;
 
         // Extract keywords for snippet generation
         let query_lower = query_str.to_lowercase();
