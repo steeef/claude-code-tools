@@ -82,7 +82,10 @@ def main() -> None:
 
     try:
         if action == "path":
-            if agent == "claude":
+            # Use file_path if available (from search), otherwise reconstruct
+            if file_path:
+                _ok(file_path, file_path)
+            elif agent == "claude":
                 from claude_code_tools.find_claude_session import (
                     get_session_file_path,
                 )
@@ -92,14 +95,17 @@ def main() -> None:
                 path = get_session_file_path(session_id, cwd, claude_home=claude_home)
                 _ok(path, path)
             else:
-                if not file_path:
-                    _error("Missing file_path")
-                _ok(file_path, file_path)
+                _error("Missing file_path")
 
         elif action == "copy":
             if not dest:
                 _error("Missing dest")
-            if agent == "claude":
+            # Use file_path if available (from search), otherwise reconstruct
+            if file_path:
+                from claude_code_tools.find_claude_session import copy_session_file
+                _quiet_call(copy_session_file, file_path, dest_override=dest, silent=True)
+                _ok(f"Copied to {dest}", dest)
+            elif agent == "claude":
                 from claude_code_tools.find_claude_session import (
                     get_session_file_path,
                     copy_session_file,
@@ -112,11 +118,7 @@ def main() -> None:
                 _ok(f"Copied to {dest}", dest)
             else:
                 from claude_code_tools.find_codex_session import copy_session_file
-
-                if not file_path:
-                    _error("Missing file_path")
-                _quiet_call(copy_session_file, file_path, dest_override=dest, silent=True)
-                _ok(f"Copied to {dest}", dest)
+                _error("Missing file_path")
 
         elif action == "export":
             if not dest:

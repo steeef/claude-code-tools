@@ -518,9 +518,17 @@ class SessionIndex:
             first_msg = metadata.get("first_msg") or {"role": "", "content": ""}
             last_msg = metadata.get("last_msg") or {"role": "", "content": ""}
 
+            # For sub-agent files, use filename as session_id (they share parent's sessionId)
+            # Filename like "agent-2bacd83b.jsonl" -> session_id "agent-2bacd83b"
+            is_subagent = jsonl_path.name.startswith("agent-")
+            if is_subagent:
+                session_id = jsonl_path.stem  # filename without .jsonl
+            else:
+                session_id = metadata.get("session_id", "")
+
             return {
                 "metadata": {
-                    "session_id": metadata.get("session_id", ""),
+                    "session_id": session_id,
                     "agent": agent,
                     "project": metadata.get("project", ""),
                     "branch": metadata.get("branch", "") or "",

@@ -1357,6 +1357,7 @@ def search(
             return
 
         # Convert to session format expected by Node menu
+        # Note: Rust JSON output uses "file_path" key (see output_json in main.rs)
         session = {
             "session_id": selected.get("session_id", ""),
             "agent": selected.get("agent", "claude"),
@@ -1364,15 +1365,17 @@ def search(
             "project": selected.get("project", ""),
             "branch": selected.get("branch", ""),
             "lines": selected.get("lines", 0),
-            "file_path": selected.get("export_path", ""),
-            "cwd": None,
+            "file_path": selected.get("file_path", ""),
+            "cwd": selected.get("cwd", ""),  # Use cwd from Rust output
+            "is_sidechain": selected.get("is_sidechain", False),  # For action filtering
         }
 
-        # Extract cwd from export_path metadata if needed
-        export_path = selected.get("export_path", "")
-        if export_path:
+        # Extract cwd from file_path metadata if needed (for older export format)
+        file_path = selected.get("file_path", "")
+        if file_path and file_path.endswith(".txt"):
+            # Only try YAML extraction for old .txt export format
             try:
-                with open(export_path, "r") as f:
+                with open(file_path, "r") as f:
                     file_content = f.read(2000)
                     if file_content.startswith("---\n"):
                         end_idx = file_content.find("\n---\n", 4)
@@ -1380,8 +1383,8 @@ def search(
                             import yaml
                             metadata = yaml.safe_load(file_content[4:end_idx])
                             if metadata:
-                                session["cwd"] = metadata.get("cwd")
-                                session["file_path"] = metadata.get("file_path", export_path)
+                                session["cwd"] = metadata.get("cwd") or session["cwd"]
+                                session["file_path"] = metadata.get("file_path", file_path)
             except Exception:
                 pass
 

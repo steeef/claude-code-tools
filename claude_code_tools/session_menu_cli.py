@@ -46,9 +46,14 @@ def is_sidechain_session(session_file: Path) -> bool:
                     continue
                 try:
                     entry = json.loads(line)
+                    # Check top-level isSidechain (sub-agent sessions)
+                    if entry.get("isSidechain") is True:
+                        return True
+                    # Check inside file-history-snapshot metadata (legacy)
                     if entry.get("type") == "file-history-snapshot":
                         metadata = entry.get("metadata", {})
-                        return metadata.get("is_sidechain", False)
+                        if metadata.get("is_sidechain", False):
+                            return True
                 except json.JSONDecodeError:
                     continue
     except (OSError, IOError):

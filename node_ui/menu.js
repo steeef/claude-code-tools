@@ -626,7 +626,7 @@ function ActionView({session, onBack, onDone, clearScreen}) {
     }
   });
 
-  const id = (session.session_id || '').slice(0, 8);
+  const id = session.session_id || '';  // Show full session ID in actions view
   const anno = toAnno(session);
   const date = formatDateRange(session.create_time, session.mod_time);
   const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
@@ -651,7 +651,13 @@ function ActionView({session, onBack, onDone, clearScreen}) {
         colorize.lines(formatLines(session.lines)), ' | ',
         colorize.date(date)
       ),
-      renderPreview(session.preview)
+      renderPreview(session.preview),
+      // Warning for sub-agent sessions
+      session.is_sidechain ? h(
+        Text,
+        {color: 'yellow', marginTop: 1},
+        '⚠ Sub-agent session (not resumable)'
+      ) : null
     ),
     h(Box, {marginBottom: 1}),
     h(Box, {flexDirection: 'column'},
