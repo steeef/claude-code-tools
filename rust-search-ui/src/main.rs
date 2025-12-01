@@ -217,6 +217,76 @@ impl Session {
             _ => self.modified.clone(),
         }
     }
+
+    /// Medium date display: "11/27 - 11/29" or "11/29" (no time)
+    fn date_medium(&self) -> String {
+        let parse_date = |s: &str| {
+            DateTime::parse_from_rfc3339(s)
+                .or_else(|_| {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+                        .map(|ndt| Utc.from_utc_datetime(&ndt).fixed_offset())
+                })
+                .ok()
+        };
+
+        let modified_dt = parse_date(&self.modified);
+        let created_dt = parse_date(&self.created);
+
+        match (created_dt, modified_dt) {
+            (Some(created), Some(modified)) => {
+                let (earlier, later) = if created <= modified {
+                    (created, modified)
+                } else {
+                    (modified, created)
+                };
+
+                if earlier.format("%m/%d").to_string() == later.format("%m/%d").to_string() {
+                    later.format("%m/%d").to_string()
+                } else {
+                    format!("{} - {}", earlier.format("%m/%d"), later.format("%m/%d"))
+                }
+            }
+            (None, Some(modified)) => modified.format("%m/%d").to_string(),
+            _ => self.modified.chars().take(5).collect(),
+        }
+    }
+
+    /// Compact date display: relative time like "3h", "5d", "2w", "3mo"
+    fn date_compact(&self) -> String {
+        let parse_date = |s: &str| {
+            DateTime::parse_from_rfc3339(s)
+                .or_else(|_| {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+                        .map(|ndt| Utc.from_utc_datetime(&ndt).fixed_offset())
+                })
+                .ok()
+        };
+
+        let modified_dt = match parse_date(&self.modified) {
+            Some(dt) => dt,
+            None => return "?".to_string(),
+        };
+
+        let now = Utc::now();
+        let duration = now.signed_duration_since(modified_dt);
+
+        let hours = duration.num_hours();
+        let days = duration.num_days();
+
+        if hours < 1 {
+            format!("{}m", duration.num_minutes().max(1))
+        } else if hours < 24 {
+            format!("{}h", hours)
+        } else if days < 7 {
+            format!("{}d", days)
+        } else if days < 30 {
+            format!("{}w", days / 7)
+        } else if days < 365 {
+            format!("{}mo", days / 30)
+        } else {
+            format!("{}y", days / 365)
+        }
+    }
 }
 
 // ============================================================================
@@ -1283,22 +1353,53 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
     let mut max_project_len = 0usize;
     let mut max_branch_len = 0usize;
     let mut max_lines_len = 0usize;
-    let mut max_date_len = 0usize;
     for &idx in &app.filtered {
         let s = &app.sessions[idx];
         max_session_id_len = max_session_id_len.max(s.session_id_display().len());
         max_project_len = max_project_len.max(s.project_name().len());
         max_branch_len = max_branch_len.max(s.branch_display().len());
         max_lines_len = max_lines_len.max(format!("{}L", s.lines).len());
-        max_date_len = max_date_len.max(s.date_display().len());
     }
-    // Ensure minimums and reasonable maximums for very long names
-    // Session ID: "abcd1234.." (10) + " (c)" (4) or " (t)" (4) or " (s)" (4) = max ~14
+    // Ensure minimums and reasonable maximums
     max_session_id_len = max_session_id_len.max(10).min(20);
-    max_project_len = max_project_len.max(10).min(40);  // Increased from 30 to 40
-    max_branch_len = max_branch_len.max(8).min(35);     // Increased from 25 to 35
+    max_project_len = max_project_len.max(10).min(40);
+    max_branch_len = max_branch_len.max(8).min(35);
     max_lines_len = max_lines_len.max(4);
-    max_date_len = max_date_len.max(11); // "MM/DD HH:MM" is 11 chars
+
+    // Calculate available width and determine date format
+    // Fixed overhead: row_num + space + icon/agent (8) + 4 separators (12) + padding (2)
+    let fixed_overhead = row_num_width + 1 + 8 + 12 + 2;
+    let available_width = area.width as usize;
+
+    // Width needed for non-date fields
+    let non_date_width = fixed_overhead + max_session_id_len + max_project_len + max_branch_len + max_lines_len;
+    let remaining_for_date = available_width.saturating_sub(non_date_width);
+
+    // Determine date format based on available space
+    // Full: ~19 chars ("11/27 - 11/29 15:23"), Medium: ~13 chars ("11/27 - 11/29"), Compact: ~4 chars ("35d")
+    let date_format = if remaining_for_date >= 19 {
+        "full"
+    } else if remaining_for_date >= 13 {
+        "medium"
+    } else {
+        "compact"
+    };
+
+    // If even medium date doesn't fit well, also truncate branch more aggressively
+    let effective_branch_len = if remaining_for_date < 13 && max_branch_len > 15 {
+        15  // Truncate branch to 15 chars to make more room
+    } else if remaining_for_date < 19 && max_branch_len > 20 {
+        20  // Truncate branch to 20 chars
+    } else {
+        max_branch_len
+    };
+
+    // Calculate max date length based on format
+    let max_date_len = match date_format {
+        "full" => 19,
+        "medium" => 13,
+        _ => 4,
+    };
 
     let items: Vec<ListItem> = app
         .filtered
@@ -1334,11 +1435,16 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
             let row_num_str = format!("{:>width$}", row_num, width = row_num_width);
             let session_display = format!("{:<width$}", s.session_id_display(), width = max_session_id_len);
             let project_padded = format!("{:<width$}", truncate(s.project_name(), max_project_len), width = max_project_len);
-            let branch_padded = format!("{:<width$}", truncate(s.branch_display(), max_branch_len), width = max_branch_len);
+            let branch_padded = format!("{:<width$}", truncate(s.branch_display(), effective_branch_len), width = effective_branch_len);
             let lines_str = format!("{:>width$}", format!("{}L", s.lines), width = max_lines_len);
 
-            // Right-align date so single dates appear on the right, ranges extend left
-            let date_str = format!("{:>width$}", s.date_display(), width = max_date_len);
+            // Choose date format based on available space
+            let date_text = match date_format {
+                "full" => s.date_display(),
+                "medium" => s.date_medium(),
+                _ => s.date_compact(),
+            };
+            let date_str = format!("{:>width$}", date_text, width = max_date_len);
 
             let header_spans = vec![
                 Span::styled(format!("{} ", row_num_str), Style::default().fg(t.dim_fg)),
