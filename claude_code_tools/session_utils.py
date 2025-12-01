@@ -405,79 +405,53 @@ def display_lineage(
     claude_home: Optional[str] = None,
     codex_home: Optional[str] = None,
     verbose: bool = False,
-) -> Tuple[List, Path]:
+) -> List[Path]:
     """
-    Export session and display continuation lineage.
+    Trace and display continuation lineage for a session.
 
     This function:
-    1. Exports the current session to a text file
-    2. Traces the continuation lineage (all parent sessions)
-    3. Displays the lineage chain to the user
-    4. Returns the lineage and exported files for use by continue functions
+    1. Traces the continuation lineage (all parent sessions)
+    2. Displays the lineage chain to the user
+    3. Returns session file paths for use by continue functions
 
     Args:
         session_file: Path to the session file to analyze
-        agent_type: 'claude' or 'codex'
-        claude_home: Optional custom Claude home directory
-        codex_home: Optional custom Codex home directory
+        agent_type: 'claude' or 'codex' (kept for compatibility, not used)
+        claude_home: Optional custom Claude home directory (not used)
+        codex_home: Optional custom Codex home directory (not used)
         verbose: If True, show detailed progress
 
     Returns:
-        Tuple of (lineage_nodes, current_session_export_path)
-        where lineage_nodes is a list of LineageNode objects
+        List of session file paths in chronological order (oldest first),
+        including the current session at the end.
     """
-    from claude_code_tools.session_lineage import get_continuation_lineage
+    from claude_code_tools.session_lineage import get_full_lineage_chain
 
-    # Step 1: Export the current session
-    print("Step 1: Exporting session to text file...")
-
-    if agent_type == "claude":
-        from claude_code_tools.export_claude_session import (
-            export_session_programmatic,
-        )
-        chat_log = export_session_programmatic(
-            str(session_file),
-            claude_home=claude_home,
-            verbose=verbose,
-        )
-    else:
-        from claude_code_tools.export_codex_session import (
-            export_session_programmatic,
-        )
-        chat_log = export_session_programmatic(
-            str(session_file),
-            codex_home=codex_home,
-            verbose=verbose,
-        )
-
-    print(f"✅ Exported chat log to: {chat_log}")
-    print()
-
-    # Step 2: Get and display continuation lineage
-    print("Step 2: Tracing continuation lineage...")
+    # Get and display continuation lineage
+    print("Step 1: Tracing session lineage...")
 
     try:
-        lineage = get_continuation_lineage(session_file, export_missing=True)
+        # Get full lineage chain (newest first, ending with original)
+        lineage_chain = get_full_lineage_chain(session_file)
 
-        if lineage:
-            print(f"✅ Found {len(lineage)} session(s) in continuation chain:")
-            for node in lineage:
-                derivation_label = (
-                    f"({node.derivation_type})" if node.derivation_type else ""
-                )
-                print(f"   - {node.session_file.name} {derivation_label}")
-                if node.exported_file:
-                    print(f"     Export: {node.exported_file}")
+        if len(lineage_chain) > 1:
+            print(f"✅ Found {len(lineage_chain)} session(s) in lineage:")
+            for session_path, derivation_type in lineage_chain:
+                print(f"   - {session_path.name} ({derivation_type})")
             print()
         else:
-            print("✅ No previous sessions in continuation chain (this is the original)")
+            print("✅ This is the original session (no parent chain)")
             print()
+
+        # Collect all session files in chronological order (oldest first)
+        # lineage_chain is newest-first, so reverse it
+        all_session_files = [path for path, _ in reversed(lineage_chain)]
+        return all_session_files
 
     except Exception as e:
         print(f"⚠️  Warning: Could not trace lineage: {e}", file=sys.stderr)
-        lineage = []
-
-    return lineage, chat_log
+        # Fall back to just the current session
+        return [session_file]
 
 
 def continue_with_options(
@@ -511,20 +485,14 @@ def continue_with_options(
     print("\n🔄 Starting continuation in fresh session...")
     print()
 
-    # Step 1-2: Export and display lineage FIRST
+    # Step 1: Display lineage and collect session files
     # This allows user to make informed decisions
-    lineage, chat_log = display_lineage(
+    all_session_files = display_lineage(
         session_file,
         current_agent,
         claude_home=claude_home,
         codex_home=codex_home,
     )
-
-    # Collect all exported files in chronological order
-    all_exported_files = [
-        node.exported_file for node in lineage if node.exported_file
-    ]
-    all_exported_files.append(chat_log)
 
     # Step 3: Prompt for agent choice (unless preset or other agent unavailable)
     other_agent_name = "codex" if current_agent == "claude" else "claude"
@@ -582,7 +550,7 @@ def continue_with_options(
             print("\nCancelled.")
             return
 
-    # Step 5: Execute continuation with precomputed data
+    # Step 5: Execute continuation with precomputed session files
     if continue_agent == "claude":
         from claude_code_tools.claude_continue import claude_continue
         claude_continue(
@@ -590,7 +558,7 @@ def continue_with_options(
             claude_home=claude_home,
             verbose=False,
             custom_prompt=custom_prompt,
-            precomputed_exports=all_exported_files,
+            precomputed_session_files=all_session_files,
         )
     else:
         from claude_code_tools.codex_continue import codex_continue
@@ -599,7 +567,7 @@ def continue_with_options(
             codex_home=codex_home,
             verbose=False,
             custom_prompt=custom_prompt,
-            precomputed_exports=all_exported_files,
+            precomputed_session_files=all_session_files,
         )
 
 

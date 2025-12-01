@@ -4,9 +4,9 @@ Continue a Claude Code session that's running out of context.
 
 This tool helps you continue working when a Claude Code session is approaching
 the context limit. It:
-1. Exports the old session to a text file
+1. Traces the session lineage to find all parent sessions
 2. Creates a new Claude Code session
-3. Uses parallel sub-agents to analyze the old session
+3. Uses parallel sub-agents to analyze the JSONL session files directly
 4. Hands off to interactive Claude Code to continue the task
 """
 
@@ -41,7 +41,7 @@ def claude_continue(
     verbose: bool = False,
     claude_cli: str = "claude",
     custom_prompt: Optional[str] = None,
-    precomputed_exports: Optional[List[Path]] = None,
+    precomputed_session_files: Optional[List[Path]] = None,
 ) -> None:
     """
     Continue a Claude Code session in a new session with full context.
@@ -52,8 +52,8 @@ def claude_continue(
         verbose: If True, show detailed progress
         claude_cli: Claude CLI command to use (default: "claude")
         custom_prompt: Optional custom instructions for summarization
-        precomputed_exports: If provided, skip export/lineage steps and use
-            these exported files directly. Used by continue_with_options()
+        precomputed_session_files: If provided, skip lineage tracing and use
+            these JSONL session files directly. Used by continue_with_options()
             to avoid duplicate work.
     """
     print("🔄 Claude Continue - Transferring context to new session")
@@ -68,65 +68,36 @@ def claude_continue(
         print(f"❌ Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Use precomputed exports if provided, otherwise do export/lineage
-    if precomputed_exports is not None:
-        # Skip export and lineage - use precomputed data
-        all_exported_files = precomputed_exports
-        chat_log = all_exported_files[-1] if all_exported_files else None
-        print(f"ℹ️  Using {len(all_exported_files)} precomputed export(s)")
+    # Use precomputed session files if provided, otherwise trace lineage
+    if precomputed_session_files is not None:
+        # Skip lineage tracing - use precomputed data
+        all_session_files = precomputed_session_files
+        print(f"ℹ️  Using {len(all_session_files)} precomputed session file(s)")
         print()
     else:
-        # Step 1: Export the old session to text file
-        print("Step 1: Exporting old session to text file...")
+        # Step 1: Trace continuation lineage to find all parent sessions
+        print("Step 1: Tracing session lineage...")
 
-        from claude_code_tools.export_claude_session import (
-            export_session_programmatic,
-        )
+        from claude_code_tools.session_lineage import get_full_lineage_chain
 
         try:
-            chat_log = export_session_programmatic(
-                session_id_or_path,
-                claude_home=claude_home,
-                verbose=verbose
-            )
-            print(f"✅ Exported chat log to: {chat_log}")
-            print()
-        except Exception as e:
-            print(f"❌ Error exporting session: {e}", file=sys.stderr)
-            sys.exit(1)
+            # Get full lineage chain (newest first, ending with original)
+            lineage_chain = get_full_lineage_chain(old_session_file)
 
-        # Step 1.5: Get full continuation lineage (all parent sessions with exports)
-        print("Step 1.5: Tracing continuation lineage...")
-
-        from claude_code_tools.session_lineage import get_continuation_lineage
-
-        try:
-            lineage = get_continuation_lineage(
-                old_session_file, export_missing=True
-            )
-
-            if lineage:
-                print(f"✅ Found {len(lineage)} session(s) in continuation chain:")
-                for node in lineage:
-                    derivation_label = (
-                        f"({node.derivation_type})" if node.derivation_type else ""
-                    )
-                    print(f"   - {node.session_file.name} {derivation_label}")
-                    if node.exported_file:
-                        print(f"     Export: {node.exported_file}")
+            if len(lineage_chain) > 1:
+                print(f"✅ Found {len(lineage_chain)} session(s) in lineage:")
+                for session_path, derivation_type in lineage_chain:
+                    print(f"   - {session_path.name} ({derivation_type})")
                 print()
 
-            # Collect all exported files in chronological order
-            all_exported_files = [
-                node.exported_file for node in lineage if node.exported_file
-            ]
-            # Add the current session's export at the end
-            all_exported_files.append(chat_log)
+            # Collect all session files in chronological order (oldest first)
+            # lineage_chain is newest-first, so reverse it
+            all_session_files = [path for path, _ in reversed(lineage_chain)]
 
         except Exception as e:
             print(f"⚠️  Warning: Could not trace lineage: {e}", file=sys.stderr)
             # Fall back to just the current session
-            all_exported_files = [chat_log]
+            all_session_files = [old_session_file]
 
     # Step 2: Create new session with dummy message
     print("Step 2: Creating new Claude Code session...")
@@ -158,30 +129,35 @@ def claude_continue(
         print(f"   stderr: {e.stderr}", file=sys.stderr)
         sys.exit(1)
 
-    # Step 3: Have Claude analyze the chat log(s) with parallel sub-agents
+    # Step 3: Have Claude analyze the session file(s) with parallel sub-agents
     print("Step 3: 🤖 Analyzing session history with parallel sub-agents...")
 
-    # Build prompt based on number of exported files
-    if len(all_exported_files) == 1:
+    # Build prompt based on number of session files
+    if len(all_session_files) == 1:
         # Simple case: just the current session
-        analysis_prompt = f"""There is a log of a past conversation with an AI agent in this file: {chat_log}. We were running out of context, so I exported the chat log to that file.
+        session_file = all_session_files[0]
+        analysis_prompt = f"""There is a log of a past conversation with an AI agent in this JSONL session file: {session_file}
 
-Strategically use PARALLEL SUB-AGENTS to explore {chat_log} (which may be very long) so that YOU have proper CONTEXT to continue the task that the agent was working on at the end of that chat.
+The file is in JSONL format (one JSON object per line). Each line represents a message in the conversation with fields like 'type' (user/assistant), 'message.content', etc. This format is easy to parse and understand.
 
-DO NOT TRY TO READ {chat_log} by YOURSELF! To save your own context, you must use parallel sub-agents, possibly to explore the beginning, middle, and end of that chat, so that you have sufficient context to continue the work where the agent left off.
+Strategically use PARALLEL SUB-AGENTS to explore {session_file} (which may be very long) so that YOU have proper CONTEXT to continue the task that the agent was working on at the end of that chat.
 
-If in this conversation you need more information about what happened during that previous conversation/session, you can again use a sub-agent(s) to explore {chat_log}
+DO NOT TRY TO READ {session_file} by YOURSELF! To save your own context, you must use parallel sub-agents, possibly to explore the beginning, middle, and end of that chat, so that you have sufficient context to continue the work where the agent left off.
+
+If in this conversation you need more information about what happened during that previous conversation/session, you can again use a sub-agent(s) to explore {session_file}
 
 When done exploring, state your understanding of the most recent task to me."""
     else:
         # Complex case: multiple sessions in the continuation chain
-        file_list = "\n".join([f"{i+1}. {path}" for i, path in enumerate(all_exported_files)])
+        file_list = "\n".join([f"{i+1}. {path}" for i, path in enumerate(all_session_files)])
 
-        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work was continued across multiple sessions as we ran out of context. Here are ALL the exported chat logs in CHRONOLOGICAL ORDER (oldest to newest):
+        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work was continued across multiple sessions as we ran out of context. Here are ALL the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
 
 {file_list}
 
-Each session was a continuation of the previous one. The LAST file ({all_exported_files[-1]}) is the most recent session that ran out of context.
+Each file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc. This format is easy to parse and understand.
+
+Each session was a continuation of the previous one. The LAST file ({all_session_files[-1]}) is the most recent session that ran out of context.
 
 Strategically use PARALLEL SUB-AGENTS to explore ALL these files so that YOU have proper CONTEXT to continue the task. You should understand:
 - The original task and requirements
@@ -192,7 +168,7 @@ Strategically use PARALLEL SUB-AGENTS to explore ALL these files so that YOU hav
 DO NOT TRY TO READ these files by YOURSELF! To save your own context, you must use parallel sub-agents to explore these files. Consider:
 - Exploring the beginning of the first file to understand the original task
 - Exploring the end of each continuation to see what was accomplished
-- Exploring the most recent file ({all_exported_files[-1]}) thoroughly to understand the current state
+- Exploring the most recent file ({all_session_files[-1]}) thoroughly to understand the current state
 
 If later in this conversation you need more information about what happened during those previous sessions, you can again use sub-agent(s) to explore the relevant files.
 
@@ -211,7 +187,7 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
 {custom_prompt}
 === END USER INSTRUCTIONS ==="""
 
-    print(f"   Analyzing {len(all_exported_files)} exported session(s)...")
+    print(f"   Analyzing {len(all_session_files)} session file(s)...")
     print()
 
     try:
@@ -241,20 +217,11 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
         encoded_path = encode_claude_project_path(str(cwd))
         new_session_file = home_dir / "projects" / encoded_path / f"{new_session_id}.jsonl"
 
-        # Determine path format for exported chat log (relative if in cwd, absolute otherwise)
-        try:
-            chat_log_relative = chat_log.relative_to(cwd)
-            chat_log_path = str(chat_log_relative)
-        except ValueError:
-            # Not in current directory, use absolute path
-            chat_log_path = str(chat_log.absolute())
-
-        # Create metadata
+        # Create metadata (no longer storing exported_chat_log since we use JSONL directly)
         metadata_fields = {
             "continue_metadata": {
                 "parent_session_id": old_session_file.stem,
                 "parent_session_file": str(old_session_file.absolute()),
-                "exported_chat_log": chat_log_path,
                 "continued_at": datetime.datetime.now(timezone.utc).isoformat(),
             }
         }
@@ -316,9 +283,9 @@ Example workflow:
   4. Claude will analyze the old session and continue the task
 
 The tool will:
-  - Export your old session to a readable text file
+  - Trace the session lineage to find all parent sessions
   - Create a new Claude Code session
-  - Use parallel sub-agents to understand the full context
+  - Use parallel sub-agents to analyze the JSONL session files directly
   - Launch interactive Claude Code to continue working
         """
     )

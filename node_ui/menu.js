@@ -1067,10 +1067,7 @@ function LineageView({session, rpcPath, onContinue, onBack, clearScreen}) {
                         `  ${i + 1}. `,
                         chalk.white(node.session_file),
                         node.derivation_type ? chalk.dim(` (${node.derivation_type})`) : ''
-                      ),
-                      node.exported_file
-                        ? h(Text, {dimColor: true}, `     Export: ${node.exported_file}`)
-                        : null
+                      )
                     )
                   )
                 )

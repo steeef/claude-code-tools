@@ -2706,10 +2706,12 @@ fn parse_cli_args() -> CliOptions {
         args.iter().any(|a| a == flag)
     };
 
-    // Output file is a positional arg that's a path (contains / or ends with .json)
+    // Output file is the LAST positional arg that's a path (contains / or ends with .json)
+    // Using rfind to get the last match, avoiding --claude-home/--codex-home values
     let output_file = args.iter()
         .skip(1)  // skip binary name
-        .find(|a| !a.starts_with('-') && (a.contains('/') || a.ends_with(".json")))
+        .filter(|a| !a.starts_with('-') && (a.contains('/') || a.ends_with(".json")))
+        .last()
         .map(std::path::PathBuf::from);
 
     let claude_home = get_arg_value("--claude-home")
