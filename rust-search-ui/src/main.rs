@@ -358,6 +358,9 @@ struct App {
     // Result limit
     max_results: Option<usize>, // Limit number of displayed results (--num-results / -n)
 
+    // Sort mode: false = relevance (default), true = time (reverse chronological)
+    sort_by_time: bool,
+
     // Exit confirmation
     confirming_exit: bool,
 }
@@ -503,6 +506,8 @@ impl App {
             filter_dir: None,
             // Result limit
             max_results: None,
+            // Sort mode
+            sort_by_time: false,
             // Exit confirmation
             confirming_exit: false,
         };
@@ -596,6 +601,8 @@ impl App {
             filter_dir: cli.filter_dir.clone(),
             // Result limit
             max_results: cli.num_results,
+            // Sort mode
+            sort_by_time: false,
             // Exit confirmation
             confirming_exit: false,
         };
@@ -715,29 +722,39 @@ impl App {
                     snippets.contains_key(&self.sessions[i].session_id)
                 });
 
-                // Reorder filtered by Tantivy ranking (phrase + recency boosted)
-                // Build position map for ranking
-                let rank_pos: HashMap<&str, usize> = ranked_ids
-                    .iter()
-                    .enumerate()
-                    .map(|(pos, id)| (id.as_str(), pos))
-                    .collect();
+                if self.sort_by_time {
+                    // Sort by modified time (reverse chronological)
+                    self.filtered.sort_by(|&a, &b| {
+                        self.sessions[b].modified.cmp(&self.sessions[a].modified)
+                    });
+                } else {
+                    // Reorder filtered by Tantivy ranking (phrase + recency boosted)
+                    // Build position map for ranking
+                    let rank_pos: HashMap<&str, usize> = ranked_ids
+                        .iter()
+                        .enumerate()
+                        .map(|(pos, id)| (id.as_str(), pos))
+                        .collect();
 
-                // Sort filtered by position in ranked_ids (lower = higher rank)
-                self.filtered.sort_by_key(|&i| {
-                    rank_pos
-                        .get(self.sessions[i].session_id.as_str())
-                        .copied()
-                        .unwrap_or(usize::MAX)
-                });
+                    // Sort filtered by position in ranked_ids (lower = higher rank)
+                    self.filtered.sort_by_key(|&i| {
+                        rank_pos
+                            .get(self.sessions[i].session_id.as_str())
+                            .copied()
+                            .unwrap_or(usize::MAX)
+                    });
+                }
             } else {
                 // No Tantivy matches - clear results and snippets
                 self.search_snippets.clear();
                 self.filtered.clear();
             }
         } else {
-            // Clear snippets when no query
+            // Clear snippets when no query - sort by time (most recent first)
             self.search_snippets.clear();
+            self.filtered.sort_by(|&a, &b| {
+                self.sessions[b].modified.cmp(&self.sessions[a].modified)
+            });
         }
 
         // Apply max_results limit if specified
@@ -950,7 +967,7 @@ fn render(frame: &mut Frame, app: &mut App) {
 
     let area = frame.area();
 
-    // Status bar height: 1 for main, +1 if we have annotations OR active filters
+    // Status bar height: 2 for nav+actions, +1 if we have annotations OR active filters
     let show_legend = app.has_annotations();
     let has_filters = !app.include_original
         || app.include_sub
@@ -960,7 +977,7 @@ fn render(frame: &mut Frame, app: &mut App) {
         || app.filter_min_lines.is_some()
         || app.filter_after_date.is_some()
         || app.filter_before_date.is_some();
-    let status_height = if show_legend || has_filters { 2 } else { 1 };
+    let status_height = if show_legend || has_filters { 3 } else { 2 };
 
     // Main layout
     let main_layout = Layout::default()
@@ -1670,7 +1687,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_legend: bool) {
-    // Check if we have any active filters (need second row for legend or filters)
+    // Check if we have any active filters (need third row for legend or filters)
     let has_filters = !app.include_original
         || app.include_sub
         || !app.include_trimmed
@@ -1680,31 +1697,31 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         || app.filter_after_date.is_some()
         || app.filter_before_date.is_some();
 
-    let needs_second_row = show_legend || has_filters;
+    let needs_third_row = show_legend || has_filters;
 
-    // Split area into main status bar and optional second line (legend + filters)
-    let status_layout = if needs_second_row {
+    // Split area: line 1 (nav), line 2 (actions), optional line 3 (legend + filters)
+    let status_layout = if needs_third_row {
         Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1)])
+            .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
             .split(area)
     } else {
         Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1)])
+            .constraints([Constraint::Length(1), Constraint::Length(1)])
             .split(area)
     };
 
-    let main_area = status_layout[0];
+    let nav_area = status_layout[0];
+    let action_area = status_layout[1];
 
     let keycap = Style::default().bg(t.keycap_bg);
     let label = Style::default();
     let dim = Style::default().fg(t.dim_fg);
     let filter_active = Style::default().fg(t.match_fg);
 
-    let mut spans: Vec<Span> = Vec::new();
-
-    // Note: action_mode (ViewOrActions) renders its own modal overlay, no status bar indicator needed
+    // Line 1: Navigation shortcuts OR input mode indicator
+    let mut nav_spans: Vec<Span> = Vec::new();
 
     if let Some(ref mode) = app.input_mode {
         // Input mode indicator
@@ -1716,106 +1733,118 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             InputMode::BeforeDate => format!(" Before date: {}█ (any format) ", app.input_buffer),
             InputMode::ScopeDir => format!(" Directory: {}█ (Enter=apply, empty=global) ", app.input_buffer),
         };
-        spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
+        nav_spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
     } else if app.command_mode {
         // Command mode indicator
-        spans.push(Span::styled(" CMD ", Style::default().bg(t.accent).fg(Color::Black)));
-        spans.push(Span::styled(" :x clear :o orig :s sub :t trim :c cont :a agent :m lines :> after :< before ", label));
+        nav_spans.push(Span::styled(" CMD ", Style::default().bg(t.accent).fg(Color::Black)));
+        nav_spans.push(Span::styled(" :x clear :o orig :s sub :t trim :c cont :a agent :m lines :> after :< before ", label));
     } else {
-        // Normal keybindings - ordered: nav, page, home/end, C-g goto, Enter, /, C-f, Esc
+        // Normal mode - Line 1: Navigation keybindings (aligned with line 2)
         let has_selection = !app.filtered.is_empty();
 
-        // nav, page
-        spans.extend([
-            Span::styled(" ↑↓ ", keycap),
-            Span::styled(" nav ", label),
-            Span::styled(" │ ", dim),
-            Span::styled(" PgUp/Dn ", keycap),
-            Span::styled(" page ", label),
+        // Aligned columns - each section padded to match line 2:
+        // Col1: 21 chars (" Enter " + " view/actions "), Col2: 11 (" / " + " dir    ")
+        // Col3: 14 (" C-f " + " filter "), Col4: 17 (" C-s " + " time-sort  ")
+        nav_spans.extend([
+            Span::styled(" ↑↓ ", keycap),            // 4 chars
+            Span::styled(" nav             ", label), // 17 chars = 21 total
+            Span::styled("│ ", dim),
+            Span::styled(" PgUp/Dn ", keycap),       // 9 chars
+            Span::styled("  ", label),               // 2 chars = 11 total
         ]);
 
         if has_selection {
-            // home/end jump, C-g goto, Enter view/actions
-            spans.extend([
-                Span::styled(" │ ", dim),
-                Span::styled(" Home/End ", keycap),
-                Span::styled(" jump ", label),
-                Span::styled(" │ ", dim),
-                Span::styled(" C-g ", keycap),
-                Span::styled(" goto ", label),
-                Span::styled(" │ ", dim),
-                Span::styled(" Enter ", keycap),
-                Span::styled(" view/actions ", label),
+            nav_spans.extend([
+                Span::styled("│ ", dim),
+                Span::styled(" Home/End ", keycap),  // 10 chars
+                Span::styled("    ", label),         // 4 chars = 14 total
+                Span::styled("│ ", dim),
+                Span::styled(" C-g ", keycap),       // 5 chars
+                Span::styled(" goto        ", label), // 12 chars = 17 total
+            ]);
+        }
+    }
+
+    let nav_line = Line::from(nav_spans);
+    frame.render_widget(Paragraph::new(nav_line), nav_area);
+
+    // Line 2: Action shortcuts (only in normal mode)
+    let mut action_spans: Vec<Span> = Vec::new();
+
+    if app.input_mode.is_none() && !app.command_mode {
+        let has_selection = !app.filtered.is_empty();
+
+        if has_selection {
+            action_spans.extend([
+                Span::styled(" Enter ", keycap),      // 7 chars
+                Span::styled(" view/actions ", label), // 14 chars = 21 total
+                Span::styled("│ ", dim),
             ]);
         }
 
-        // / scope - opens directory filter modal
-        spans.extend([
-            Span::styled(" │ ", dim),
-            Span::styled(" / ", keycap),
-            Span::styled(" dir ", label),
-        ]);
-
-        // C-f filter, Esc quit
-        spans.extend([
-            Span::styled(" │ ", dim),
-            Span::styled(" C-f ", keycap),
-            Span::styled(" filter ", label),
-            Span::styled(" │ ", dim),
+        action_spans.extend([
+            Span::styled(" / ", keycap),             // 3 chars
+            Span::styled(" dir    ", label),         // 8 chars = 11 total
+            Span::styled("│ ", dim),
+            Span::styled(" C-f ", keycap),           // 5 chars
+            Span::styled(" filter  ", label),        // 9 chars = 14 total
+            Span::styled("│ ", dim),
+            Span::styled(" C-s ", keycap),           // 5 chars
+            Span::styled(if app.sort_by_time { " match-sort  " } else { " time-sort   " }, label), // 12 chars = 17 total
+            Span::styled("│ ", dim),
             Span::styled(" Esc ", keycap),
             Span::styled(" quit", label),
         ]);
     }
 
-    let hints = Line::from(spans);
-    frame.render_widget(Paragraph::new(hints), main_area);
+    let action_line = Line::from(action_spans);
+    frame.render_widget(Paragraph::new(action_line), action_area);
 
-    // Second row: annotation legend (if needed) + active filter indicators (always)
-    let mut row2_spans: Vec<Span> = Vec::new();
+    // Third row: annotation legend (if needed) + active filter indicators
+    if needs_third_row {
+        let mut row3_spans: Vec<Span> = Vec::new();
 
-    // Annotation legend (if annotations exist in results)
-    if show_legend {
-        row2_spans.extend([
-            Span::styled("  ", dim),
-            Span::styled("(c)", Style::default().fg(t.dim_fg)),
-            Span::styled(" continued  ", dim),
-            Span::styled("(t)", Style::default().fg(t.dim_fg)),
-            Span::styled(" trimmed  ", dim),
-            Span::styled("(s)", Style::default().fg(t.dim_fg)),
-            Span::styled(" sub-agent", dim),
-        ]);
-    }
+        // Annotation legend (if annotations exist in results)
+        if show_legend {
+            row3_spans.extend([
+                Span::styled("  ", dim),
+                Span::styled("(c)", Style::default().fg(t.dim_fg)),
+                Span::styled(" continued  ", dim),
+                Span::styled("(t)", Style::default().fg(t.dim_fg)),
+                Span::styled(" trimmed  ", dim),
+                Span::styled("(s)", Style::default().fg(t.dim_fg)),
+                Span::styled(" sub-agent", dim),
+            ]);
+        }
 
-    // Active filters (always show on second row when non-default)
-    if !app.include_original {
-        row2_spans.push(Span::styled(" [-orig]", filter_active));
-    }
-    if app.include_sub {
-        row2_spans.push(Span::styled(" [+sub]", filter_active));
-    }
-    if !app.include_trimmed {
-        row2_spans.push(Span::styled(" [-trim]", filter_active));
-    }
-    if !app.include_continued {
-        row2_spans.push(Span::styled(" [-cont]", filter_active));
-    }
-    if let Some(ref agent) = app.filter_agent {
-        row2_spans.push(Span::styled(format!(" [{}]", agent), filter_active));
-    }
-    if let Some(min) = app.filter_min_lines {
-        row2_spans.push(Span::styled(format!(" [≥{}L]", min), filter_active));
-    }
-    if let Some(ref date) = app.filter_after_date_display {
-        row2_spans.push(Span::styled(format!(" [>{}]", date), filter_active));
-    }
-    if let Some(ref date) = app.filter_before_date_display {
-        row2_spans.push(Span::styled(format!(" [<{}]", date), filter_active));
-    }
+        // Active filters
+        if !app.include_original {
+            row3_spans.push(Span::styled(" [-orig]", filter_active));
+        }
+        if app.include_sub {
+            row3_spans.push(Span::styled(" [+sub]", filter_active));
+        }
+        if !app.include_trimmed {
+            row3_spans.push(Span::styled(" [-trim]", filter_active));
+        }
+        if !app.include_continued {
+            row3_spans.push(Span::styled(" [-cont]", filter_active));
+        }
+        if let Some(ref agent) = app.filter_agent {
+            row3_spans.push(Span::styled(format!(" [{}]", agent), filter_active));
+        }
+        if let Some(min) = app.filter_min_lines {
+            row3_spans.push(Span::styled(format!(" [≥{}L]", min), filter_active));
+        }
+        if let Some(ref date) = app.filter_after_date_display {
+            row3_spans.push(Span::styled(format!(" [>{}]", date), filter_active));
+        }
+        if let Some(ref date) = app.filter_before_date_display {
+            row3_spans.push(Span::styled(format!(" [<{}]", date), filter_active));
+        }
 
-    // Render second row if we have legend or filters
-    if needs_second_row {
-        let row2 = Paragraph::new(Line::from(row2_spans));
-        frame.render_widget(row2, status_layout[1]);
+        let row3 = Paragraph::new(Line::from(row3_spans));
+        frame.render_widget(row3, status_layout[2]);
     }
 }
 
@@ -3726,6 +3755,11 @@ fn main() -> Result<()> {
                                 // Enter jump mode (go to line)
                                 app.input_mode = Some(InputMode::JumpToLine);
                                 app.input_buffer.clear();
+                            }
+                            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                // Toggle sort mode: relevance <-> time
+                                app.sort_by_time = !app.sort_by_time;
+                                app.filter(); // Re-sort results
                             }
                             KeyCode::Char(c) => app.on_char(c),
                             _ => {}
