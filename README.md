@@ -171,6 +171,24 @@ aichat search --json -g "error"    # JSONL output for AI agents
 - **JSON mode:** Use `--json` for JSONL output that AI agents can process with
   `jq` or other tools.
 
+**Session type filters:**
+
+By default, search includes original, trimmed, and continued sessions (but not
+sub-agents). Use flags to include only specific types:
+
+```bash
+aichat search                           # Default: original + trimmed + continued
+aichat search --sub-agent               # Only sub-agents
+aichat search --original                # Only original sessions
+aichat search --original --sub-agent    # Only originals and sub-agents
+aichat search --trimmed --continued     # Only trimmed and continued
+```
+
+The flags are: `--original`, `--trimmed`, `--continued`, `--sub-agent`
+
+When ANY type flag is specified, ONLY those types are included. When no type
+flags are specified, defaults apply (original + trimmed + continued).
+
 ---
 
 ## Conceptual Flow: Search → Select → Actions

@@ -537,11 +537,25 @@ impl App {
             launch_cwd,
             index_path,
             search_snippets: HashMap::new(),
-            // Filter state from CLI (defaults if not specified)
-            include_original: if cli.include_original { true } else { true },
-            include_sub: cli.include_sub,  // false unless explicitly set
-            include_trimmed: if cli.include_trimmed { true } else { true },
-            include_continued: if cli.include_continued { true } else { true },
+            // Filter state from CLI
+            // If ANY type flag is specified, use explicit mode (only include what's specified)
+            // If NO type flags are specified, use defaults (original + trimmed + continued, no sub-agents)
+            include_original: if cli.any_type_flag_specified() {
+                cli.include_original
+            } else {
+                true  // default: include
+            },
+            include_sub: cli.include_sub,  // always explicit (default false)
+            include_trimmed: if cli.any_type_flag_specified() {
+                cli.include_trimmed
+            } else {
+                true  // default: include
+            },
+            include_continued: if cli.any_type_flag_specified() {
+                cli.include_continued
+            } else {
+                true  // default: include
+            },
             filter_agent: cli.agent_filter.clone(),
             filter_min_lines: cli.min_lines,
             filter_after_date: after_date,
@@ -2928,6 +2942,14 @@ struct CliOptions {
     agent_filter: Option<String>,
     query: Option<String>,
     json_output: bool,
+}
+
+impl CliOptions {
+    /// Check if any session type filter flag was explicitly specified on CLI.
+    /// Used to distinguish between "no flags = use defaults" vs "explicit flags = use only those".
+    fn any_type_flag_specified(&self) -> bool {
+        self.include_original || self.include_sub || self.include_trimmed || self.include_continued
+    }
 }
 
 fn parse_cli_args() -> CliOptions {

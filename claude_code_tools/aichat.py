@@ -791,114 +791,45 @@ def export_all(force, verbose):
             print(f"      Error: {failure['error']}")
 
 
-@main.command("build-index", hidden=True)
+@main.command("build-index")
 @click.option(
-    "--index", "-i",
+    "--claude-home",
     type=click.Path(),
-    default="~/.cctools/search-index",
-    help="Index directory (default: ~/.cctools/search-index/)",
+    default=None,
+    help="Claude home directory (default: ~/.claude or CLAUDE_CONFIG_DIR)",
 )
-@click.option("--full", is_flag=True, help="Full rebuild (not incremental)")
-@click.option("--verbose", "-v", is_flag=True, help="Show detailed progress and failures")
-def build_index(index, full, verbose):
-    """Build Tantivy search index from exported sessions.
+@click.option(
+    "--codex-home",
+    type=click.Path(),
+    default=None,
+    help="Codex home directory (default: ~/.codex or CODEX_HOME)",
+)
+def build_index(claude_home, codex_home):
+    """Build/update the Tantivy search index from JSONL session files.
 
-    Finds exported .txt files in per-project directories and indexes them
-    for full-text search. Incremental by default (only indexes new/changed).
+    Indexes sessions directly from JSONL files (no export step needed).
+    Incremental by default - only indexes new/modified sessions.
 
-    Export files are expected at: {project}/exported-sessions/{agent}/*.txt
+    Use 'aichat clear-index' first if you want a full rebuild.
     """
-    from pathlib import Path
-    from claude_code_tools.search_index import SessionIndex
-    from claude_code_tools.export_all import (
-        extract_export_dir_from_session,
-        find_all_claude_sessions,
-        find_all_codex_sessions,
-        should_export_session,
-    )
+    from claude_code_tools.search_index import auto_index
     from claude_code_tools.session_utils import get_claude_home, get_codex_home
 
-    index_path = Path(index).expanduser()
-    claude_home = get_claude_home()
-    codex_home = get_codex_home()
+    claude_home_path = get_claude_home(cli_arg=claude_home)
+    codex_home_path = get_codex_home(cli_arg=codex_home)
 
-    print("Scanning for export files...")
-
-    # Collect all export files that exist
-    export_files: list[Path] = []
-
-    # Find Claude session exports
-    claude_sessions = find_all_claude_sessions(claude_home)
-    for session_file in claude_sessions:
-        if not should_export_session(session_file, agent="claude"):
-            continue
-        export_dir = extract_export_dir_from_session(session_file, agent="claude")
-        if export_dir:
-            export_file = export_dir / f"{session_file.stem}.txt"
-            if export_file.exists():
-                export_files.append(export_file)
-
-    # Find Codex session exports
-    codex_sessions = find_all_codex_sessions(codex_home)
-    for session_file in codex_sessions:
-        if not should_export_session(session_file, agent="codex"):
-            continue
-        export_dir = extract_export_dir_from_session(session_file, agent="codex")
-        if export_dir:
-            export_file = export_dir / f"{session_file.stem}.txt"
-            if export_file.exists():
-                export_files.append(export_file)
-
-    if not export_files:
-        print("No export files found.")
-        print("Run 'aichat export-all' first to export sessions.")
-        return
-
-    print(f"Found {len(export_files)} export files")
-    print(f"Building index at: {index_path}")
-
-    idx = SessionIndex(index_path)
-    writer = idx.get_writer()
-    incremental = not full
-
-    stats: dict = {
-        "indexed": 0,
-        "skipped": 0,
-        "failed": 0,
-        "failures": [],
-    }
-
-    with click.progressbar(
-        export_files,
-        label="Indexing",
-        show_pos=True,
-        item_show_func=lambda x: x.name if x else "",
-    ) as bar:
-        for export_file in bar:
-            result = idx.index_single_file(export_file, writer, incremental)
-            if result["status"] == "indexed":
-                stats["indexed"] += 1
-            elif result["status"] == "skipped":
-                stats["skipped"] += 1
-            else:
-                stats["failed"] += 1
-                stats["failures"].append({
-                    "file": str(export_file),
-                    "error": result["error"],
-                })
-
-    idx.commit_and_reload(writer)
+    print("Building search index...")
+    stats = auto_index(
+        claude_home=claude_home_path,
+        codex_home=codex_home_path,
+        verbose=True,
+    )
 
     print(f"\n✅ Index build complete:")
     print(f"   Indexed: {stats['indexed']}")
     print(f"   Skipped: {stats['skipped']} (unchanged)")
     print(f"   Failed:  {stats['failed']}")
-
-    if stats["failures"] and verbose:
-        print(f"\n⚠️  Failures ({len(stats['failures'])}):")
-        for failure in stats["failures"]:
-            print(f"   {failure['file']}")
-            print(f"      Error: {failure['error']}")
+    print(f"   Total files: {stats['total_files']}")
 
 
 def _scan_session_files(
