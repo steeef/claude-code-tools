@@ -280,6 +280,11 @@ struct App {
     filter_modal_open: bool,
     filter_modal_selected: usize,
 
+    // Scope modal (/ key)
+    scope_modal_open: bool,
+    scope_modal_selected: usize,
+    filter_dir: Option<String>, // Custom directory filter (overrides scope_global)
+
     // Exit confirmation
     confirming_exit: bool,
 }
@@ -291,6 +296,7 @@ enum InputMode {
     JumpToLine, // C-g - waiting for line number
     AfterDate,  // :> - waiting for date
     BeforeDate, // :< - waiting for date
+    ScopeDir,   // Custom directory for scope filter
 }
 
 #[derive(Clone, PartialEq)]
@@ -418,6 +424,10 @@ impl App {
             // Filter modal
             filter_modal_open: false,
             filter_modal_selected: 0,
+            // Scope modal
+            scope_modal_open: false,
+            scope_modal_selected: 0,
+            filter_dir: None,
             // Exit confirmation
             confirming_exit: false,
         };
@@ -452,7 +462,8 @@ impl App {
             should_quit: false,
             should_select: None,
             total_sessions: total,
-            scope_global: cli.global_search,
+            // --dir overrides -g: if filter_dir is set, scope_global is effectively false
+            scope_global: if cli.filter_dir.is_some() { false } else { cli.global_search },
             launch_cwd,
             index_path,
             search_snippets: HashMap::new(),
@@ -490,6 +501,10 @@ impl App {
             // Filter modal
             filter_modal_open: false,
             filter_modal_selected: 0,
+            // Scope modal
+            scope_modal_open: false,
+            scope_modal_selected: 0,
+            filter_dir: cli.filter_dir.clone(),
             // Exit confirmation
             confirming_exit: false,
         };
@@ -520,8 +535,18 @@ impl App {
                     }
                 }
 
-                // Scope filter
-                if !self.scope_global && !s.cwd.is_empty() && s.cwd != self.launch_cwd {
+                // Scope filter: filter_dir overrides scope_global
+                if let Some(ref filter_dir) = self.filter_dir {
+                    // Custom directory filter - match exact dir or subdirectories
+                    // Must be exact match OR start with filter_dir + "/"
+                    if !s.cwd.is_empty() {
+                        let is_match = s.cwd == *filter_dir
+                            || s.cwd.starts_with(&format!("{}/", filter_dir));
+                        if !is_match {
+                            return false;
+                        }
+                    }
+                } else if !self.scope_global && !s.cwd.is_empty() && s.cwd != self.launch_cwd {
                     return false;
                 }
 
@@ -707,25 +732,30 @@ impl App {
     }
 
     fn scope_display(&self) -> String {
-        if self.scope_global {
-            "everywhere".to_string()
+        // Determine which directory to display
+        let dir_to_show = if let Some(ref dir) = self.filter_dir {
+            dir.clone()
+        } else if self.scope_global {
+            return "everywhere".to_string();
         } else {
-            // Show ~/.../<dir> format
-            let home = std::env::var("HOME").unwrap_or_default();
-            let path = if !home.is_empty() && self.launch_cwd.starts_with(&home) {
-                format!("~{}", &self.launch_cwd[home.len()..])
-            } else {
-                self.launch_cwd.clone()
-            };
-            if path.len() > 25 {
-                let last = std::path::Path::new(&self.launch_cwd)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
-                format!("~/.../{}", last)
-            } else {
-                path
-            }
+            self.launch_cwd.clone()
+        };
+
+        // Show ~/path for short paths, ~/.../<dir> for long paths
+        let home = std::env::var("HOME").unwrap_or_default();
+        let path = if !home.is_empty() && dir_to_show.starts_with(&home) {
+            format!("~{}", &dir_to_show[home.len()..])
+        } else {
+            dir_to_show.clone()
+        };
+        if path.len() > 35 {
+            let last = std::path::Path::new(&dir_to_show)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            format!("~/.../{}", last)
+        } else {
+            path
         }
     }
 
@@ -893,6 +923,11 @@ fn render(frame: &mut Frame, app: &mut App) {
     // Filter modal overlay
     if app.filter_modal_open {
         render_filter_modal(frame, app, &t, area);
+    }
+
+    // Scope modal overlay
+    if app.scope_modal_open {
+        render_scope_modal(frame, app, &t, area);
     }
 
     // View/Actions modal overlay
@@ -1070,6 +1105,104 @@ fn render_filter_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
     frame.render_widget(paragraph, inner);
 }
 
+fn render_scope_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
+    use ratatui::widgets::{Block, Borders, Clear};
+
+    // Center the modal (wider to fit full directory paths)
+    let modal_width = 80u16;
+    let modal_height = 7u16; // 3 items + 2 border + 2 padding
+    let x = (area.width.saturating_sub(modal_width)) / 2;
+    let y = (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    // Clear the area behind the modal
+    frame.render_widget(Clear, modal_area);
+
+    // Modal border
+    let block = Block::default()
+        .title(" Scope (/) ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(t.search_bg));
+    frame.render_widget(block, modal_area);
+
+    // Inner content area
+    let inner = Rect::new(x + 2, y + 1, modal_width - 4, modal_height - 2);
+
+    // Build menu items based on current state
+    // Show full path if short, ~/.../<dir> if long (same logic as scope_display)
+    let home = std::env::var("HOME").unwrap_or_default();
+    let cwd_display = {
+        let path = if !home.is_empty() && app.launch_cwd.starts_with(&home) {
+            format!("~{}", &app.launch_cwd[home.len()..])
+        } else {
+            app.launch_cwd.clone()
+        };
+        if path.len() > 50 {
+            let last = std::path::Path::new(&app.launch_cwd)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            format!("~/.../{}", last)
+        } else {
+            path
+        }
+    };
+    let current_dir_label = format!("Current directory ({})", cwd_display);
+
+    let items: Vec<(String, bool)> = vec![
+        ("Global (everywhere)".to_string(), app.scope_global && app.filter_dir.is_none()),
+        (current_dir_label, !app.scope_global && app.filter_dir.is_none()),
+        ("Custom directory...".to_string(), app.filter_dir.is_some()),
+    ];
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    for (i, (label, is_active)) in items.iter().enumerate() {
+        let is_selected = i == app.scope_modal_selected;
+
+        let style = if is_selected {
+            Style::default().bg(t.selection_bg).fg(t.selection_header_fg)
+        } else {
+            Style::default()
+        };
+
+        let prefix = if is_selected { "▶ " } else { "  " };
+        let state = if *is_active { " ●" } else { " ○" };
+
+        // For custom directory, show the path if set
+        let suffix = if i == 2 {
+            if let Some(ref dir) = app.filter_dir {
+                let home = std::env::var("HOME").unwrap_or_default();
+                let display = if !home.is_empty() && dir.starts_with(&home) {
+                    format!(" [~{}]", &dir[home.len()..])
+                } else {
+                    format!(" [{}]", dir)
+                };
+                // Truncate if too long
+                if display.len() > 30 {
+                    format!(" [{}...]", &display[2..28])
+                } else {
+                    display
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(prefix, style),
+            Span::styled(label.clone(), style),
+            Span::styled(state, Style::default().fg(t.match_fg)),
+            Span::styled(suffix, Style::default().fg(t.dim_fg)),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
+}
+
 fn render_search_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
     // Layout: [search...] [N sessions] / ~/path/to/dir
     // Give more space to directory path by making search box smaller
@@ -1079,8 +1212,8 @@ fn render_search_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
     // Right side: " | N | / path "
     // Calculate widths: separator(3) + count + separator(3) + keycap(3) + scope + padding(2)
     let right_side_width = 3 + session_count.len() + 3 + 3 + scope_label.len() + 2;
-    // Make search box smaller to give more space to directory path
-    let search_width = (area.width as usize).saturating_sub(right_side_width + 12);
+    // Make search box smaller to give more space to directory path (shift right side left by ~20 chars)
+    let search_width = (area.width as usize).saturating_sub(right_side_width + 32);
 
     let middle_line = if app.query.is_empty() {
         let placeholder = " Search...";
@@ -1444,6 +1577,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             InputMode::JumpToLine => format!(" Go to row: {}█ ", app.input_buffer),
             InputMode::AfterDate => format!(" After date: {}█ (any format) ", app.input_buffer),
             InputMode::BeforeDate => format!(" Before date: {}█ (any format) ", app.input_buffer),
+            InputMode::ScopeDir => format!(" Directory: {}█ (Enter=apply, empty=global) ", app.input_buffer),
         };
         spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
     } else if app.command_mode {
@@ -1478,12 +1612,11 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             ]);
         }
 
-        // / scope toggle - show action (what it will switch TO), not current state
-        let scope_indicator = if app.scope_global { "local" } else { "global" };
+        // / scope - opens directory filter modal
         spans.extend([
             Span::styled(" │ ", dim),
             Span::styled(" / ", keycap),
-            Span::styled(format!(" {} ", scope_indicator), label),
+            Span::styled(" dir ", label),
         ]);
 
         // C-f filter, Esc quit
@@ -2677,6 +2810,7 @@ struct CliOptions {
     claude_home: Option<String>,
     codex_home: Option<String>,
     global_search: bool,
+    filter_dir: Option<String>, // --dir: filter to specific directory (overrides -g)
     num_results: Option<usize>,
     include_original: bool,
     include_sub: bool,
@@ -2728,6 +2862,23 @@ fn parse_cli_args() -> CliOptions {
 
     let global_search = has_flag("--global") || has_flag("-g");
 
+    // --dir overrides -g: filter to specific directory
+    let filter_dir = get_arg_value("--dir").map(|dir| {
+        // Expand ~ to home directory
+        if dir.starts_with('~') {
+            let home = std::env::var("HOME").unwrap_or_default();
+            format!("{}{}", home, &dir[1..])
+        } else if dir.starts_with('/') {
+            dir
+        } else {
+            // Relative path - make absolute from cwd
+            let cwd = std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            format!("{}/{}", cwd, dir)
+        }
+    });
+
     let num_results = get_arg_value("--num-results")
         .or_else(|| get_arg_value("-n"))
         .and_then(|s| s.parse().ok());
@@ -2755,6 +2906,7 @@ fn parse_cli_args() -> CliOptions {
         claude_home,
         codex_home,
         global_search,
+        filter_dir,
         num_results,
         include_original,
         include_sub,
@@ -2972,6 +3124,73 @@ fn main() -> Result<()> {
                                 _ => {}
                             }
                         }
+                    } else if app.scope_modal_open {
+                        // Handle scope modal
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.scope_modal_open = false;
+                            }
+                            KeyCode::Char('/') => {
+                                app.scope_modal_open = false;
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                if app.scope_modal_selected > 0 {
+                                    app.scope_modal_selected -= 1;
+                                }
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                if app.scope_modal_selected < 2 {
+                                    app.scope_modal_selected += 1;
+                                }
+                            }
+                            KeyCode::Enter | KeyCode::Char(' ') => {
+                                match app.scope_modal_selected {
+                                    0 => {
+                                        // Global
+                                        app.scope_global = true;
+                                        app.filter_dir = None;
+                                        app.filter();
+                                        app.scope_modal_open = false;
+                                    }
+                                    1 => {
+                                        // Current directory
+                                        app.scope_global = false;
+                                        app.filter_dir = None;
+                                        app.filter();
+                                        app.scope_modal_open = false;
+                                    }
+                                    2 => {
+                                        // Custom directory - enter input mode
+                                        app.scope_modal_open = false;
+                                        app.input_mode = Some(InputMode::ScopeDir);
+                                        // Pre-fill with current filter_dir or launch_cwd
+                                        app.input_buffer = app.filter_dir.clone()
+                                            .unwrap_or_else(|| app.launch_cwd.clone());
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            KeyCode::Char('1') => {
+                                app.scope_global = true;
+                                app.filter_dir = None;
+                                app.filter();
+                                app.scope_modal_open = false;
+                            }
+                            KeyCode::Char('2') => {
+                                app.scope_global = false;
+                                app.filter_dir = None;
+                                app.filter();
+                                app.scope_modal_open = false;
+                            }
+                            KeyCode::Char('3') => {
+                                // Custom directory - enter input mode
+                                app.scope_modal_open = false;
+                                app.input_mode = Some(InputMode::ScopeDir);
+                                app.input_buffer = app.filter_dir.clone()
+                                    .unwrap_or_else(|| app.launch_cwd.clone());
+                            }
+                            _ => {}
+                        }
                     } else if app.filter_modal_open {
                         // Handle filter modal
                         let items = FilterMenuItem::all();
@@ -3141,6 +3360,27 @@ fn main() -> Result<()> {
                                         }
                                         app.filter();
                                     }
+                                    InputMode::ScopeDir => {
+                                        if app.input_buffer.is_empty() {
+                                            // Empty = global
+                                            app.scope_global = true;
+                                            app.filter_dir = None;
+                                        } else {
+                                            // Expand ~ to home directory
+                                            let path = if app.input_buffer.starts_with('~') {
+                                                let home = std::env::var("HOME").unwrap_or_default();
+                                                format!("{}{}", home, &app.input_buffer[1..])
+                                            } else if app.input_buffer.starts_with('/') {
+                                                app.input_buffer.clone()
+                                            } else {
+                                                // Relative path - make absolute from launch_cwd
+                                                format!("{}/{}", app.launch_cwd, app.input_buffer)
+                                            };
+                                            app.filter_dir = Some(path);
+                                            app.scope_global = false;
+                                        }
+                                        app.filter();
+                                    }
                                 }
                                 app.input_mode = None;
                                 app.input_buffer.clear();
@@ -3166,11 +3406,11 @@ fn main() -> Result<()> {
                             KeyCode::Char(c) if c.is_ascii_digit() && (mode == InputMode::MinLines || mode == InputMode::JumpToLine) => {
                                 app.input_buffer.push(c);
                             }
-                            KeyCode::Char(c) if mode == InputMode::AfterDate || mode == InputMode::BeforeDate => {
-                                // Accept any character for flexible date input
+                            KeyCode::Char(c) if mode == InputMode::AfterDate || mode == InputMode::BeforeDate || mode == InputMode::ScopeDir => {
+                                // Accept any character for flexible input
                                 app.input_buffer.push(c);
                             }
-                            KeyCode::Backspace if mode == InputMode::MinLines || mode == InputMode::JumpToLine || mode == InputMode::AfterDate || mode == InputMode::BeforeDate => {
+                            KeyCode::Backspace if mode == InputMode::MinLines || mode == InputMode::JumpToLine || mode == InputMode::AfterDate || mode == InputMode::BeforeDate || mode == InputMode::ScopeDir => {
                                 app.input_buffer.pop();
                             }
                             _ => {}
@@ -3291,7 +3531,11 @@ fn main() -> Result<()> {
                             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_up(10),
                             KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_down(10),
                             KeyCode::Backspace => app.on_backspace(),
-                            KeyCode::Char('/') => app.toggle_scope(),
+                            KeyCode::Char('/') => {
+                                // Open scope modal
+                                app.scope_modal_open = true;
+                                app.scope_modal_selected = 0;
+                            }
                             KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 // Open filter modal
                                 app.filter_modal_open = true;

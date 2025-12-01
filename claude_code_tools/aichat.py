@@ -1187,6 +1187,8 @@ def index_stats(index, cwd, claude_home, codex_home):
 )
 @click.option('-g', '--global', 'global_search', is_flag=True,
               help='Search across all projects (not just current)')
+@click.option('--dir', 'filter_dir', type=click.Path(exists=True, file_okay=False),
+              help='Filter to specific directory (overrides -g)')
 @click.option('-n', '--num-results', type=int, default=None,
               help='Limit number of results displayed')
 @click.option('--original', is_flag=True, help='Include original sessions')
@@ -1208,7 +1210,7 @@ def index_stats(index, cwd, claude_home, codex_home):
                    'is_sidechain, snippet')
 @click.argument('query', required=False)
 def search(
-    claude_home_arg, codex_home_arg, global_search, num_results,
+    claude_home_arg, codex_home_arg, global_search, filter_dir, num_results,
     original, sub_agent, trimmed, continued, min_lines,
     after, before, agent, json_output, query
 ):
@@ -1222,7 +1224,12 @@ def search(
         aichat search                      # Interactive TUI
         aichat search "langroid agent"     # Pre-fill search query
         aichat search -g --after 11/20/25  # Global, recent sessions
+        aichat search --dir ~/Git/myproj   # Filter to specific directory
         aichat search --json "MCP"         # JSON output for AI agents
+
+    \b
+    Notes:
+        --dir overrides -g (global) when both are specified.
 
     \b
     Environment variables:
@@ -1284,7 +1291,10 @@ def search(
     rust_args.extend(["--codex-home", str(codex_home)])
 
     # Filter options
-    if global_search:
+    if filter_dir:
+        # --dir overrides -g
+        rust_args.extend(["--dir", str(Path(filter_dir).resolve())])
+    elif global_search:
         rust_args.append("--global")
     if num_results:
         rust_args.extend(["--num-results", str(num_results)])
