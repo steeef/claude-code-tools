@@ -974,43 +974,141 @@ def index_stats(index, cwd):
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     help='Path to Claude home directory (overrides CLAUDE_CONFIG_DIR env var)',
 )
-def search(claude_home_arg):
+@click.option(
+    '--codex-home',
+    'codex_home_arg',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help='Path to Codex home directory (overrides CODEX_HOME env var)',
+)
+@click.option('-g', '--global', 'global_search', is_flag=True,
+              help='Search across all projects (not just current)')
+@click.option('-n', '--num-results', type=int, default=None,
+              help='Limit number of results displayed')
+@click.option('--original', is_flag=True, help='Include original sessions')
+@click.option('--sub-agent', is_flag=True, help='Include sub-agent sessions')
+@click.option('--trimmed', is_flag=True, help='Include trimmed sessions')
+@click.option('--continued', is_flag=True, help='Include continued sessions')
+@click.option('--min-lines', type=int, default=None,
+              help='Only show sessions with at least N lines')
+@click.option('--after', metavar='DATE',
+              help='Sessions modified after date (YYYYMMDD, MM/DD/YY)')
+@click.option('--before', metavar='DATE',
+              help='Sessions modified before date (YYYYMMDD, MM/DD/YY)')
+@click.option('--agent', type=click.Choice(['claude', 'codex', 'all']),
+              default='all', help='Filter by agent type')
+@click.option('--json', 'json_output', is_flag=True,
+              help='Output results as JSON (for programmatic use)')
+@click.argument('query', required=False)
+def search(
+    claude_home_arg, codex_home_arg, global_search, num_results,
+    original, sub_agent, trimmed, continued, min_lines,
+    after, before, agent, json_output, query
+):
     """Launch interactive TUI for full-text session search.
 
     Provides fast Tantivy-based search across all Claude and Codex sessions
     with auto-indexing, keyword highlighting, and session actions.
 
-    The --claude-home option takes precedence over CLAUDE_CONFIG_DIR env var.
+    \b
+    Examples:
+        aichat search                      # Interactive TUI
+        aichat search "langroid agent"     # Pre-fill search query
+        aichat search -g --after 11/20/25  # Global, recent sessions
+        aichat search --json "MCP"         # JSON output for AI agents
+
+    \b
+    Environment variables:
+        CLAUDE_CONFIG_DIR  - Default Claude home (overridden by --claude-home)
+        CODEX_HOME         - Default Codex home (overridden by --codex-home)
     """
-    import json
+    import json as json_lib
     import os
     import subprocess
+    import sys
     import tempfile
     from pathlib import Path
 
     # Find Rust binary
-    rust_binary = Path(__file__).parent.parent / "rust-search-ui" / "target" / "release" / "session_search"
+    rust_binary = (
+        Path(__file__).parent.parent
+        / "rust-search-ui"
+        / "target"
+        / "release"
+        / "session_search"
+    )
     if not rust_binary.exists():
-        print(f"Error: Rust binary not found at: {rust_binary}")
-        print("Build it with: cd rust-search-ui && cargo build --release")
+        print(f"Error: Rust binary not found at: {rust_binary}", file=sys.stderr)
+        print(
+            "Build it with: cd rust-search-ui && cargo build --release",
+            file=sys.stderr,
+        )
         return
 
-    # Auto-index new/changed sessions before launching TUI (Recall model)
-    # Priority: CLI arg > CLAUDE_CONFIG_DIR env var > default ~/.claude
+    # Resolve home directories (CLI arg > env var > default)
+    from claude_code_tools.session_utils import get_claude_home, get_codex_home
+    claude_home = get_claude_home(cli_arg=claude_home_arg)
+    codex_home = get_codex_home(cli_arg=codex_home_arg)
+
+    # Auto-index new/changed sessions before search (Recall model)
     try:
         from claude_code_tools.search_index import auto_index
-        from claude_code_tools.session_utils import get_claude_home
-        claude_home = get_claude_home(cli_arg=claude_home_arg)
         stats = auto_index(claude_home=claude_home, verbose=False)
-        if stats["indexed"] > 0:
+        # Only print message in TUI mode
+        if not json_output and stats["indexed"] > 0:
             print(f"Indexed {stats['indexed']} new/modified sessions")
     except ImportError:
-        # Tantivy not installed - skip auto-indexing
         pass
     except Exception as e:
-        print(f"Warning: Auto-indexing failed: {e}")
+        if not json_output:
+            print(f"Warning: Auto-indexing failed: {e}", file=sys.stderr)
 
-    # Import once outside the loop
+    # Build CLI args for Rust binary
+    rust_args = [str(rust_binary)]
+
+    # Home directories
+    rust_args.extend(["--claude-home", str(claude_home)])
+    rust_args.extend(["--codex-home", str(codex_home)])
+
+    # Filter options
+    if global_search:
+        rust_args.append("--global")
+    if num_results:
+        rust_args.extend(["--num-results", str(num_results)])
+    if original:
+        rust_args.append("--original")
+    if sub_agent:
+        rust_args.append("--sub-agent")
+    if trimmed:
+        rust_args.append("--trimmed")
+    if continued:
+        rust_args.append("--continued")
+    if min_lines:
+        rust_args.extend(["--min-lines", str(min_lines)])
+    if after:
+        rust_args.extend(["--after", after])
+    if before:
+        rust_args.extend(["--before", before])
+    if agent and agent != "all":
+        rust_args.extend(["--agent", agent])
+    if query:
+        rust_args.extend(["--query", query])
+
+    # JSON output mode - run Rust with --json, output to stdout, exit
+    if json_output:
+        rust_args.append("--json")
+        try:
+            result = subprocess.run(rust_args, capture_output=True, text=True)
+            # Output JSON to stdout (errors to stderr)
+            if result.stdout:
+                print(result.stdout)
+            if result.returncode != 0 and result.stderr:
+                print(result.stderr, file=sys.stderr)
+            sys.exit(result.returncode)
+        except Exception as e:
+            print(f"Error running search: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # Import for interactive TUI mode
     from claude_code_tools.node_menu_ui import run_node_menu_ui
     from claude_code_tools.session_menu_cli import execute_action
 
@@ -1019,7 +1117,7 @@ def search(claude_home_arg):
 
     def action_handler(sess, action, kwargs):
         """Handle action from Node menu."""
-        agent = sess.get("agent", "claude")
+        agent_type = sess.get("agent", "claude")
         file_path = sess.get("file_path")
         cwd = sess.get("cwd") or "."
 
@@ -1029,7 +1127,7 @@ def search(claude_home_arg):
 
         execute_action(
             action=action,
-            agent=agent,
+            agent=agent_type,
             session_file=Path(file_path),
             project_path=cwd,
             action_kwargs=kwargs,
@@ -1043,12 +1141,9 @@ def search(claude_home_arg):
         os.close(fd)
 
         # Run Rust TUI (interactive - needs TTY)
-        # Pass resolved claude_home for filtering (CLI arg > env var > default)
+        tui_args = rust_args + [out_path]
         try:
-            result = subprocess.run([
-                str(rust_binary), out_path,
-                "--claude-home", str(claude_home)
-            ])
+            result = subprocess.run(tui_args)
         except Exception as e:
             print(f"Error running Rust TUI: {e}")
             try:
@@ -1080,8 +1175,8 @@ def search(claude_home_arg):
             return
 
         try:
-            selected = json.loads(content)
-        except json.JSONDecodeError as e:
+            selected = json_lib.loads(content)
+        except json_lib.JSONDecodeError as e:
             print(f"Error parsing Rust output: {e}")
             print(f"Output was: {content[:200]}")
             return

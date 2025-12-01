@@ -425,6 +425,78 @@ impl App {
         app
     }
 
+    fn new_with_options(sessions: Vec<Session>, index_path: String, cli: &CliOptions) -> Self {
+        let total = sessions.len();
+        let launch_cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // Parse date filters if provided
+        let (after_date, after_display) = cli.after_date.as_ref()
+            .and_then(|d| parse_flexible_date(d))
+            .map(|(cmp, disp)| (Some(cmp), Some(disp)))
+            .unwrap_or((None, None));
+
+        let (before_date, before_display) = cli.before_date.as_ref()
+            .and_then(|d| parse_flexible_date(d))
+            .map(|(cmp, disp)| (Some(cmp), Some(disp)))
+            .unwrap_or((None, None));
+
+        let mut app = Self {
+            sessions,
+            filtered: Vec::new(),
+            query: cli.query.clone().unwrap_or_default(),
+            selected: 0,
+            list_scroll: 0,
+            preview_scroll: 0,
+            should_quit: false,
+            should_select: None,
+            total_sessions: total,
+            scope_global: cli.global_search,
+            launch_cwd,
+            index_path,
+            search_snippets: HashMap::new(),
+            // Filter state from CLI (defaults if not specified)
+            include_original: if cli.include_original { true } else { true },
+            include_sub: cli.include_sub,  // false unless explicitly set
+            include_trimmed: if cli.include_trimmed { true } else { true },
+            include_continued: if cli.include_continued { true } else { true },
+            filter_agent: cli.agent_filter.clone(),
+            filter_min_lines: cli.min_lines,
+            filter_after_date: after_date,
+            filter_after_date_display: after_display,
+            filter_before_date: before_date,
+            filter_before_date_display: before_display,
+            filter_claude_home: cli.claude_home.clone(),
+            filter_codex_home: cli.codex_home.clone(),
+            // Command mode
+            command_mode: false,
+            // Full view mode
+            full_view_mode: false,
+            full_content: String::new(),
+            full_content_scroll: 0,
+            // View mode search
+            view_search_mode: false,
+            view_search_pattern: String::new(),
+            view_search_matches: Vec::new(),
+            view_search_current: 0,
+            // Jump mode
+            jump_input: String::new(),
+            // Input mode
+            input_mode: None,
+            input_buffer: String::new(),
+            // Action mode
+            action_mode: None,
+            // Filter modal
+            filter_modal_open: false,
+            filter_modal_selected: 0,
+            // Exit confirmation
+            confirming_exit: false,
+        };
+        app.filter();
+        app
+    }
+
     fn filter(&mut self) {
         self.filtered = self
             .sessions
@@ -2567,68 +2639,192 @@ fn extract_codex_message_text(payload: &serde_json::Value) -> Option<String> {
 }
 
 // ============================================================================
+// JSON Output
+// ============================================================================
+
+fn output_json(app: &App, limit: Option<usize>) -> Result<()> {
+    use serde_json::json;
+
+    // Output as JSONL (one JSON object per line) for easy piping and jq processing
+    for &idx in app.filtered.iter().take(limit.unwrap_or(usize::MAX)) {
+        let s = &app.sessions[idx];
+        let obj = json!({
+            "session_id": s.session_id,
+            "agent": s.agent,
+            "project": s.project,
+            "branch": s.branch,
+            "cwd": s.cwd,
+            "lines": s.lines,
+            "created": s.created,
+            "modified": s.modified,
+            "first_msg": s.first_msg_content,
+            "last_msg": s.last_msg_content,
+            "file_path": s.export_path,
+            "derivation_type": s.derivation_type,
+            "is_sidechain": s.is_sidechain,
+            "snippet": app.search_snippets.get(&s.session_id).cloned(),
+        });
+        println!("{}", serde_json::to_string(&obj)?);
+    }
+    Ok(())
+}
+
+// CLI Options
+// ============================================================================
+
+struct CliOptions {
+    output_file: Option<std::path::PathBuf>,
+    claude_home: Option<String>,
+    codex_home: Option<String>,
+    global_search: bool,
+    num_results: Option<usize>,
+    include_original: bool,
+    include_sub: bool,
+    include_trimmed: bool,
+    include_continued: bool,
+    min_lines: Option<i64>,
+    after_date: Option<String>,
+    before_date: Option<String>,
+    agent_filter: Option<String>,
+    query: Option<String>,
+    json_output: bool,
+}
+
+fn parse_cli_args() -> CliOptions {
+    let args: Vec<String> = std::env::args().collect();
+
+    // Helper to get value after a flag
+    let get_arg_value = |flag: &str| -> Option<String> {
+        args.iter()
+            .position(|a| a == flag)
+            .and_then(|i| args.get(i + 1))
+            .map(|s| s.to_string())
+    };
+
+    // Helper to check if flag exists
+    let has_flag = |flag: &str| -> bool {
+        args.iter().any(|a| a == flag)
+    };
+
+    // Output file is a positional arg that's a path (contains / or ends with .json)
+    let output_file = args.iter()
+        .skip(1)  // skip binary name
+        .find(|a| !a.starts_with('-') && (a.contains('/') || a.ends_with(".json")))
+        .map(std::path::PathBuf::from);
+
+    let claude_home = get_arg_value("--claude-home");
+
+    let codex_home = get_arg_value("--codex-home")
+        .or_else(|| std::env::var("CODEX_HOME").ok())
+        .or_else(|| {
+            dirs::home_dir().map(|h| h.join(".codex").to_string_lossy().to_string())
+        });
+
+    let global_search = has_flag("--global") || has_flag("-g");
+
+    let num_results = get_arg_value("--num-results")
+        .or_else(|| get_arg_value("-n"))
+        .and_then(|s| s.parse().ok());
+
+    // Filter inclusion flags (if specified, include that type)
+    let include_original = has_flag("--original");
+    let include_sub = has_flag("--sub-agent");
+    let include_trimmed = has_flag("--trimmed");
+    let include_continued = has_flag("--continued");
+
+    let min_lines = get_arg_value("--min-lines")
+        .and_then(|s| s.parse().ok());
+
+    let after_date = get_arg_value("--after");
+    let before_date = get_arg_value("--before");
+
+    let agent_filter = get_arg_value("--agent");
+
+    let query = get_arg_value("--query");
+
+    let json_output = has_flag("--json");
+
+    CliOptions {
+        output_file,
+        claude_home,
+        codex_home,
+        global_search,
+        num_results,
+        include_original,
+        include_sub,
+        include_trimmed,
+        include_continued,
+        min_lines,
+        after_date,
+        before_date,
+        agent_filter,
+        query,
+        json_output,
+    }
+}
+
 // Main
 // ============================================================================
 
 fn main() -> Result<()> {
+    let cli = parse_cli_args();
+
     let index_path = dirs::home_dir()
         .context("Could not find home directory")?
         .join(".cctools")
         .join("search-index");
 
-    let args: Vec<String> = std::env::args().collect();
-    let output_file = args.get(1).map(std::path::PathBuf::from);
-
-    // Parse --claude-home argument (format: binary out_path --claude-home /path/to/home)
-    let filter_claude_home = args.iter()
-        .position(|a| a == "--claude-home")
-        .and_then(|i| args.get(i + 1))
-        .map(|s| s.to_string());
-
-    // Parse --codex-home argument (priority: CLI arg > CODEX_HOME env > ~/.codex default)
-    let filter_codex_home = args.iter()
-        .position(|a| a == "--codex-home")
-        .and_then(|i| args.get(i + 1))
-        .map(|s| s.to_string())
-        .or_else(|| std::env::var("CODEX_HOME").ok())
-        .or_else(|| dirs::home_dir().map(|h| h.join(".codex").to_string_lossy().to_string()));
-
     const SESSION_LIMIT: usize = 100_000;
     let sessions = load_sessions(index_path.to_str().unwrap(), SESSION_LIMIT)?;
 
     // Warn if we hit the limit - sessions may have been truncated
-    if sessions.len() >= SESSION_LIMIT {
+    if sessions.len() >= SESSION_LIMIT && !cli.json_output {
         eprintln!("⚠️  WARNING: Session limit ({}) reached!", SESSION_LIMIT);
-        eprintln!("⚠️  Some sessions may have been dropped. You may not see expected results.");
-        eprintln!("⚠️  Consider clearing old sessions or increasing SESSION_LIMIT.");
+        eprintln!("⚠️  Some sessions may have been dropped.");
         eprintln!();
     }
 
     if sessions.is_empty() {
-        eprintln!("No sessions found. Run 'aichat export-all && aichat build-index' first.");
+        if cli.json_output {
+            println!("[]");
+            return Ok(());
+        }
+        eprintln!("No sessions found. Run 'aichat search' to auto-index.");
         return Ok(());
     }
 
-    // Show home filters being used
-    if let Some(ref home) = filter_claude_home {
-        eprintln!("Claude home filter: {}", home);
-    }
-    if let Some(ref home) = filter_codex_home {
-        eprintln!("Codex home filter: {}", home);
+    // Show home filters (only for TUI mode)
+    if !cli.json_output {
+        if let Some(ref home) = cli.claude_home {
+            eprintln!("Claude home filter: {}", home);
+        }
+        if let Some(ref home) = cli.codex_home {
+            eprintln!("Codex home filter: {}", home);
+        }
+
+        let claude_count = sessions.iter().filter(|s| s.agent != "codex").count();
+        let codex_count = sessions.iter().filter(|s| s.agent == "codex").count();
+        eprintln!("Sessions in index: {} Claude, {} Codex", claude_count, codex_count);
     }
 
-    // Count sessions by agent type
-    let claude_count = sessions.iter().filter(|s| s.agent != "codex").count();
-    let codex_count = sessions.iter().filter(|s| s.agent == "codex").count();
-    eprintln!("Sessions in index: {} Claude, {} Codex", claude_count, codex_count);
+    // Create app with CLI options pre-configured
+    let mut app = App::new_with_options(
+        sessions,
+        index_path.to_string_lossy().to_string(),
+        &cli,
+    );
 
+    // JSON output mode - output filtered results and exit
+    if cli.json_output {
+        return output_json(&app, cli.num_results);
+    }
+
+    // Interactive TUI mode
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    let mut app = App::new(sessions, index_path.to_string_lossy().to_string(), filter_claude_home, filter_codex_home);
 
     loop {
         terminal.draw(|f| render(f, &mut app))?;
@@ -3116,8 +3312,8 @@ fn main() -> Result<()> {
 
     if let Some(session) = app.should_select {
         let json = serde_json::to_string(&session)?;
-        if let Some(out_path) = output_file {
-            std::fs::write(&out_path, &json)?;
+        if let Some(ref out_path) = cli.output_file {
+            std::fs::write(out_path, &json)?;
         } else {
             println!("{}", json);
         }
