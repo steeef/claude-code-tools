@@ -544,6 +544,8 @@ class SessionIndex:
         jsonl_files: list[Path],
         incremental: bool = True,
         claude_home: Optional[Path] = None,
+        codex_home: Optional[Path] = None,
+        show_progress: bool = False,
     ) -> dict[str, int]:
         """
         Build or update index directly from JSONL session files.
@@ -555,17 +557,28 @@ class SessionIndex:
             jsonl_files: List of paths to session JSONL files
             incremental: If True, only index new/modified files
             claude_home: Claude home directory (stored for filtering)
+            codex_home: Codex home directory (stored for filtering)
+            show_progress: If True, show tqdm progress bar
 
         Returns:
             Stats dict: {indexed, skipped, failed}
         """
         claude_home_str = str(claude_home) if claude_home else ""
-        codex_home_str = str(Path.home() / ".codex")  # Default codex home
+        codex_home_str = str(codex_home) if codex_home else str(Path.home() / ".codex")
         stats = {"indexed": 0, "skipped": 0, "failed": 0}
 
         writer = self.get_writer()
 
-        for jsonl_path in jsonl_files:
+        # Wrap iterator with tqdm if progress requested
+        file_iter = jsonl_files
+        if show_progress:
+            try:
+                from tqdm import tqdm
+                file_iter = tqdm(jsonl_files, desc="Indexing sessions", unit="file")
+            except ImportError:
+                pass  # tqdm not available, continue without progress bar
+
+        for jsonl_path in file_iter:
             # Check if needs indexing
             if incremental and not self.state.needs_reindex(jsonl_path):
                 stats["skipped"] += 1
@@ -580,6 +593,15 @@ class SessionIndex:
             metadata = parsed["metadata"]
             first_msg = parsed["first_msg"]
             last_msg = parsed["last_msg"]
+
+            # Skip sessions run from inside claude_home or codex_home directories
+            cwd = metadata.get("cwd", "") or ""
+            if cwd and (
+                (claude_home_str and cwd.startswith(claude_home_str))
+                or (codex_home_str and cwd.startswith(codex_home_str))
+            ):
+                stats["skipped"] += 1
+                continue
 
             try:
                 session_id = metadata.get("session_id", "")
@@ -921,7 +943,11 @@ def auto_index(
     # Create/open index and run incremental indexing
     index = SessionIndex(index_path)
     stats = index.index_from_jsonl(
-        jsonl_files, incremental=True, claude_home=claude_home
+        jsonl_files,
+        incremental=True,
+        claude_home=claude_home,
+        codex_home=codex_home,
+        show_progress=True,
     )
     stats["total_files"] = len(jsonl_files)
 

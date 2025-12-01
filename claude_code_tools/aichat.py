@@ -937,6 +937,16 @@ def _scan_session_files(
                     first_line = f.readline().strip()
                 if first_line:
                     data = json.loads(first_line)
+
+                    # Skip sessions run from inside claude_home or codex_home
+                    cwd = data.get("cwd", "")
+                    claude_home_str = str(claude_home)
+                    codex_home_str = str(codex_home)
+                    if cwd and (
+                        cwd.startswith(claude_home_str)
+                        or cwd.startswith(codex_home_str)
+                    ):
+                        continue
                     # Use file path as key (unique per file)
                     file_key = str(jsonl_path)
 
@@ -972,6 +982,16 @@ def _scan_session_files(
                     first_line = f.readline().strip()
                 if first_line:
                     data = json.loads(first_line)
+
+                    # Skip sessions run from inside claude_home or codex_home
+                    cwd = data.get("cwd", "")
+                    claude_home_str = str(claude_home)
+                    codex_home_str = str(codex_home)
+                    if cwd and (
+                        cwd.startswith(claude_home_str)
+                        or cwd.startswith(codex_home_str)
+                    ):
+                        continue
                     # Use file path as key (unique per file)
                     file_key = str(jsonl_path)
 
