@@ -901,6 +901,106 @@ def build_index(index, full, verbose):
             print(f"      Error: {failure['error']}")
 
 
+def _scan_session_files(
+    claude_home: "Path",
+    codex_home: "Path",
+) -> dict:
+    """
+    Scan filesystem for all JSONL session files and read their metadata.
+
+    Returns dict with:
+        - files: dict mapping file_path (str) -> {path, is_subagent, agent, ...}
+        - counts: {claude_resumable, claude_subagent, codex_resumable, codex_subagent}
+        - errors: list of files that couldn't be parsed
+    """
+    import json
+    from claude_code_tools.session_utils import is_valid_session
+
+    files = {}
+    counts = {
+        "claude_resumable": 0,
+        "claude_subagent": 0,
+        "codex_resumable": 0,
+        "codex_subagent": 0,
+        "claude_invalid": 0,
+        "codex_invalid": 0,
+    }
+    errors = []
+
+    # Scan Claude sessions
+    claude_projects = claude_home / "projects"
+    if claude_projects.exists():
+        for jsonl_path in claude_projects.glob("**/*.jsonl"):
+            is_subagent = jsonl_path.name.startswith("agent-")
+            try:
+                with open(jsonl_path) as f:
+                    first_line = f.readline().strip()
+                if first_line:
+                    data = json.loads(first_line)
+                    # Use file path as key (unique per file)
+                    file_key = str(jsonl_path)
+
+                    # Check if actually resumable (has user/assistant messages)
+                    if is_subagent:
+                        is_resumable = True  # Subagents are always valid
+                    else:
+                        is_resumable = is_valid_session(jsonl_path)
+
+                    if not is_resumable:
+                        counts["claude_invalid"] += 1
+                        continue  # Skip non-resumable files
+
+                    files[file_key] = {
+                        "path": jsonl_path,
+                        "is_subagent": is_subagent,
+                        "agent": "claude",
+                        "session_id": data.get("sessionId", ""),
+                    }
+                    if is_subagent:
+                        counts["claude_subagent"] += 1
+                    else:
+                        counts["claude_resumable"] += 1
+            except Exception as e:
+                errors.append({"path": jsonl_path, "error": str(e)})
+
+    # Scan Codex sessions
+    if codex_home.exists():
+        for jsonl_path in codex_home.glob("**/*.jsonl"):
+            is_subagent = jsonl_path.name.startswith("agent-")
+            try:
+                with open(jsonl_path) as f:
+                    first_line = f.readline().strip()
+                if first_line:
+                    data = json.loads(first_line)
+                    # Use file path as key (unique per file)
+                    file_key = str(jsonl_path)
+
+                    # Check if actually resumable (has user/assistant messages)
+                    if is_subagent:
+                        is_resumable = True  # Subagents are always valid
+                    else:
+                        is_resumable = is_valid_session(jsonl_path)
+
+                    if not is_resumable:
+                        counts["codex_invalid"] += 1
+                        continue  # Skip non-resumable files
+
+                    files[file_key] = {
+                        "path": jsonl_path,
+                        "is_subagent": is_subagent,
+                        "agent": "codex",
+                        "session_id": data.get("sessionId", "") or data.get("id", ""),
+                    }
+                    if is_subagent:
+                        counts["codex_subagent"] += 1
+                    else:
+                        counts["codex_resumable"] += 1
+            except Exception as e:
+                errors.append({"path": jsonl_path, "error": str(e)})
+
+    return {"files": files, "counts": counts, "errors": errors}
+
+
 @main.command("index-stats")
 @click.option(
     "--index", "-i",
@@ -909,10 +1009,23 @@ def build_index(index, full, verbose):
     help="Index directory",
 )
 @click.option("--cwd", "-c", help="Filter to specific cwd path")
-def index_stats(index, cwd):
-    """Show statistics about the Tantivy search index.
+@click.option(
+    "--claude-home",
+    type=click.Path(),
+    default="~/.claude",
+    help="Claude home directory",
+)
+@click.option(
+    "--codex-home",
+    type=click.Path(),
+    default="~/.codex",
+    help="Codex home directory",
+)
+def index_stats(index, cwd, claude_home, codex_home):
+    """Show statistics about the Tantivy search index with reconciliation.
 
-    Useful for debugging indexing issues.
+    Compares index contents against actual session files on disk to identify
+    missing or orphaned sessions.
     """
     from collections import Counter
     from pathlib import Path
@@ -924,25 +1037,117 @@ def index_stats(index, cwd):
         return
 
     index_path = Path(index).expanduser()
+    claude_home_path = Path(claude_home).expanduser()
+    codex_home_path = Path(codex_home).expanduser()
+
     if not index_path.exists():
         print(f"Index not found at {index_path}")
         return
 
-    idx = SessionIndex(index_path)
-    results = idx.get_recent(limit=50000)
+    # === Filesystem scan ===
+    print("Scanning filesystem...")
+    fs_data = _scan_session_files(claude_home_path, codex_home_path)
+    fs_files = fs_data["files"]
+    fs_counts = fs_data["counts"]
+    fs_errors = fs_data["errors"]
 
+    print("\n=== Filesystem ===")
+    print(f"Claude resumable: {fs_counts['claude_resumable']}")
+    print(f"Claude subagent:  {fs_counts['claude_subagent']}")
+    print(f"Codex resumable:  {fs_counts['codex_resumable']}")
+    print(f"Codex subagent:   {fs_counts['codex_subagent']}")
+    total_valid = (
+        fs_counts['claude_resumable'] + fs_counts['claude_subagent'] +
+        fs_counts['codex_resumable'] + fs_counts['codex_subagent']
+    )
+    total_invalid = fs_counts['claude_invalid'] + fs_counts['codex_invalid']
+    print(f"Total valid:      {total_valid}")
+    if total_invalid > 0:
+        print(f"Skipped invalid:  {total_invalid} (no resumable messages)")
+
+    if fs_errors:
+        print(f"Parse errors:     {len(fs_errors)}")
+
+    # === Index stats ===
+    idx = SessionIndex(index_path)
+    results = idx.get_recent(limit=100000)
+
+    print("\n=== Index ===")
     print(f"Total documents: {len(results)}")
 
-    # Count unique sessions
-    session_ids = [r.get("session_id", "") for r in results]
-    unique_sessions = set(session_ids)
-    print(f"Unique sessions: {len(unique_sessions)}")
+    # Build index lookup by export_path (unique key for each indexed file)
+    # Filter to only entries matching the specified claude_home/codex_home
+    indexed_by_path = {}
+    claude_home_str = str(claude_home_path)
+    codex_home_str = str(codex_home_path)
 
-    if len(results) != len(unique_sessions):
-        # Count duplicates
-        counts = Counter(session_ids)
-        dups = sum(1 for c in counts.values() if c > 1)
-        print(f"Sessions with duplicates: {dups}")
+    for r in results:
+        fpath = r.get("export_path", "")
+        stored_home = r.get("claude_home", "")
+        # Only include if home matches (claude or codex)
+        if fpath and (stored_home == claude_home_str or stored_home == codex_home_str):
+            indexed_by_path[fpath] = {
+                "agent": r.get("agent", ""),
+                "session_id": r.get("session_id", ""),
+                "is_subagent": "agent-" in fpath,
+            }
+
+    # Also count unique session IDs for display (filtered)
+    unique_session_ids = set(
+        r.get("session_id", "") for r in results
+        if r.get("session_id") and r.get("claude_home") in (claude_home_str, codex_home_str)
+    )
+    print(f"Unique session IDs: {len(unique_session_ids)} (for specified homes)")
+    print(f"Total file paths:   {len(indexed_by_path)}")
+
+    # === Reconciliation ===
+    print("\n=== Reconciliation (by file path) ===")
+
+    fs_paths = set(fs_files.keys())
+    idx_paths = set(indexed_by_path.keys())
+
+    missing_from_index = fs_paths - idx_paths
+    orphaned_in_index = idx_paths - fs_paths
+    in_sync = fs_paths & idx_paths
+
+    print(f"Files on disk:  {len(fs_paths)}")
+    print(f"Files indexed:  {len(idx_paths)}")
+    print(f"In sync:        {len(in_sync)}")
+
+    if not missing_from_index and not orphaned_in_index:
+        print("✅ Index is fully in sync with filesystem")
+    else:
+        if missing_from_index:
+            print(f"❌ Missing from index: {len(missing_from_index)}")
+            # Count by type
+            missing_subagent = sum(
+                1 for p in missing_from_index if fs_files[p]["is_subagent"]
+            )
+            missing_resumable = len(missing_from_index) - missing_subagent
+            print(f"   ({missing_resumable} resumable, {missing_subagent} subagent)")
+            # Show a few examples
+            for fpath in list(missing_from_index)[:3]:
+                info = fs_files[fpath]
+                stype = "subagent" if info["is_subagent"] else "resumable"
+                fname = info["path"].name
+                print(f"   - {fname} ({info['agent']}, {stype})")
+            if len(missing_from_index) > 3:
+                print(f"   ... and {len(missing_from_index) - 3} more")
+
+        if orphaned_in_index:
+            print(f"⚠️  Orphaned in index (file gone): {len(orphaned_in_index)}")
+            # Count by type
+            orphan_subagent = sum(
+                1 for p in orphaned_in_index if indexed_by_path[p]["is_subagent"]
+            )
+            orphan_resumable = len(orphaned_in_index) - orphan_subagent
+            print(f"   ({orphan_resumable} resumable, {orphan_subagent} subagent)")
+            for fpath in list(orphaned_in_index)[:3]:
+                info = indexed_by_path[fpath]
+                fname = fpath.split("/")[-1]
+                print(f"   - {fname} ({info['agent']})")
+            if len(orphaned_in_index) > 3:
+                print(f"   ... and {len(orphaned_in_index) - 3} more")
 
     # Count by cwd if filter specified
     if cwd:
