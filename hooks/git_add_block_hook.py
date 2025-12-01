@@ -7,11 +7,15 @@ from pathlib import Path
 def check_git_add_command(command):
     """
     Check if a git add command contains dangerous patterns.
-    Returns tuple: (should_block: bool, reason: str or None)
+    Returns tuple: (decision, reason) where decision is bool or "ask"/"block"/"allow"
     """
     # Normalize the command - handle multiple spaces, tabs, etc.
     normalized_cmd = ' '.join(command.strip().split())
-    
+
+    # Always allow --dry-run (used internally to detect what would be staged)
+    if '--dry-run' in normalized_cmd or '-n' in normalized_cmd.split():
+        return False, None
+
     # Pattern to match git add with problematic flags and dangerous patterns
     # Check for wildcards or dangerous patterns anywhere in the arguments
     if '*' in normalized_cmd and normalized_cmd.startswith('git add'):
@@ -53,11 +57,11 @@ Instead, use:
 This restriction prevents accidentally staging unwanted files."""
         return True, reason
     
-    # Check for git add with a directory (speed bump pattern)
+    # Check for git add with a directory
     # Match: git add <dirname>/ or git add <path/to/dir>/
     directory_pattern = re.compile(r'^git\s+add\s+(?!-)[^\s]+/$')
     match = directory_pattern.search(normalized_cmd)
-    
+
     if match:
         # Extract the directory path from the command
         parts = normalized_cmd.split()
@@ -66,68 +70,57 @@ This restriction prevents accidentally staging unwanted files."""
             if i > 0 and parts[i-1] == 'add' and part.endswith('/'):
                 dir_path = part.rstrip('/')
                 break
-        
+
         if dir_path:
-            # Check if flag file exists (second attempt)
-            flag_file = Path(f'.claude_git_add_dir_{dir_path.replace("/", "_")}.flag')
-            
-            if flag_file.exists():
-                # Second attempt - delete flag and allow
-                flag_file.unlink()
-                return False, None
-            
-            # First attempt - create flag and show warning with file list
-            flag_file.touch()
-            
-            # Try to list files that would be staged
+            # Use dry-run to get files that would be staged
             try:
-                # Get list of files that would be added
                 result = subprocess.run(
-                    ['git', 'ls-files', '--others', '--modified', '--cached', dir_path],
+                    ['git', 'add', '--dry-run', dir_path + '/'],
                     capture_output=True, text=True, cwd=os.getcwd()
                 )
-                files = [f for f in result.stdout.strip().split('\n') if f]
-                
-                # Also get untracked files in the directory
-                untracked_result = subprocess.run(
-                    ['git', 'ls-files', '--others', '--exclude-standard', dir_path],
-                    capture_output=True, text=True, cwd=os.getcwd()
-                )
-                untracked = [f for f in untracked_result.stdout.strip().split('\n') if f]
-                
-                # Combine and deduplicate
-                all_files = sorted(set(files + untracked))
-                
-                file_list = ""
-                if all_files:
-                    if len(all_files) <= 10:
-                        file_list = "\n".join(f"  - {f}" for f in all_files)
-                    else:
-                        file_list = "\n".join(f"  - {f}" for f in all_files[:10])
-                        file_list += f"\n  ... and {len(all_files) - 10} more files"
-                else:
-                    file_list = "  (no files found - directory may be empty or already staged)"
-                
-                reason = f"""⚠️  Git add directory blocked (first attempt).
+                # Parse dry-run output: "add 'filename'" lines
+                files = []
+                for line in result.stdout.strip().split('\n'):
+                    if line.startswith('add '):
+                        # Extract filename from "add 'filename'"
+                        fname = line[4:].strip().strip("'")
+                        files.append(fname)
 
-You're trying to stage all files in directory: {dir_path}/
+                if not files:
+                    # No files to stage
+                    return False, None
 
-Files that would be staged:
-{file_list}
+                # Check which files are modified vs new
+                modified_files = []
+                new_files = []
+                for f in files:
+                    status_result = subprocess.run(
+                        ['git', 'status', '--porcelain', f],
+                        capture_output=True, text=True, cwd=os.getcwd()
+                    )
+                    status = status_result.stdout.strip()
+                    if status:
+                        status_code = status[:2]
+                        if '?' in status_code:
+                            new_files.append(f)
+                        else:
+                            modified_files.append(f)
 
-If you really want to stage all these files, retry the command.
-Otherwise, use 'git add <specific-files>' to stage only the files you need."""
-                
+                # If only new files, allow without permission
+                if not modified_files:
+                    return False, None
+
+                # Modified files present - ask for permission
+                file_list = ", ".join(modified_files[:5])
+                if len(modified_files) > 5:
+                    file_list += f" (+{len(modified_files) - 5} more)"
+                reason = f"Staging directory {dir_path}/ with modified files: {file_list}"
+                return "ask", reason
+
             except Exception:
-                # If we can't list files, still show warning
-                reason = f"""⚠️  Git add directory blocked (first attempt).
-
-You're trying to stage all files in directory: {dir_path}/
-
-If you really want to stage all files in this directory, retry the command.
-Otherwise, use 'git add <specific-files>' to stage only the files you need."""
-            
-            return True, reason
+                # If dry-run fails, fall back to asking permission
+                reason = f"Staging directory {dir_path}/ (couldn't verify file status)"
+                return "ask", reason
     
     # Also check for git commit -a without -m (which would open an editor)
     # Check if command has -a flag but no -m flag
@@ -137,8 +130,58 @@ Otherwise, use 'git add <specific-files>' to stage only the files you need."""
         if has_a_flag and not has_m_flag:
             reason = """Avoid 'git commit -a' without a message flag. Use 'gcam "message"' instead, which is an alias for 'git commit -a -m'."""
             return True, reason
-    
+
+    # Check if staging modified files (not new/untracked) - requires permission
+    # This check runs after all blocking patterns pass
+    if normalized_cmd.startswith('git add'):
+        modified_files = get_modified_files_being_staged(normalized_cmd)
+        if modified_files:
+            file_list = ", ".join(modified_files[:5])
+            if len(modified_files) > 5:
+                file_list += f" (+{len(modified_files) - 5} more)"
+            reason = f"Staging modified files: {file_list}"
+            return "ask", reason
+
     return False, None
+
+
+def get_modified_files_being_staged(command):
+    """
+    Extract files from git add command and return those that are modified
+    (not new/untracked). Returns empty list if only staging new files.
+    """
+    parts = command.split()
+    if len(parts) < 3 or parts[0] != 'git' or parts[1] != 'add':
+        return []
+
+    # Extract file arguments (skip 'git add' and any flags)
+    files = []
+    for part in parts[2:]:
+        if not part.startswith('-'):
+            files.append(part)
+
+    if not files:
+        return []
+
+    modified_files = []
+    for f in files:
+        try:
+            # Check git status for this file
+            result = subprocess.run(
+                ['git', 'status', '--porcelain', f],
+                capture_output=True, text=True, cwd=os.getcwd()
+            )
+            status = result.stdout.strip()
+            if status:
+                # Status codes: ?? = untracked, M = modified, A = staged
+                # We want to flag modified files (not untracked)
+                status_code = status[:2]
+                if '?' not in status_code:  # Not untracked = modified/staged
+                    modified_files.append(f)
+        except Exception:
+            pass
+
+    return modified_files
 
 
 # If run as a standalone script
