@@ -398,11 +398,13 @@ Code's behavior and prevent dangerous operations.
 
 - **File Deletion Protection** - Blocks `rm` commands, enforces TRASH directory
   pattern
-- **Git Safety** - Advanced git add protection with:
+- **Git Commit Protection** - Requires user approval before any git commit
+  (uses Claude Code's permission prompt UI)
+- **Git Add Protection** - Smart staging control:
   - Hard blocks: `git add .`, `git add ../`, `git add *`, `git add -A/--all`
-  - Speed bumps: Shows files before staging directories (e.g., `git add src/`)
-  - Commit speed bump: Warns on first attempt, allows on second
-  - Prevents unsafe checkouts and accidental data loss
+  - New files: Allowed without permission
+  - Modified files: Requires user approval (permission prompt)
+  - Directories: Uses dry-run to detect files, asks permission if modified files
 - **Environment Security** - Blocks all .env file operations (read/write/edit),
   suggests `env-safe` command for safe inspection
 - **Context Management** - Blocks reading files >500 lines to prevent context
@@ -430,12 +432,14 @@ Code's behavior and prevent dangerous operations.
 
 ### Available Hooks
 
-- `bash_hook.py` - Comprehensive bash command safety checks
+- `bash_hook.py` - Main hook that orchestrates all bash command checks
+- `git_commit_block_hook.py` - User permission prompt for git commits
+- `git_add_block_hook.py` - Smart staging: blocks dangerous patterns, prompts
+  for modified files
 - `env_file_protection_hook.py` - Blocks all .env file operations
 - `file_size_conditional_hook.py` - Prevents reading huge files
 - `grep_block_hook.py` - Enforces ripgrep usage
 - `notification_hook.sh` - Sends ntfy.sh notifications
-- `pretask/posttask_subtask_flag.py` - Manages sub-agent state
 
 For complete documentation, see [hooks/README.md](hooks/README.md).
 
