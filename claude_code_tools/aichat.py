@@ -58,16 +58,27 @@ def main(ctx):
         aichat trim session-id.jsonl
     """
     # Auto-index sessions on every aichat command (incremental, fast if up-to-date)
+    # Skip for build-index/clear-index to avoid double-indexing or state conflicts
     # In JSON mode (-j/--json), suppress all output for clean parsing
     import sys
+    skip_auto_index_cmds = ['build-index', 'clear-index', 'index-stats']
+    should_skip = any(cmd in sys.argv for cmd in skip_auto_index_cmds)
     json_mode = any(arg in sys.argv for arg in ['-j', '--json'])
-    try:
-        from claude_code_tools.search_index import auto_index
-        auto_index(verbose=False, silent=json_mode)
-    except ImportError:
-        pass  # tantivy not installed
-    except Exception:
-        pass  # Index errors shouldn't block commands
+    if not should_skip:
+        try:
+            from claude_code_tools.search_index import auto_index
+            from claude_code_tools.session_utils import get_claude_home, get_codex_home
+            # Respect CLAUDE_CONFIG_DIR and CODEX_HOME environment variables
+            auto_index(
+                claude_home=get_claude_home(),
+                codex_home=get_codex_home(),
+                verbose=False,
+                silent=json_mode,
+            )
+        except ImportError:
+            pass  # tantivy not installed
+        except Exception:
+            pass  # Index errors shouldn't block commands
 
     if ctx.invoked_subcommand is None:
         # No subcommand - find latest sessions and show action menu
@@ -835,13 +846,24 @@ def build_index(claude_home, codex_home):
         claude_home=claude_home_path,
         codex_home=codex_home_path,
         verbose=True,
+        silent=False,  # Show tqdm progress bar
     )
 
     print(f"\n✅ Index build complete:")
     print(f"   Indexed: {stats['indexed']}")
     print(f"   Skipped: {stats['skipped']} (unchanged)")
-    print(f"   Failed:  {stats['failed']}")
-    print(f"   Total files: {stats['total_files']}")
+    failed = stats['failed']
+    if failed > 0:
+        empty = stats.get('empty', 0)
+        parse_err = stats.get('parse_error', 0)
+        index_err = stats.get('index_error', 0)
+        print(f"   Failed:  {failed} (empty: {empty}, parse: {parse_err}, "
+              f"index: {index_err})")
+    else:
+        print(f"   Failed:  0")
+    print(f"   Total:   {stats['total_files']} "
+          f"(Claude: {stats.get('claude_files', '?')}, "
+          f"Codex: {stats.get('codex_files', '?')})")
 
 
 def _scan_session_files(

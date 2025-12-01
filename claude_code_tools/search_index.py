@@ -2,6 +2,7 @@
 
 import json
 import math
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -512,7 +513,7 @@ class SessionIndex:
             content, msg_count = self._extract_session_content(jsonl_path, agent)
 
             if msg_count == 0:
-                return None
+                return {"_skip_reason": "empty"}
 
             # Map metadata fields to expected format
             first_msg = metadata.get("first_msg") or {"role": "", "content": ""}
@@ -544,8 +545,8 @@ class SessionIndex:
                 "lines": msg_count,
                 "file_path": str(jsonl_path),
             }
-        except Exception:
-            return None
+        except Exception as e:
+            return {"_skip_reason": "parse_error", "_error": str(e)}
 
     def index_from_jsonl(
         self,
@@ -573,18 +574,27 @@ class SessionIndex:
         """
         claude_home_str = str(claude_home) if claude_home else ""
         codex_home_str = str(codex_home) if codex_home else str(Path.home() / ".codex")
-        stats = {"indexed": 0, "skipped": 0, "failed": 0}
+        stats = {
+            "indexed": 0, "skipped": 0, "failed": 0,
+            "empty": 0, "parse_error": 0, "index_error": 0,
+        }
 
         writer = self.get_writer()
 
         # Wrap iterator with tqdm if progress requested
-        file_iter = jsonl_files
+        file_iter: Any = jsonl_files
         if show_progress:
             try:
                 from tqdm import tqdm
-                file_iter = tqdm(jsonl_files, desc="Indexing sessions", unit="file")
+                file_iter = tqdm(
+                    jsonl_files,
+                    desc="Indexing sessions",
+                    unit="file",
+                    file=sys.stderr,
+                )
             except ImportError:
-                pass  # tqdm not available, continue without progress bar
+                print("Note: Install tqdm for progress bar (pip install tqdm)",
+                      file=sys.stderr)
 
         for jsonl_path in file_iter:
             # Check if needs indexing
@@ -594,8 +604,14 @@ class SessionIndex:
 
             # Parse JSONL file
             parsed = self._parse_jsonl_session(jsonl_path)
-            if parsed is None:
+            if parsed is None or "_skip_reason" in parsed:
                 stats["failed"] += 1
+                if parsed:
+                    reason = parsed.get("_skip_reason", "unknown")
+                    if reason == "empty":
+                        stats["empty"] += 1
+                    elif reason == "parse_error":
+                        stats["parse_error"] += 1
                 continue
 
             metadata = parsed["metadata"]
@@ -662,6 +678,7 @@ class SessionIndex:
                 stats["indexed"] += 1
             except Exception:
                 stats["failed"] += 1
+                stats["index_error"] += 1
 
         self.commit_and_reload(writer)
 
@@ -1012,21 +1029,32 @@ def auto_index(
 
     # Find all JSONL session files
     jsonl_files: list[Path] = []
+    claude_file_count = 0
+    codex_file_count = 0
 
     # Claude sessions: ~/.claude/projects/**/*.jsonl
     claude_projects = claude_home / "projects"
     if claude_projects.exists():
-        jsonl_files.extend(claude_projects.glob("**/*.jsonl"))
+        claude_files = list(claude_projects.glob("**/*.jsonl"))
+        claude_file_count = len(claude_files)
+        jsonl_files.extend(claude_files)
 
     # Codex sessions: ~/.codex/**/*.jsonl (various subdirs)
     if codex_home.exists():
-        jsonl_files.extend(codex_home.glob("**/*.jsonl"))
+        codex_files = list(codex_home.glob("**/*.jsonl"))
+        codex_file_count = len(codex_files)
+        jsonl_files.extend(codex_files)
 
     if verbose and not silent:
-        print(f"Found {len(jsonl_files)} session files to check")
+        print(f"Claude home: {claude_home} ({claude_file_count} files)")
+        print(f"Codex home:  {codex_home} ({codex_file_count} files)")
+        print(f"Total: {len(jsonl_files)} session files to check")
 
     if not jsonl_files:
-        return {"indexed": 0, "skipped": 0, "failed": 0, "total_files": 0}
+        return {
+            "indexed": 0, "skipped": 0, "failed": 0,
+            "total_files": 0, "claude_files": 0, "codex_files": 0,
+        }
 
     # Create/open index and run incremental indexing
     # In silent mode, suppress tqdm progress bar for clean JSON output
@@ -1039,6 +1067,8 @@ def auto_index(
         show_progress=not silent,
     )
     stats["total_files"] = len(jsonl_files)
+    stats["claude_files"] = claude_file_count
+    stats["codex_files"] = codex_file_count
 
     if verbose and not silent:
         if stats["indexed"] > 0:
