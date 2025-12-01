@@ -131,6 +131,41 @@ all CLI coding sessions inside tmux sessions.
 <a id="aichat-session-management"></a>
 # 💬 aichat — Session Management
 
+### The Problem: Running Out of Context
+
+You're deep into a Claude Code or Codex session, making good progress, when you
+see the dreaded warning about the context window getting full. What do you do?
+
+**Compaction is lossy.** The built-in compaction summarizes your conversation to
+free up space, but it **loses detailed information permanently**—code snippets,
+debugging steps, design decisions—gone with no way to recover them. 
+
+### The Solution: Transfer Context with Lineage
+
+Instead of compacting, **transfer your context to a fresh session**. Running
+`aichat resume` finds the latest Claude and Codex sessions for your current
+project and lets you choose which one to continue:
+
+```bash
+aichat resume  # select session and choose "Continue with context in fresh session"
+```
+
+This gives you:
+
+- **Full parent session preserved** — nothing is lost
+- **Lineage chain** — the new session's first message contains the JSONL
+  file-paths of the entire lineage, all the way back to the original session
+- **On-demand retrieval** — the agent can look up any past session to recover
+  specific details, either on its own initiative or when you prompt it to
+  retrieve context from historical sessions (using sub-agents if available)
+
+You can chain sessions indefinitely, building a linked history that's always
+accessible.
+
+See [Resume Options](#resume-options--managing-context) below for full details.
+
+---
+
 The `aichat` command is your unified interface for managing Claude Code and Codex
 sessions. Search, resume, export, and navigate your AI conversation history.
 
