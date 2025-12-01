@@ -508,6 +508,17 @@ each using a different LLM.
 <a id="development"></a>
 ## 🛠️ Development
 
+### Architecture
+
+The `aichat` command has three layers:
+
+- **Rust** (`rust-search-ui/`) - Search TUI with Tantivy full-text search
+- **Node.js** (`node_ui/`) - Action menus (resume, export, trim, etc.)
+- **Python** (`claude_code_tools/`) - Backend logic, session parsing, CLI entry points
+
+Flow: `aichat search` launches Rust TUI → user selects session → hands off to
+Node.js menus → menus call Python backend for actual operations.
+
 ### Prerequisites
 
 - **UV** - `curl -LsSf https://astral.sh/uv/install.sh | sh`
@@ -529,8 +540,9 @@ make aichat-search-install    # Rust binary
 
 ### Testing Changes
 
-- **Python changes**: No action needed (editable mode - changes apply immediately)
-- **Rust changes**: Run `make aichat-search-install` to rebuild and install
+- **Python**: No action needed (editable mode - changes apply immediately)
+- **Node.js**: No action needed (runs directly from `node_ui/`)
+- **Rust**: Run `make aichat-search-install` to rebuild and install
 
 ### Version Management
 
