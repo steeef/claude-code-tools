@@ -197,50 +197,82 @@ After selecting a session, the action menu offers:
 
 ## Resume Options — Managing Context
 
-When you need to continue work on a session, several strategies are available:
+When you're running out of context in a Claude or Codex session, you have
+several options. Here's exactly what to do:
+
+**Option A:** Copy the session ID from within your chat:
 
 ```bash
-aichat resume                  # Latest session(s) for current project
-aichat resume <session-id>     # Specific session
+# In your Claude/Codex session, run:
+/status                        # Shows session ID - copy it
+
+# Then in a separate terminal:
+aichat resume <session-id>     # Resume that specific session
 ```
 
-### Continue with Fresh Context
+**Option B:** Just quit and let the system find your session:
 
-The recommended approach when running out of context. Instead of compacting
-(which loses information) or starting fresh (which loses all context), this
-option:
+```bash
+# Simply exit your Claude/Codex session, then run:
+aichat resume                  # Auto-finds latest sessions for this project
+```
 
-- **Transfers minimal context** to a new session with a fresh context window
-- **Maintains a linear chain** of linked sessions you can trace back
-- **Preserves full history** — the agent can retrieve details from parent
-  sessions on demand
+The system will show you the latest Claude and Codex sessions for your current
+project/branch and let you choose which one to resume.
 
-**Example scenario:**
+### Resume Strategies
 
-You're deep into implementing a feature and hit the context limit. Use
-"Continue with context":
+Once you select a session, you'll see several resume options:
 
-1. Select the session in `aichat search`
-2. Choose "Continue with context" from resume options
-3. Optionally provide a brief summary of the current task
-4. A new session starts with:
+- **Resume as-is** — Continue the session directly (if context allows)
+- **Trim + resume** — Remove large tool outputs and assistant messages, then
+  resume
+- **Smart trim** — AI-powered trimming (EXPERIMENTAL)
+- **Continue with fresh context** — Transfer context to a new session
+  (recommended)
 
-   - Link to the parent session (traceable lineage)
-   - Summary of what you were working on
-   - Full context window available for new work
+### Continue with Fresh Context (Recommended)
+
+This is the recommended approach when running out of context. You'll be asked:
+
+1. **Which agent to use** — Continue with the same agent (Claude/Codex) or
+   switch to a different one
+2. **Custom instructions** — Optionally specify what context to extract from
+   the parent session
+
+A new session starts with a summary of your current task and a **link to the
+parent session**. This link is the key difference from compacting.
 
 **Why this beats compacting:**
 
-- Compacting loses details and has no history link
-- This approach preserves everything and builds a chain:
-  `Session A → Session B → Session C → ...`
-- Use `aichat find-original` to trace back through the chain
+Compacting (built into Claude/Codex) summarizes your conversation to free up
+context, but it **loses detailed information** with no way to recover it.
 
-### Other Resume Options
+Continue with fresh context also summarizes for the new session, but critically:
 
-- **Resume as-is** — Continue the session directly
-- **Trim + resume** — Truncate large tool outputs, then resume
-- **Smart trim** — AI-powered trimming (EXPERIMENTAL)
+- **Preserves the full parent session** — nothing is lost
+- **Agent receives the lineage chain** — at the start of the new session, the
+  agent sees the full chain of past continued sessions back to the original
+- **On-demand context retrieval** — the agent can look up any past session in
+  the chain to recover specific details
+
+**Recursive chaining:**
+
+You can continue multiple times, building a chain of linked sessions:
+
+```
+Original Session (abc123)
+ └─► Continued Session 1 (def456)
+      └─► Continued Session 2 (ghi789)
+           └─► Continued Session 3 (jkl012)
+                └─► ... and so on
+```
+
+Each session in the chain:
+
+- Knows its parent (traceable via `aichat find-original`)
+- Has access to the full lineage for context retrieval
+- Starts fresh with maximum context available
 
 ---
 
