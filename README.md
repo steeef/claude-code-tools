@@ -512,12 +512,12 @@ each using a different LLM.
 
 The `aichat` command has three layers:
 
+- **Python** (`claude_code_tools/`) - CLI entry points, backend logic, session parsing
 - **Rust** (`rust-search-ui/`) - Search TUI with Tantivy full-text search
 - **Node.js** (`node_ui/`) - Action menus (resume, export, trim, etc.)
-- **Python** (`claude_code_tools/`) - Backend logic, session parsing, CLI entry points
 
-Flow: `aichat search` launches Rust TUI → user selects session → hands off to
-Node.js menus → menus call Python backend for actual operations.
+Flow: Python CLI (`aichat search`) invokes Rust binary → Rust TUI for search →
+user selects session → hands off to Node.js menus → menus call Python backend.
 
 ### Prerequisites
 
@@ -544,14 +544,25 @@ make aichat-search-install    # Rust binary
 - **Node.js**: No action needed (runs directly from `node_ui/`)
 - **Rust**: Run `make aichat-search-install` to rebuild and install
 
-### Version Management
+### Publishing (Python Package)
 
-The project uses commitizen for version management:
+For releasing to PyPI:
 
 ```bash
-make patch  # Bump patch version (0.0.X)
-make minor  # Bump minor version (0.X.0)  
-make major  # Bump major version (X.0.0)
+make all-patch   # Bump patch, push, GitHub release, build
+make all-minor   # Bump minor, push, GitHub release, build
+make all-major   # Bump major, push, GitHub release, build
+uv publish       # Publish to PyPI (after any of the above)
+```
+
+These commands: bump version → push to GitHub → create GitHub release → build
+package. Then run `uv publish` to upload to PyPI.
+
+### Publishing (Rust Binaries)
+
+```bash
+make aichat-search-publish  # Bump version and publish to crates.io
+make lmsh-publish           # Bump version and publish to crates.io
 ```
 
 ### Contributing
@@ -560,17 +571,20 @@ make major  # Bump major version (X.0.0)
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Test thoroughly
-5. Commit your changes (commitizen will format the commit message)
+5. Commit your changes
 6. Push to your fork
 7. Open a Pull Request
 
 ### Available Make Commands
 
-Run `make help` to see all available commands:
-- `make install` - Install in editable mode for development
-- `make dev-install` - Install with development dependencies
-- `make release` - Bump patch version and install globally
-- `make patch/minor/major` - Version bump commands
+Run `make help` for full list. Key commands:
+
+| Command | Description |
+|---------|-------------|
+| `make install` | Install Python in editable mode |
+| `make aichat-search-install` | Build and install Rust binary |
+| `make all-patch/minor/major` | Version bump + push + build (for PyPI) |
+| `make aichat-search-publish` | Publish Rust binary to crates.io |
 
 <a id="license"></a>
 ## 📄 License

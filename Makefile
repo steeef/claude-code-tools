@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch all-minor release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish
+.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish
 
 help:
 	@echo "Available commands:"
@@ -8,8 +8,9 @@ help:
 	@echo "  make patch        - Bump patch version (0.0.X) and install"
 	@echo "  make minor        - Bump minor version (0.X.0) and install"
 	@echo "  make major        - Bump major version (X.0.0) and install"
-	@echo "  make all-patch    - Bump patch, clean, and build (ready for uv publish)"
-	@echo "  make all-minor    - Bump minor, clean, and build (ready for uv publish)"
+	@echo "  make all-patch    - Bump patch, push, GitHub release, build (ready for uv publish)"
+	@echo "  make all-minor    - Bump minor, push, GitHub release, build (ready for uv publish)"
+	@echo "  make all-major    - Bump major, push, GitHub release, build (ready for uv publish)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make release-github - Create GitHub release from latest tag"
 	@echo "  make lmsh         - Build lmsh binary (requires Rust)"
@@ -82,6 +83,20 @@ all-patch:
 all-minor:
 	@echo "Bumping minor version..."
 	uv run cz bump --increment MINOR --yes
+	@echo "Pushing to GitHub..."
+	git push && git push --tags
+	@echo "Creating GitHub release..."
+	@VERSION=$$(grep "^version" pyproject.toml | head -1 | cut -d'"' -f2); \
+	gh release create v$$VERSION --title "v$$VERSION" --generate-notes || echo "Release v$$VERSION already exists"
+	@echo "Cleaning old builds..."
+	rm -rf dist/*
+	@echo "Building package..."
+	uv build
+	@echo "Build complete! Ready for: uv publish --token YOUR_TOKEN"
+
+all-major:
+	@echo "Bumping major version..."
+	uv run cz bump --increment MAJOR --yes
 	@echo "Pushing to GitHub..."
 	git push && git push --tags
 	@echo "Creating GitHub release..."
