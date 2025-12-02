@@ -96,6 +96,7 @@ struct Session {
     created: String,
     modified: String,
     lines: i64,
+    #[serde(rename = "file_path")]
     export_path: String,
     first_msg_role: String,
     first_msg_content: String,

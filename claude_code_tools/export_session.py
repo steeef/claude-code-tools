@@ -256,6 +256,9 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                         metadata["branch"] = git_info["branch"]
                     if payload.get("cwd"):
                         metadata["cwd"] = payload["cwd"]
+                    # Extract session ID (UUID only, not the full filename)
+                    if payload.get("id"):
+                        metadata["session_id"] = payload["id"]
 
                 # Stop after first 20 lines (metadata is always at the top)
                 if line_count >= 20:
