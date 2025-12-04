@@ -617,10 +617,10 @@ function ActionView({session, onBack, onDone, clearScreen}) {
       return;
     }
     if (key.upArrow || input === 'k') {
-      setIndex((i) => Math.max(0, i - 1));
+      setIndex((i) => (i === 0 ? items.length - 1 : i - 1));
     }
     if (key.downArrow || input === 'j') {
-      setIndex((i) => Math.min(items.length - 1, i + 1));
+      setIndex((i) => (i === items.length - 1 ? 0 : i + 1));
     }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
@@ -697,10 +697,10 @@ function ResumeView({onBack, onDone, session, clearScreen}) {
       return;
     }
     if (key.upArrow || input === 'k') {
-      setIndex((i) => Math.max(0, i - 1));
+      setIndex((i) => (i === 0 ? items.length - 1 : i - 1));
     }
     if (key.downArrow || input === 'j') {
-      setIndex((i) => Math.min(items.length - 1, i + 1));
+      setIndex((i) => (i === items.length - 1 ? 0 : i + 1));
     }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
@@ -770,10 +770,10 @@ function TrimView({onBack, onDone, session, clearScreen}) {
       return;
     }
     if (key.upArrow || input === 'k') {
-      setIndex((i) => Math.max(0, i - 1));
+      setIndex((i) => (i === 0 ? items.length - 1 : i - 1));
     }
     if (key.downArrow || input === 'j') {
-      setIndex((i) => Math.min(items.length - 1, i + 1));
+      setIndex((i) => (i === items.length - 1 ? 0 : i + 1));
     }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
@@ -863,10 +863,10 @@ function TrimConfirmView({onDone, onCancel, clearScreen, trimInfo}) {
       return;
     }
     if (key.upArrow || input === 'k') {
-      setIndex((i) => Math.max(0, i - 1));
+      setIndex((i) => (i === 0 ? items.length - 1 : i - 1));
     }
     if (key.downArrow || input === 'j') {
-      setIndex((i) => Math.min(items.length - 1, i + 1));
+      setIndex((i) => (i === items.length - 1 ? 0 : i + 1));
     }
     const num = Number(input);
     if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
