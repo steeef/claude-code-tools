@@ -434,6 +434,10 @@ def main():
     # Inject parent session lineage into first user message
     inject_lineage_into_first_user_message(output_file, session_file, agent)
 
+    # Update sessionId in all lines to match the new filename UUID
+    from claude_code_tools.trim_session import update_session_id_in_file
+    update_session_id_in_file(output_file, new_uuid, agent)
+
     print(f"✅ Smart trim complete!")
     print(f"   Lines trimmed: {stats['num_lines_trimmed']}")
     print(f"   Characters saved: {stats['chars_saved']:,}")

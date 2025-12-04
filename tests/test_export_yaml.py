@@ -274,3 +274,87 @@ def extract_yaml_from_export(content: str) -> dict:
 
     yaml_str = content[4:end_idx]
     return yaml.safe_load(yaml_str)
+
+
+class TestSessionIdFromFilename:
+    """Tests that session_id is correctly extracted and files are self-consistent."""
+
+    def test_session_id_from_json_when_consistent(self, tmp_path: Path):
+        """
+        When the JSON sessionId matches the filename, extract_session_metadata
+        should return the sessionId from JSON content.
+        """
+        from claude_code_tools.export_session import extract_session_metadata
+
+        # Create a properly consistent session file
+        session_uuid = "c3efd44a-fa51-4926-a888-451d435445cd"
+        session_file = tmp_path / f"{session_uuid}.jsonl"
+
+        lines = [
+            {
+                "type": "user",
+                "sessionId": session_uuid,  # Matches filename
+                "cwd": "/Users/test/project",
+                "message": {"role": "user", "content": "Hello"},
+            },
+            {
+                "type": "assistant",
+                "sessionId": session_uuid,
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hi!"}],
+                },
+            },
+        ]
+
+        with open(session_file, "w") as f:
+            for line in lines:
+                f.write(json.dumps(line) + "\n")
+
+        metadata = extract_session_metadata(session_file, agent="claude")
+
+        # session_id should be the UUID from JSON (which matches filename)
+        assert metadata["session_id"] == session_uuid
+
+    def test_clone_makes_file_self_consistent(self, tmp_path: Path):
+        """
+        After cloning, the file should be self-consistent: the sessionId in
+        JSON content should match the new filename UUID.
+
+        This tests the update_session_id_in_file utility.
+        """
+        from claude_code_tools.trim_session import update_session_id_in_file
+        from claude_code_tools.export_session import extract_session_metadata
+        import shutil
+
+        # Original session
+        original_uuid = "original-1111-2222-3333-444455556666"
+        original_file = tmp_path / f"{original_uuid}.jsonl"
+
+        lines = [
+            {
+                "type": "user",
+                "sessionId": original_uuid,
+                "cwd": "/Users/test/project",
+                "message": {"role": "user", "content": "Hello"},
+            },
+        ]
+
+        with open(original_file, "w") as f:
+            for line in lines:
+                f.write(json.dumps(line) + "\n")
+
+        # Clone to new file
+        cloned_uuid = "cloned-aaaa-bbbb-cccc-ddddeeeeffff"
+        cloned_file = tmp_path / f"{cloned_uuid}.jsonl"
+        shutil.copy2(original_file, cloned_file)
+
+        # Update session ID (simulating what clone_session now does)
+        update_session_id_in_file(cloned_file, cloned_uuid, agent="claude")
+
+        # Verify the cloned file is now self-consistent
+        metadata = extract_session_metadata(cloned_file, agent="claude")
+        assert metadata["session_id"] == cloned_uuid, (
+            f"After update, sessionId should be '{cloned_uuid}', "
+            f"got '{metadata['session_id']}'"
+        )

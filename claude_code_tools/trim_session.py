@@ -131,6 +131,56 @@ def inject_lineage_into_first_user_message(
             f.writelines(lines)
 
 
+def update_session_id_in_file(
+    file_path: Path,
+    new_session_id: str,
+    agent: str,
+) -> None:
+    """
+    Update session ID in all lines of a session file.
+
+    This ensures the file content is consistent with its filename UUID.
+    Must be called after cloning or smart-trimming a session.
+
+    Args:
+        file_path: Path to the session file to update
+        new_session_id: The new session ID (should match filename UUID)
+        agent: Agent type ('claude' or 'codex')
+    """
+    # Read all lines
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+
+    modified_lines = []
+    for line in lines:
+        line = line.rstrip("\n")
+        if not line.strip():
+            modified_lines.append(line + "\n")
+            continue
+
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            modified_lines.append(line + "\n")
+            continue
+
+        if agent == "claude":
+            # Claude: sessionId is in every line
+            if "sessionId" in data:
+                data["sessionId"] = new_session_id
+        elif agent == "codex":
+            # Codex: session ID is in session_meta payload.id
+            if data.get("type") == "session_meta":
+                if "payload" in data and "id" in data["payload"]:
+                    data["payload"]["id"] = new_session_id
+
+        modified_lines.append(json.dumps(data) + "\n")
+
+    # Write back
+    with open(file_path, "w") as f:
+        f.writelines(modified_lines)
+
+
 def is_trimmed_session(session_file: Path) -> bool:
     """
     Check if a session file is a derived session (trimmed or continued).

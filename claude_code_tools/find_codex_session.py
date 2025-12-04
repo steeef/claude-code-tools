@@ -863,6 +863,10 @@ def clone_session(
         # Copy the file
         shutil.copy2(source_path, dest_path)
 
+        # Update session ID in session_meta to match the new filename UUID
+        from claude_code_tools.trim_session import update_session_id_in_file
+        update_session_id_in_file(dest_path, new_session_id, agent="codex")
+
         if not shell_mode:
             print(f"\nCloned session:")
             print(f"  Original: {session_id}")
