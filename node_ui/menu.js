@@ -833,13 +833,24 @@ function TrimView({onBack, onDone, session, clearScreen}) {
  * TrimConfirmView - Confirmation dialog after trim creates a new session file.
  * Shows two options: Resume (default) or Delete & Exit.
  * Escape cancels without deleting (file remains).
+ *
+ * When nothing_to_trim is true, shows simpler UI for resuming original session.
  */
 function TrimConfirmView({onDone, onCancel, clearScreen, trimInfo}) {
   const [index, setIndex] = useState(0);
-  const items = [
-    {value: 'resume', label: 'Resume trimmed session'},
-    {value: 'delete', label: 'Delete session file & exit'},
-  ];
+
+  // Check if this is the "nothing to trim" case
+  const nothingToTrim = trimInfo.nothing_to_trim || false;
+
+  const items = nothingToTrim
+    ? [
+        {value: 'resume', label: 'Resume original session'},
+        {value: 'back', label: 'Back to menu'},
+      ]
+    : [
+        {value: 'resume', label: 'Resume trimmed session'},
+        {value: 'delete', label: 'Delete session file & exit'},
+      ];
 
   useInput((input, key) => {
     if (key.escape) {
@@ -864,10 +875,33 @@ function TrimConfirmView({onDone, onCancel, clearScreen, trimInfo}) {
   });
 
   // Extract info from trimInfo
-  const sessionId = (trimInfo.new_session_id || '').slice(0, 12);
+  const sessionId = (trimInfo.new_session_id || trimInfo.original_session_id || '').slice(0, 12);
   const linesTrimmed = trimInfo.lines_trimmed || 0;
   const tokensSaved = trimInfo.tokens_saved || 0;
   const outputFile = trimInfo.output_file || '';
+
+  // Different header based on whether trimming happened
+  const header = nothingToTrim
+    ? h(Text, null, chalk.bgYellow.black(' Nothing to Trim '))
+    : h(Text, null, chalk.bgGreen.black(' Trim Complete '));
+
+  const infoLines = nothingToTrim
+    ? [
+        h(Text, null, ''),
+        h(Text, null, chalk.yellow('✓ '), 'Session is already well-optimized'),
+        h(Text, null, chalk.dim('   No changes were made')),
+      ]
+    : [
+        h(Text, null, ''),
+        h(Text, null, chalk.green('✓ '), 'New session: ', chalk.cyan(sessionId), '...'),
+        h(Text, null, chalk.green('✓ '), 'Lines trimmed: ', chalk.yellow(String(linesTrimmed))),
+        h(Text, null, chalk.green('✓ '), 'Tokens saved: ', chalk.yellow(`~${tokensSaved.toLocaleString()}`)),
+        outputFile ? h(Text, {dimColor: true}, `   ${outputFile}`) : null,
+      ];
+
+  const footerText = nothingToTrim
+    ? 'Enter: select  Esc: back  ↑/↓: move'
+    : 'Enter: select  Esc: cancel (keep file)  ↑/↓: move';
 
   return h(
     Box,
@@ -875,18 +909,8 @@ function TrimConfirmView({onDone, onCancel, clearScreen, trimInfo}) {
     h(
       Box,
       {flexDirection: 'column', marginBottom: 1},
-      h(Text, null, chalk.bgGreen.black(' Trim Complete ')),
-      h(Text, null, ''),
-      h(Text, null,
-        chalk.green('✓ '), 'New session: ', chalk.cyan(sessionId), '...'
-      ),
-      h(Text, null,
-        chalk.green('✓ '), 'Lines trimmed: ', chalk.yellow(String(linesTrimmed))
-      ),
-      h(Text, null,
-        chalk.green('✓ '), 'Tokens saved: ', chalk.yellow(`~${tokensSaved.toLocaleString()}`)
-      ),
-      outputFile ? h(Text, {dimColor: true}, `   ${outputFile}`) : null
+      header,
+      ...infoLines.filter(Boolean)
     ),
     h(Box, {flexDirection: 'column'},
       ...items.map((item, idx) => {
@@ -904,7 +928,7 @@ function TrimConfirmView({onDone, onCancel, clearScreen, trimInfo}) {
     h(
       Box,
       {marginTop: 1},
-      h(Text, {dimColor: true}, 'Enter: select  Esc: cancel (keep file)  ↑/↓: move')
+      h(Text, {dimColor: true}, footerText)
     )
   );
 }

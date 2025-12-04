@@ -237,26 +237,32 @@ def run_find_options_ui(
 
 
 def run_trim_confirm_ui(
-    new_session_id: str,
-    lines_trimmed: int,
-    tokens_saved: int,
-    output_file: str,
+    new_session_id: str | None = None,
+    lines_trimmed: int = 0,
+    tokens_saved: int = 0,
+    output_file: str = "",
+    nothing_to_trim: bool = False,
+    original_session_id: str | None = None,
 ) -> str | None:
     """
     Launch Node UI to confirm trim action.
 
-    Shows a confirmation dialog after a trim operation creates a new session file.
-    User can choose to resume, delete the file, or cancel.
+    Shows a confirmation dialog after a trim operation. Can handle two cases:
+    1. Trim created a new file - shows Resume/Delete options
+    2. Nothing to trim - shows Resume original/Back options
 
     Args:
-        new_session_id: The newly created session ID
+        new_session_id: The newly created session ID (None if nothing_to_trim)
         lines_trimmed: Number of lines that were trimmed
         tokens_saved: Estimated tokens saved
         output_file: Path to the new session file
+        nothing_to_trim: If True, show "nothing to trim" UI variant
+        original_session_id: Original session ID (used when nothing_to_trim)
 
     Returns:
-        'resume' - User wants to resume the trimmed session
+        'resume' - User wants to resume the session
         'delete' - User wants to delete the new file and exit
+        'back' - User wants to go back to menu (nothing_to_trim case)
         'cancel' - User pressed Escape (keep file, don't resume)
         None - Error or unexpected result
     """
@@ -266,9 +272,11 @@ def run_trim_confirm_ui(
         "start_screen": "trim_confirm",
         "trim_info": {
             "new_session_id": new_session_id,
+            "original_session_id": original_session_id,
             "lines_trimmed": lines_trimmed,
             "tokens_saved": tokens_saved,
             "output_file": output_file,
+            "nothing_to_trim": nothing_to_trim,
         },
     }
 

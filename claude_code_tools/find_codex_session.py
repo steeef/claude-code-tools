@@ -625,10 +625,16 @@ def handle_smart_trim_resume_codex(
         )
 
         if not trimmable:
-            print(f"\n✨ No lines identified for trimming")
-            print(f"   Session is already well-optimized!")
-            print(f"\n🚀 Resuming original session...")
-            resume_session(match["session_id"], match["cwd"])
+            # Show confirmation for "nothing to trim" case
+            from claude_code_tools.node_menu_ui import run_trim_confirm_ui
+            action = run_trim_confirm_ui(
+                nothing_to_trim=True,
+                original_session_id=match["session_id"],
+            )
+
+            if action == 'resume':
+                resume_session(match["session_id"], match["cwd"])
+            # 'back' or 'cancel' - just return without resuming
             return
 
         print(f"   Found {len(trimmable)} lines to trim")
