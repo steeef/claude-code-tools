@@ -187,7 +187,7 @@ class SessionCard(Static):
         # Second line: Session ID and line count
         session_display = f"{self.session_id[:12]}..."
         if self.is_sidechain:
-            session_display += " (sub)"
+            session_display += " (s)"
 
         info = Text()
         info.append(f"   Session: ", style="dim")

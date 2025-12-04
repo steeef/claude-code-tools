@@ -198,6 +198,7 @@ def _find_and_run_session_ui(
             claude_sessions = [
                 s for s in claude_sessions
                 if is_valid_session(claude_dir / f"{s[0]}.jsonl")
+                and not (s[9] if len(s) > 9 else False)  # Exclude sub-agents
             ]
 
         if claude_sessions:
