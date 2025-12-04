@@ -29,6 +29,7 @@ use tantivy::{
     collector::TopDocs,
     query::{AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, QueryParser, TermQuery},
     schema::{IndexRecordOption, Value},
+    snippet::SnippetGenerator,
     Index, ReloadPolicy, Term,
 };
 
@@ -2117,7 +2118,9 @@ fn find_matching_snippet<'a>(
         return None;
     }
 
-    let query_lower = query.to_lowercase();
+    // Strip quotes from query for keyword extraction (phrase search still works via Tantivy)
+    let query_clean = query.trim_matches('"').trim_matches('\'');
+    let query_lower = query_clean.to_lowercase();
     let keywords: Vec<&str> = query_lower.split_whitespace().collect();
     if keywords.is_empty() {
         return None;
@@ -2225,7 +2228,9 @@ fn highlight_keywords_in_line<'a>(
         return vec![Span::styled(text.to_string(), base_style)];
     }
 
-    let query_lower = query.to_lowercase();
+    // Strip quotes from query for keyword extraction
+    let query_clean = query.trim_matches('"').trim_matches('\'');
+    let query_lower = query_clean.to_lowercase();
     let keywords: Vec<&str> = query_lower.split_whitespace().collect();
     if keywords.is_empty() {
         return vec![Span::styled(text.to_string(), base_style)];
@@ -2663,8 +2668,15 @@ fn search_tantivy(
         // Search with high limit
         let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(2000)).ok()?;
 
-        // Extract keywords for snippet generation
-        let query_lower = query_str.to_lowercase();
+        // Create snippet generator from the query (re-parse since base_query was moved)
+        let snippet_query = query_parser.parse_query_lenient(query_str).0;
+        let snippet_generator: Option<SnippetGenerator> = SnippetGenerator::create(&searcher, &*snippet_query, content_field)
+            .ok()
+            .map(|mut g| { g.set_max_num_chars(200); g });
+
+        // Fallback: extract keywords for manual snippet extraction if generator unavailable
+        let query_clean = query_str.trim_matches('"').trim_matches('\'');
+        let query_lower = query_clean.to_lowercase();
         let keywords: Vec<&str> = query_lower.split_whitespace().collect();
 
         // Recency ranking: 7-day half-life exponential decay
@@ -2688,7 +2700,19 @@ fn search_tantivy(
                 let recency_mult = 1.0 + (-age / half_life_secs).exp();
 
                 let final_score = *score * recency_mult as f32;
-                let snippet = extract_snippet(content, &keywords, 100);
+                // Use Tantivy's snippet generator if available, else fallback to manual extraction
+                let snippet = if let Some(ref gen) = snippet_generator {
+                    let tantivy_snippet = gen.snippet(content);
+                    let html = tantivy_snippet.to_html();
+                    if html.is_empty() {
+                        // Fallback if Tantivy snippet is empty
+                        extract_snippet(content, &keywords, 100)
+                    } else {
+                        html.replace("<b>", "").replace("</b>", "")
+                    }
+                } else {
+                    extract_snippet(content, &keywords, 100)
+                };
                 Some((final_score, session_id, snippet))
             })
             .collect();
