@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish
+.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish fix-session-metadata fix-session-metadata-apply
 
 help:
 	@echo "Available commands:"
@@ -19,6 +19,8 @@ help:
 	@echo "  make aichat-search         - Build aichat-search binary (requires Rust)"
 	@echo "  make aichat-search-install - Build and install aichat-search to ~/.cargo/bin"
 	@echo "  make aichat-search-publish - Publish aichat-search to crates.io"
+	@echo "  make fix-session-metadata       - Scan for sessionId mismatches (dry-run)"
+	@echo "  make fix-session-metadata-apply - Actually fix sessionId mismatches"
 
 install:
 	uv tool install --force -e .
@@ -163,3 +165,14 @@ aichat-search-publish:
 	@echo "Publishing aichat-search to crates.io..."
 	@cd rust-search-ui && cargo publish --allow-dirty
 	@echo "Published! Users can now install with: cargo install aichat-search"
+
+fix-session-metadata:
+	@echo "Scanning for sessionId mismatches (dry-run)..."
+	@python3 scripts/fix_session_metadata.py --dry-run
+	@echo ""
+	@echo "To apply fixes: make fix-session-metadata-apply"
+	@echo "Custom paths: CLAUDE_CONFIG_DIR=/path make fix-session-metadata"
+
+fix-session-metadata-apply:
+	@echo "Fixing sessionId mismatches..."
+	@python3 scripts/fix_session_metadata.py -v
