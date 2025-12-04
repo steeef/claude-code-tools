@@ -68,9 +68,7 @@ def get_session_id_from_file(file_path: Path, agent: str) -> Optional[str]:
     """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
-            for i, line in enumerate(f):
-                if i >= 10:  # Only check first 10 lines
-                    break
+            for line in f:
                 line = line.strip()
                 if not line:
                     continue
@@ -82,7 +80,7 @@ def get_session_id_from_file(file_path: Path, agent: str) -> Optional[str]:
                 if agent == "claude":
                     if "sessionId" in data:
                         return data["sessionId"]
-                    # Skip non-session lines (file-history-snapshot, etc)
+                    # Continue scanning - sessionId may be after summary/metadata lines
                 elif agent == "codex":
                     if data.get("type") == "session_meta":
                         return data.get("payload", {}).get("id")

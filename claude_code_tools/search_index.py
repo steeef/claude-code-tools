@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from claude_code_tools.session_utils import is_valid_session
+
 # Lazy imports to allow module to load even if deps not installed
 try:
     import yaml
@@ -601,6 +603,13 @@ class SessionIndex:
             # Check if needs indexing
             if incremental and not self.state.needs_reindex(jsonl_path):
                 stats["skipped"] += 1
+                continue
+
+            # Skip invalid sessions (metadata-only files like file-history-snapshot)
+            if not is_valid_session(jsonl_path):
+                stats["skipped"] += 1
+                # Mark as indexed so we don't re-check next time
+                self.state.mark_indexed(jsonl_path)
                 continue
 
             # Parse JSONL file
