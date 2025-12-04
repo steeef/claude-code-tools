@@ -19,6 +19,115 @@ from typing import Optional, Set, Tuple
 from . import trim_session_claude as claude_processor
 from . import trim_session_codex as codex_processor
 from .session_utils import get_claude_home, resolve_session_path
+from .session_lineage import get_full_lineage_chain
+
+
+def inject_lineage_into_first_user_message(
+    output_file: Path,
+    input_file: Path,
+    agent: str,
+) -> None:
+    """
+    Inject parent session lineage information into the first user message.
+
+    This helps the agent understand the session history and refer back to
+    parent sessions for full context when needed.
+
+    Args:
+        output_file: Path to the trimmed output session file
+        input_file: Path to the original input session file
+        agent: Agent type ('claude' or 'codex')
+    """
+    # Get lineage chain (newest first, ending with original)
+    try:
+        lineage_chain = get_full_lineage_chain(input_file)
+    except Exception:
+        # If lineage tracing fails, skip injection
+        return
+
+    # Only inject if there's lineage history (more than just the input file)
+    if len(lineage_chain) <= 1:
+        return
+
+    # Build lineage message - reverse to get chronological order (oldest first)
+    chronological_chain = list(reversed(lineage_chain))
+    file_list = "\n".join([
+        f"  {i+1}. {path} ({derivation_type})"
+        for i, (path, derivation_type) in enumerate(chronological_chain)
+    ])
+
+    lineage_note = (
+        f"\n\n[PARENT SESSION LINEAGE - For full context on trimmed content, "
+        f"you can refer to these parent sessions in CHRONOLOGICAL ORDER "
+        f"(oldest to newest):\n{file_list}\n"
+        f"Use sub-agents to explore these files if you need more context "
+        f"on any trimmed content.]\n\n"
+    )
+
+    # Read the output file
+    with open(output_file, "r") as f:
+        lines = f.readlines()
+
+    # Find and modify the first user message
+    modified = False
+    for i, line in enumerate(lines):
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if agent == "claude":
+            # Claude format: type == "user" with message.content
+            if data.get("type") == "user":
+                message = data.get("message", {})
+                content = message.get("content", [])
+                if isinstance(content, list) and content:
+                    # Find first text item and prepend lineage note
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            item["text"] = lineage_note + item.get("text", "")
+                            modified = True
+                            break
+                    if not modified and content:
+                        # If no text item, add one at the beginning
+                        content.insert(0, {"type": "text", "text": lineage_note})
+                        modified = True
+                elif isinstance(content, str):
+                    message["content"] = lineage_note + content
+                    modified = True
+
+                if modified:
+                    lines[i] = json.dumps(data) + "\n"
+                    break
+
+        elif agent == "codex":
+            # Codex format: type == "input" or response_item with input payload
+            if data.get("type") == "input":
+                # Direct input message
+                content = data.get("content", "")
+                if isinstance(content, str):
+                    data["content"] = lineage_note + content
+                    modified = True
+                    lines[i] = json.dumps(data) + "\n"
+                    break
+            elif data.get("type") == "response_item":
+                payload = data.get("payload", {})
+                if payload.get("type") == "message" and payload.get("role") == "user":
+                    content = payload.get("content", [])
+                    if isinstance(content, list) and content:
+                        for item in content:
+                            if isinstance(item, dict) and "text" in item:
+                                item["text"] = lineage_note + item.get("text", "")
+                                modified = True
+                                break
+                    if modified:
+                        lines[i] = json.dumps(data) + "\n"
+                        break
+
+    # Write back if modified
+    if modified:
+        with open(output_file, "w") as f:
+            f.writelines(lines)
 
 
 def is_trimmed_session(session_file: Path) -> bool:
@@ -283,6 +392,9 @@ def trim_and_create_session(
         except json.JSONDecodeError:
             # If first line is not valid JSON, leave file as-is
             pass
+
+    # Inject parent session lineage into first user message
+    inject_lineage_into_first_user_message(output_path, input_file, agent)
 
     return {
         "session_id": session_uuid,

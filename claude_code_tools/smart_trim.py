@@ -10,12 +10,18 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from claude_code_tools.smart_trim_core import identify_trimmable_lines
-from claude_code_tools.trim_session import detect_agent
+from claude_code_tools.smart_trim_core import identify_trimmable_lines, SMART_TRIM_THRESHOLD
+from claude_code_tools.trim_session import detect_agent, inject_lineage_into_first_user_message
 from claude_code_tools.session_utils import get_claude_home, resolve_session_path
 
 
-def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> dict:
+def trim_lines(
+    input_file: Path,
+    line_indices: List[int],
+    output_file: Path,
+    parent_file: Optional[str] = None,
+    descriptions: Optional[dict] = None,
+) -> dict:
     """
     Replace content within specified lines with placeholders.
 
@@ -27,10 +33,38 @@ def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> 
         input_file: Input session file
         line_indices: Line numbers to trim (0-indexed)
         output_file: Output file path
+        parent_file: Path to parent session file (for truncation references)
+        descriptions: Optional dict mapping line indices to short descriptions
+            of what the content contains (with file paths when relevant)
 
     Returns:
         Stats dict with num_lines_trimmed and chars_saved
     """
+    # Use input_file as parent_file if not provided
+    if parent_file is None:
+        parent_file = str(input_file.absolute())
+
+    # Initialize descriptions dict if not provided
+    if descriptions is None:
+        descriptions = {}
+
+    def truncate_content(content: str, content_type: str, line_num: int) -> str:
+        """Truncate content to threshold and add placeholder notice."""
+        if len(content) <= SMART_TRIM_THRESHOLD:
+            return content  # Don't truncate short content
+
+        desc = descriptions.get(idx, "")
+        desc_part = f" {desc}" if desc else ""
+
+        # Keep first SMART_TRIM_THRESHOLD chars + add notice
+        truncated = content[:SMART_TRIM_THRESHOLD]
+        notice = (
+            f"\n\n[...{content_type} truncated by smart-trim - "
+            f"original was {len(content):,} chars.{desc_part} "
+            f"See line {line_num} of {parent_file} for full content]"
+        )
+        return truncated + notice
+
     with open(input_file, 'r') as f:
         lines = f.readlines()
 
@@ -44,40 +78,49 @@ def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> 
                 data = json.loads(lines[idx])
                 original_len = len(lines[idx])
 
+                # Convert 0-indexed to 1-indexed for display
+                line_num = idx + 1
+
                 # Determine message type and replace content appropriately
                 msg_type = data.get("type", "")
                 trimmed = False
 
                 # Claude Code format
                 if msg_type == "assistant":
-                    # Replace text content in assistant messages
+                    # Truncate text content in assistant messages
                     message = data.get("message", {})
                     content = message.get("content", [])
                     if isinstance(content, list):
                         for item in content:
                             if isinstance(item, dict) and item.get("type") == "text":
                                 text = item.get("text", "")
-                                if text:
-                                    item["text"] = f"[Content trimmed by smart-trim - {len(text):,} chars]"
+                                if text and len(text) >= SMART_TRIM_THRESHOLD:
+                                    item["text"] = truncate_content(
+                                        text, "content", line_num
+                                    )
                                     trimmed = True
 
                 elif msg_type == "user":
-                    # Replace tool result content
+                    # Truncate tool result content
                     message = data.get("message", {})
                     content = message.get("content", [])
                     if isinstance(content, list):
                         for item in content:
                             if isinstance(item, dict) and item.get("type") == "tool_result":
                                 result_content = item.get("content", "")
-                                if isinstance(result_content, str) and result_content:
-                                    content_len = len(result_content)
-                                    item["content"] = f"[Tool result trimmed by smart-trim - {content_len:,} chars]"
+                                if isinstance(result_content, str) and len(result_content) >= SMART_TRIM_THRESHOLD:
+                                    item["content"] = truncate_content(
+                                        result_content, "tool result", line_num
+                                    )
                                     trimmed = True
                                 elif isinstance(result_content, list):
-                                    # Handle list format
-                                    total_len = sum(len(str(c)) for c in result_content)
-                                    item["content"] = f"[Tool result trimmed by smart-trim - {total_len:,} chars]"
-                                    trimmed = True
+                                    # Handle list format - convert to string first
+                                    combined = "".join(str(c) for c in result_content)
+                                    if len(combined) >= SMART_TRIM_THRESHOLD:
+                                        item["content"] = truncate_content(
+                                            combined, "tool result", line_num
+                                        )
+                                        trimmed = True
 
                 # Codex format (response_item with payload)
                 elif msg_type == "response_item":
@@ -85,22 +128,25 @@ def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> 
                     payload_type = payload.get("type", "")
 
                     if payload_type == "message":
-                        # Replace message text content
+                        # Truncate message text content
                         content = payload.get("content", [])
                         if isinstance(content, list):
                             for item in content:
                                 if isinstance(item, dict):
                                     text = item.get("text", "")
-                                    if text:
-                                        item["text"] = f"[Content trimmed by smart-trim - {len(text):,} chars]"
+                                    if text and len(text) >= SMART_TRIM_THRESHOLD:
+                                        item["text"] = truncate_content(
+                                            text, "content", line_num
+                                        )
                                         trimmed = True
 
                     elif payload_type == "function_call_output":
-                        # Replace function output
+                        # Truncate function output
                         output = payload.get("output", "")
-                        if output:
-                            output_len = len(str(output))
-                            payload["output"] = f"[Function output trimmed by smart-trim - {output_len:,} chars]"
+                        if output and len(str(output)) >= SMART_TRIM_THRESHOLD:
+                            payload["output"] = truncate_content(
+                                str(output), "function output", line_num
+                            )
                             trimmed = True
 
                 # Codex old format
@@ -110,15 +156,18 @@ def trim_lines(input_file: Path, line_indices: List[int], output_file: Path) -> 
                         for item in content:
                             if isinstance(item, dict):
                                 text = item.get("text", "")
-                                if text:
-                                    item["text"] = f"[Content trimmed by smart-trim - {len(text):,} chars]"
+                                if text and len(text) >= SMART_TRIM_THRESHOLD:
+                                    item["text"] = truncate_content(
+                                        text, "content", line_num
+                                    )
                                     trimmed = True
 
                 elif msg_type == "function_call_output":
                     output = data.get("output", "")
-                    if output:
-                        output_len = len(str(output))
-                        data["output"] = f"[Function output trimmed by smart-trim - {output_len:,} chars]"
+                    if output and len(str(output)) >= SMART_TRIM_THRESHOLD:
+                        data["output"] = truncate_content(
+                            str(output), "function output", line_num
+                        )
                         trimmed = True
 
                 if trimmed:
@@ -277,11 +326,19 @@ def main():
 
     print(f"📊 Identified {len(trimmable)} lines for trimming:")
 
+    # Build descriptions dict for verbose mode
+    descriptions = {}
     if args.verbose:
-        # trimmable is list of (line_idx, rationale) tuples
+        # trimmable is list of (line_idx, rationale, description) tuples
         print(f"\n   All {len(trimmable)} lines with rationales:")
-        for line_idx, rationale in trimmable:
+        for item in trimmable:
+            line_idx = item[0]
+            rationale = item[1]
+            description = item[2] if len(item) > 2 else ""
             print(f"   Line {line_idx}: {rationale}")
+            if description:
+                print(f"      → {description}")
+                descriptions[line_idx] = description
     else:
         # trimmable is list of integers
         print(f"   Line indices: {trimmable[:10]}{'...' if len(trimmable) > 10 else ''}")
@@ -291,9 +348,9 @@ def main():
         print("🏃 Dry run mode - no changes made")
         return
 
-    # Extract line indices (in case of verbose mode with rationales)
+    # Extract line indices (in case of verbose mode with rationales/descriptions)
     if args.verbose:
-        line_indices = [line_idx for line_idx, _ in trimmable]
+        line_indices = [item[0] for item in trimmable]
     else:
         line_indices = trimmable
 
@@ -313,8 +370,8 @@ def main():
         new_uuid = str(uuid.uuid4())
         output_file = output_dir / f"smart-trim-{timestamp}-{new_uuid[:8]}.jsonl"
 
-    # Perform trimming
-    stats = trim_lines(session_file, line_indices, output_file)
+    # Perform trimming (pass descriptions from verbose mode)
+    stats = trim_lines(session_file, line_indices, output_file, descriptions=descriptions)
 
     # Add trim metadata to first line of output file
     import json
@@ -364,6 +421,9 @@ def main():
         except json.JSONDecodeError:
             # If first line is malformed, just skip adding metadata
             pass
+
+    # Inject parent session lineage into first user message
+    inject_lineage_into_first_user_message(output_file, session_file, agent)
 
     print(f"✅ Smart trim complete!")
     print(f"   Lines trimmed: {stats['num_lines_trimmed']}")

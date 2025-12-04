@@ -66,7 +66,12 @@ def get_output_length(output_str: str) -> int:
 
 
 def truncate_output(
-    output_str: str, threshold: int, tool_name: str, metadata: Dict
+    output_str: str,
+    threshold: int,
+    tool_name: str,
+    metadata: Dict,
+    line_num: Optional[int] = None,
+    parent_file: Optional[str] = None,
 ) -> str:
     """
     Truncate Codex output to threshold length, preserving first N characters.
@@ -76,6 +81,8 @@ def truncate_output(
         threshold: Maximum length to preserve.
         tool_name: Name of the tool (for truncation notice).
         metadata: Original metadata to preserve.
+        line_num: Line number in the parent file (for reference).
+        parent_file: Path to the parent session file (for reference).
 
     Returns:
         JSON-encoded output string with truncated content.
@@ -98,10 +105,19 @@ def truncate_output(
     # Truncate and add notice
     original_length = len(content)
     truncated = content[:threshold]
-    truncation_notice = (
-        f"\n\n[...truncated - original content was "
-        f"{original_length:,} characters, showing first {threshold}]"
-    )
+
+    # Build truncation notice with optional reference to parent file
+    if line_num is not None and parent_file:
+        truncation_notice = (
+            f"\n\n[...truncated - original content was "
+            f"{original_length:,} characters, showing first {threshold}. "
+            f"See line {line_num} of {parent_file} for full content]"
+        )
+    else:
+        truncation_notice = (
+            f"\n\n[...truncated - original content was "
+            f"{original_length:,} characters, showing first {threshold}]"
+        )
 
     # Create truncated output object
     truncated_obj = {
@@ -150,6 +166,7 @@ def process_codex_session(
     create_placeholder: callable,
     new_session_id: Optional[str] = None,
     trim_assistant_messages: Optional[int] = None,
+    parent_file: Optional[str] = None,
 ) -> Tuple[int, int, int]:
     """
     Process Codex session file and trim tool results and assistant messages.
@@ -164,10 +181,15 @@ def process_codex_session(
             for Codex, we use create_suppressed_output instead).
         new_session_id: Optional new session ID to replace in session_meta events.
         trim_assistant_messages: Optional assistant message trimming (see trim_and_create_session).
+        parent_file: Path to parent session file (for truncation references).
 
     Returns:
         Tuple of (num_tools_trimmed, num_assistant_trimmed, chars_saved).
     """
+    # Use input_file as parent_file if not provided
+    if parent_file is None:
+        parent_file = str(input_file.absolute())
+
     num_tools_trimmed = 0
     num_assistant_trimmed = 0
     chars_saved = 0
@@ -253,7 +275,8 @@ def process_codex_session(
                             if original_length >= threshold:
                                 placeholder = (
                                     f"[Assistant message trimmed - "
-                                    f"original content was {original_length:,} characters]"
+                                    f"original content was {original_length:,} characters. "
+                                    f"See line {line_num} of {parent_file} for full content]"
                                 )
                                 item["text"] = placeholder
                                 chars_saved += original_length - len(placeholder)
@@ -296,7 +319,8 @@ def process_codex_session(
 
                 # Truncate output
                 truncated_output = truncate_output(
-                    output_str, threshold, tool_name, metadata
+                    output_str, threshold, tool_name, metadata,
+                    line_num=line_num, parent_file=parent_file
                 )
 
                 # Replace the output

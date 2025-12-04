@@ -9,6 +9,9 @@ from claude_agent_sdk import query, ClaudeAgentOptions
 from claude_agent_sdk.types import AssistantMessage
 from typing import Any, Dict
 
+# Minimum content length (in chars) for a line to be considered for trimming
+SMART_TRIM_THRESHOLD = 500
+
 
 ANALYSIS_PROMPT = """You are analyzing a coding agent session to identify content that can be safely removed.
 
@@ -21,8 +24,14 @@ IMPORTANT - What you're seeing:
 - For tool results: The output/result content
 - System messages (file-history-snapshot, summary, etc.) are filtered out
 - Reasoning/thinking tokens are filtered out (they don't count in context)
+- Each line shows its length in characters: LINE N [len=X]:
 
-Consider for trimming:
+IMPORTANT - Length threshold:
+- ONLY consider lines with length >= {trim_threshold} characters for trimming
+- Lines shorter than {trim_threshold} chars should NEVER be included in your output
+- The [len=X] annotation shows the content length for each line
+
+Consider for trimming (if length >= {trim_threshold}):
 - Verbose tool results that were one-time analysis only
 - Lengthy assistant explanations no longer relevant
 - Intermediate debugging output
@@ -30,6 +39,7 @@ Consider for trimming:
 - Repetitive explanations or acknowledgments
 
 DO NOT trim:
+- Lines with length < {trim_threshold} characters
 - User messages (already protected)
 - Recent messages (already protected)
 - Critical context or decisions
@@ -39,7 +49,7 @@ DO NOT trim:
 Session content chunk:
 {session_content}
 
-Each line is labeled "LINE N:" where N is the line number in the original session file.
+Each line is labeled "LINE N [len=X]:" where N is the line number and X is the content length.
 
 {response_format}
 """
@@ -47,10 +57,13 @@ Each line is labeled "LINE N:" where N is the line number in the original sessio
 RESPONSE_FORMAT_NORMAL = """Respond with ONLY a JSON array of the line numbers to trim, e.g.: [0, 5, 12, 23]
 Use the exact line numbers shown in the "LINE N:" labels."""
 
-RESPONSE_FORMAT_VERBOSE = """Respond with ONLY a JSON array of tuples [line_number, rationale], e.g.:
-[[0, "verbose tool output"], [5, "redundant explanation"], [12, "debug output"]]
+RESPONSE_FORMAT_VERBOSE = """Respond with ONLY a JSON array of tuples [line_number, rationale, description], e.g.:
+[[0, "verbose tool output", "Reading `/src/config.py`"], [5, "redundant explanation", "Explaining test setup"], [12, "debug output", "Bash output from `npm test`"]]
 
-Each rationale should be a brief phrase (max 5-6 words) explaining why that line can be trimmed.
+For each line:
+- rationale: Brief phrase (max 5-6 words) explaining why it can be trimmed
+- description: 1-2 sentence summary of what the line contains. IMPORTANT: Always include explicit file paths when the content involves reading, writing, or editing files (e.g., "Writing code to `/src/main.py`", "Result of reading `/config/settings.json`")
+
 Use the exact line numbers shown in the "LINE N:" labels."""
 
 
@@ -181,25 +194,28 @@ async def _analyze_chunk(
     chunk_start: int,
     chunk_end: int,
     verbose: bool = False,
+    trim_threshold: int = SMART_TRIM_THRESHOLD,
 ):
     """
     Analyze a single chunk of session lines.
 
     Args:
-        chunk_data: List of (line_idx, preview) tuples for this chunk
+        chunk_data: List of (line_idx, preview, content_len) tuples for this chunk
         chunk_index: Index of this chunk (0-based)
         total_chunks: Total number of chunks
         chunk_start: Starting line number in original session
         chunk_end: Ending line number in original session
-        verbose: If True, return list of (line_idx, rationale) tuples
+        verbose: If True, return list of (line_idx, rationale, description) tuples
+        trim_threshold: Minimum content length for trimming consideration
 
     Returns:
         If verbose=False: List of line indices to trim
-        If verbose=True: List of (line_idx, rationale) tuples
+        If verbose=True: List of (line_idx, rationale, description) tuples
     """
-    # Format chunk content with explicit line numbers
+    # Format chunk content with explicit line numbers and lengths
     session_content = "\n".join(
-        f"LINE {idx}: {preview}" for idx, preview in chunk_data
+        f"LINE {idx} [len={content_len}]: {preview}"
+        for idx, preview, content_len in chunk_data
     )
 
     # Query Claude agent
@@ -211,6 +227,7 @@ async def _analyze_chunk(
         chunk_end=chunk_end,
         session_content=session_content,
         response_format=response_format,
+        trim_threshold=trim_threshold,
     )
 
     options = ClaudeAgentOptions(
@@ -226,7 +243,7 @@ async def _analyze_chunk(
                 if hasattr(block, 'text'):
                     response_text += block.text
 
-    # Parse response to get line numbers (and rationales if verbose)
+    # Parse response to get line numbers (and rationales/descriptions if verbose)
     try:
         start = response_text.find('[')
         end = response_text.rfind(']') + 1
@@ -234,9 +251,16 @@ async def _analyze_chunk(
             result = json.loads(response_text[start:end])
             # Validate format
             if verbose:
-                # Should be list of [line_num, rationale] tuples
-                if all(isinstance(item, list) and len(item) == 2 for item in result):
-                    return [(int(item[0]), str(item[1])) for item in result]
+                # Should be list of [line_num, rationale, description] tuples
+                parsed = []
+                for item in result:
+                    if isinstance(item, list) and len(item) >= 2:
+                        line_num = int(item[0])
+                        rationale = str(item[1])
+                        # Description is optional for backwards compatibility
+                        description = str(item[2]) if len(item) >= 3 else ""
+                        parsed.append((line_num, rationale, description))
+                return parsed
             else:
                 # Should be list of integers
                 if all(isinstance(item, int) for item in result):
@@ -367,24 +391,30 @@ async def _analyze_session_async(
             relevant_content = extract_relevant_content(data, effective_type, content_threshold)
 
             if relevant_content:
+                # Calculate total content length across all fields
+                total_content_len = sum(len(content) for _, content in relevant_content)
+
                 # Show extracted content with field paths
                 preview_parts = []
                 for path, content in relevant_content[:3]:  # Max 3 content fields
                     content_preview = content[:500] if len(content) > 500 else content
                     preview_parts.append(f"{path}({len(content)} chars): {content_preview}")
                 preview = " | ".join(preview_parts)
-            else:
-                # No relevant content, show type and keys
-                keys = list(data.keys())[:5]
-                preview = f"type={msg_type}, keys={keys} (no relevant content >= {content_threshold} chars)"
 
-            session_data.append((idx, preview))
+                # Store (idx, preview, content_len) tuple
+                session_data.append((idx, preview, total_content_len))
+            else:
+                # No relevant content - skip this line (nothing to trim)
+                continue
 
         except json.JSONDecodeError:
             protected_indices.add(idx)  # Protect malformed lines
 
     if not session_data:
         return []
+
+    # Build a mapping of line index to content length for filtering
+    content_lengths = {idx: content_len for idx, _, content_len in session_data}
 
     # Split into chunks for parallel processing
     chunks = []
@@ -399,34 +429,46 @@ async def _analyze_session_async(
 
     # Launch parallel agents for each chunk
     tasks = [
-        _analyze_chunk(chunk, chunk_idx, total_chunks, chunk_start, chunk_end, verbose)
+        _analyze_chunk(
+            chunk, chunk_idx, total_chunks, chunk_start, chunk_end,
+            verbose, trim_threshold=SMART_TRIM_THRESHOLD
+        )
         for chunk, chunk_idx, chunk_start, chunk_end in chunks
     ]
 
     # Gather results from all agents
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Merge results and filter out protected indices
+    # Merge results and filter out protected indices AND lines under threshold
     if verbose:
-        # Results are list of (line_idx, rationale) tuples
+        # Results are list of (line_idx, rationale, description) tuples
         trimmable_dict = {}
         for result in results:
             if isinstance(result, list):
                 for item in result:
-                    if isinstance(item, tuple) and len(item) == 2:
-                        line_idx, rationale = item
-                        if line_idx not in protected_indices:
-                            trimmable_dict[line_idx] = rationale
-        # Return sorted list of tuples
-        return sorted(trimmable_dict.items())
+                    if isinstance(item, tuple) and len(item) >= 2:
+                        line_idx = item[0]
+                        rationale = item[1]
+                        description = item[2] if len(item) >= 3 else ""
+                        # Filter: not protected AND content >= threshold
+                        content_len = content_lengths.get(line_idx, 0)
+                        if (line_idx not in protected_indices and
+                                content_len >= SMART_TRIM_THRESHOLD):
+                            trimmable_dict[line_idx] = (rationale, description)
+        # Return sorted list of tuples: (line_idx, rationale, description)
+        return [(idx, rat_desc[0], rat_desc[1]) for idx, rat_desc in sorted(trimmable_dict.items())]
     else:
         # Results are list of integers
         trimmable = set()
         for result in results:
             if isinstance(result, list):
                 trimmable.update(result)
-        # Filter out protected indices
-        return sorted([idx for idx in trimmable if idx not in protected_indices])
+        # Filter out protected indices AND lines under threshold
+        return sorted([
+            idx for idx in trimmable
+            if idx not in protected_indices and
+               content_lengths.get(idx, 0) >= SMART_TRIM_THRESHOLD
+        ])
 
 
 def identify_trimmable_lines(
@@ -448,7 +490,8 @@ def identify_trimmable_lines(
         preserve_recent: Always preserve last N messages (default: 10,
             deprecated - use preserve_tail instead)
         max_lines_per_agent: Max lines per agent chunk (default: 100)
-        verbose: If True, return (line_idx, rationale) tuples (default: False)
+        verbose: If True, return (line_idx, rationale, description) tuples
+            (default: False)
         content_threshold: Min chars to extract from JSON (default: 200)
         preserve_head: Always preserve first N messages (default: 0)
         preserve_tail: Always preserve last N messages (default: None, uses
@@ -456,7 +499,8 @@ def identify_trimmable_lines(
 
     Returns:
         If verbose=False: List of 0-indexed line numbers to trim
-        If verbose=True: List of (line_idx, rationale) tuples
+        If verbose=True: List of (line_idx, rationale, description) tuples where
+            description is a 1-2 sentence summary with explicit file paths
     """
     if exclude_types is None:
         exclude_types = ["user"]
