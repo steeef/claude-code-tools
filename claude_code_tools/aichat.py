@@ -275,11 +275,12 @@ def _find_and_run_session_ui(
         )
         sys.exit(1)
 
-    # Handler for when user selects and acts
+    # Handler for when user selects and acts - returns 'back' if user wants to
+    # go back to menu
     def handler(sess, action, kwargs=None):
         session_file = Path(sess["file_path"])
         merged_kwargs = {**(action_kwargs or {}), **(kwargs or {})}
-        execute_action(
+        return execute_action(
             action,
             sess["agent"],
             session_file,
@@ -299,9 +300,9 @@ def _find_and_run_session_ui(
     def selection_handler(sess, action, kwargs=None):
         if direct_action:
             # Execute direct_action instead of whatever came from UI
-            handler(sess, direct_action, action_kwargs)
+            return handler(sess, direct_action, action_kwargs)
         else:
-            handler(sess, action, kwargs)
+            return handler(sess, action, kwargs)
 
     if len(candidates) == 1:
         # Single session - go directly to start_screen
@@ -1325,7 +1326,7 @@ def search(
             print(f"Error: No file_path for session {sess.get('session_id')}")
             return
 
-        execute_action(
+        return execute_action(
             action=action,
             agent=agent_type,
             session_file=Path(file_path),

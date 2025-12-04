@@ -766,9 +766,12 @@ def handle_suppress_resume_claude(
     threshold: int,
     trim_assistant_messages: Optional[int] = None,
     claude_home: Optional[str] = None,
-) -> None:
+) -> str | None:
     """
     Suppress tool results and resume Claude Code session.
+
+    Returns:
+        'back' if user wants to go back to menu, None otherwise.
     """
     session_file = Path(get_session_file_path(session_id, project_path, claude_home))
 
@@ -790,7 +793,7 @@ def handle_suppress_resume_claude(
         )
     except Exception as e:
         print(f"❌ Error trimming session: {e}")
-        return
+        return None
 
     new_session_id = result["session_id"]
     new_session_file = Path(result["output_file"])
@@ -810,23 +813,29 @@ def handle_suppress_resume_claude(
     if action == 'resume':
         # Resume the new session
         resume_session(new_session_id, project_path, claude_home=claude_home)
+        return None
     elif action == 'delete':
-        # Delete the new session file
+        # Delete the new session file and go back to menu
         new_session_file.unlink(missing_ok=True)
         print(f"\n🗑️  Deleted session file: {new_session_file.name}")
+        return 'back'
     else:
-        # Cancel (escape) - keep file, don't resume
+        # Cancel (escape) - keep file, go back to menu
         print(f"\n📁 Session file kept: {new_session_file}")
         print(f"   Session ID: {new_session_id}")
+        return 'back'
 
 
 def handle_smart_trim_resume_claude(
     session_id: str,
     project_path: str,
     claude_home: Optional[str] = None,
-) -> None:
+) -> str | None:
     """
     Smart trim session using parallel agents and resume Claude Code session.
+
+    Returns:
+        'back' if user wants to go back to menu, None otherwise.
     """
     import uuid
 
@@ -853,8 +862,9 @@ def handle_smart_trim_resume_claude(
 
             if action == 'resume':
                 resume_session(session_id, project_path, claude_home=claude_home)
-            # 'back' or 'cancel' - just return without resuming
-            return
+                return None
+            # 'back' or 'cancel' - return signal to go back to menu
+            return 'back'
 
         print(f"   Found {len(trimmable)} lines to trim")
 
@@ -879,20 +889,23 @@ def handle_smart_trim_resume_claude(
         if action == 'resume':
             # Resume the new session
             resume_session(new_session_id, project_path, claude_home=claude_home)
+            return None
         elif action == 'delete':
-            # Delete the new session file
+            # Delete the new session file and go back to menu
             output_file.unlink(missing_ok=True)
             print(f"\n🗑️  Deleted session file: {output_file.name}")
+            return 'back'
         else:
-            # Cancel (escape) - keep file, don't resume
+            # Cancel (escape) - keep file, go back to menu
             print(f"\n📁 Session file kept: {output_file}")
             print(f"   Session ID: {new_session_id}")
+            return 'back'
 
     except Exception as e:
         print(f"❌ Error during smart trim: {e}")
         import traceback
         traceback.print_exc()
-        return
+        return None
 
 
 def show_action_menu(session_info: Tuple[str, float, float, int, str, str, str, Optional[str]]) -> Optional[str]:

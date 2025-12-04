@@ -70,7 +70,7 @@ def execute_action(
     codex_home: Optional[str] = None,
     action_kwargs: Optional[dict] = None,
     session_id: Optional[str] = None,
-) -> None:
+) -> str | None:
     """
     Execute the selected action by delegating to appropriate tool.
 
@@ -83,6 +83,9 @@ def execute_action(
         codex_home: Optional custom Codex home
         action_kwargs: Optional action-specific arguments
         session_id: Optional session ID (required for Codex, uses file stem for Claude)
+
+    Returns:
+        'back' if user wants to go back to menu, None otherwise.
     """
     # For Claude, session_id is the file stem; for Codex, it must be passed explicitly
     if session_id is None:
@@ -154,7 +157,7 @@ def execute_action(
             from claude_code_tools.find_claude_session import (
                 handle_suppress_resume_claude,
             )
-            handle_suppress_resume_claude(
+            result = handle_suppress_resume_claude(
                 session_id,
                 project_path,
                 tools,
@@ -162,33 +165,40 @@ def execute_action(
                 trim_assistant,
                 claude_home,
             )
+            return result
         else:
             from claude_code_tools.find_codex_session import (
                 handle_suppress_resume_codex,
             )
-            handle_suppress_resume_codex(
-                str(session_file),
+            result = handle_suppress_resume_codex(
+                {"file_path": str(session_file), "cwd": project_path,
+                 "session_id": session_id},
                 tools,
                 threshold or 500,
                 trim_assistant,
-                codex_home,
+                Path(codex_home) if codex_home else Path.home() / ".codex",
             )
+            return result
 
     elif action == "smart_trim_resume":
         if agent == "claude":
             from claude_code_tools.find_claude_session import (
                 handle_smart_trim_resume_claude,
             )
-            handle_smart_trim_resume_claude(
+            result = handle_smart_trim_resume_claude(
                 session_id, project_path, claude_home
             )
+            return result
         else:
             from claude_code_tools.find_codex_session import (
                 handle_smart_trim_resume_codex,
             )
-            handle_smart_trim_resume_codex(
-                {"file_path": str(session_file)}, codex_home
+            result = handle_smart_trim_resume_codex(
+                {"file_path": str(session_file), "cwd": project_path,
+                 "session_id": session_id},
+                Path(codex_home) if codex_home else Path.home() / ".codex",
             )
+            return result
 
     elif action == "continue":
         # Continue with context in fresh session

@@ -94,39 +94,29 @@ def _read_result(out_path: Path) -> Dict[str, Any]:
     return {}
 
 
-def run_node_menu_ui(
+def _run_node_menu_once(
     sessions: List[SessionDict],
     keywords: List[str],
-    action_handler: Callable[[SessionDict, str, Dict[str, Any]], None],
-    stderr_mode: bool = False,
-    focus_session_id: str | None = None,
-    start_action: bool = False,
-    start_screen: str | None = None,
-    rpc_path: str | None = None,
-    scope_line: str | None = None,
-    tip_line: str | None = None,
-    select_target: str | None = None,
-    results_title: str | None = None,
-    start_zoomed: bool = False,
-    lineage_back_target: str | None = None,
-    direct_action: str | None = None,
+    action_handler: Callable[[SessionDict, str, Dict[str, Any]], Any],
+    stderr_mode: bool,
+    focus_session_id: str | None,
+    start_action: bool,
+    start_screen: str | None,
+    rpc_path: str | None,
+    scope_line: str | None,
+    tip_line: str | None,
+    select_target: str | None,
+    results_title: str | None,
+    start_zoomed: bool,
+    lineage_back_target: str | None,
+    direct_action: str | None,
 ) -> str | None:
-    """Launch Node UI and dispatch selected action.
+    """Run Node UI once and return result signal.
 
     Returns:
-        "back_to_options" if user wants to go back to options menu, None otherwise.
-
-    Args:
-        sessions: List of session dicts (same shape as find_session results)
-        keywords: List of search keywords
-        action_handler: Callback invoked with (session_dict, action)
-        stderr_mode: If True, Node may log to stderr instead of stdout
-        start_screen: Optional screen to start on ('action', 'resume', etc.)
-        select_target: Screen to go to after selection (default 'action')
-        results_title: Custom title for results view
-        start_zoomed: Start with all rows expanded
-        lineage_back_target: Screen to go back to from lineage (default 'resume')
-        direct_action: If set, execute this action immediately after selection
+        'back' - action_handler wants to go back to resume menu
+        'back_to_options' - user wants to go back to options
+        None - normal exit (action completed or user cancelled)
     """
     data_path = _write_payload(
         sessions,
@@ -151,41 +141,85 @@ def run_node_menu_ui(
         code = _run_node(data_path, out_file, stderr_mode=stderr_mode)
         if code != 0:
             print("Node UI exited with code", code, file=sys.stderr)
-            return
+            return None
 
         result = _read_result(out_file)
         session_id = result.get("session_id")
         action = result.get("action")
         kwargs = result.get("kwargs", {})
 
-        # Special case: back_to_options signal (no session needed)
         if action == "back_to_options":
             return "back_to_options"
 
         if not session_id or not action:
-            # Empty result means user cancelled (Escape) - silently return
             if result:
-                # Non-empty but malformed result is an actual error
                 print(f"Error: Missing session_id or action in result: {result}")
             return None
 
-        # Locate matching session
         session = next((s for s in sessions if s.get("session_id") == session_id), None)
         if not session:
             print(f"Error: Session {session_id} not found in {len(sessions)} sessions")
-            return
+            return None
 
-        action_handler(session, action, kwargs)
-        return None
+        handler_result = action_handler(session, action, kwargs)
+        return 'back' if handler_result == 'back' else None
     finally:
         try:
-            data_path.unlink(missing_ok=True)  # type: ignore[arg-type]
+            data_path.unlink(missing_ok=True)
         except Exception:
             pass
         try:
-            out_file.unlink(missing_ok=True)  # type: ignore[arg-type]
+            out_file.unlink(missing_ok=True)
         except Exception:
             pass
+
+
+def run_node_menu_ui(
+    sessions: List[SessionDict],
+    keywords: List[str],
+    action_handler: Callable[[SessionDict, str, Dict[str, Any]], Any],
+    stderr_mode: bool = False,
+    focus_session_id: str | None = None,
+    start_action: bool = False,
+    start_screen: str | None = None,
+    rpc_path: str | None = None,
+    scope_line: str | None = None,
+    tip_line: str | None = None,
+    select_target: str | None = None,
+    results_title: str | None = None,
+    start_zoomed: bool = False,
+    lineage_back_target: str | None = None,
+    direct_action: str | None = None,
+) -> str | None:
+    """Launch Node UI and dispatch selected action.
+
+    Handles 'back to resume' internally - if action_handler returns 'back',
+    automatically re-shows the resume menu. This works for ALL callers.
+
+    Returns:
+        "back_to_options" if user wants to go back to options menu, None otherwise.
+    """
+    current_screen = start_screen
+    current_direct_action = direct_action
+    current_start_action = start_action
+
+    while True:
+        result = _run_node_menu_once(
+            sessions, keywords, action_handler, stderr_mode, focus_session_id,
+            current_start_action, current_screen, rpc_path, scope_line, tip_line,
+            select_target, results_title, start_zoomed, lineage_back_target,
+            current_direct_action,
+        )
+
+        if result == 'back':
+            # Go back to resume menu
+            current_screen = 'resume'
+            current_direct_action = None
+            current_start_action = False  # Don't auto-start action on loop back
+            continue
+
+        # 'back_to_options' or None - return to caller
+        return result
 
 
 def run_find_options_ui(

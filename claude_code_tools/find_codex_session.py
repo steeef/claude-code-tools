@@ -541,9 +541,12 @@ def handle_suppress_resume_codex(
     threshold: int,
     trim_assistant_messages: Optional[int],
     codex_home: Path,
-) -> None:
+) -> str | None:
     """
     Suppress tool results and resume Codex session.
+
+    Returns:
+        'back' if user wants to go back to menu, None otherwise.
     """
     session_file = Path(match["file_path"])
 
@@ -565,7 +568,7 @@ def handle_suppress_resume_codex(
         )
     except Exception as e:
         print(f"❌ Error trimming session: {e}")
-        return
+        return None
 
     new_session_id = result["session_id"]
     new_session_file = Path(result["output_file"])
@@ -591,22 +594,28 @@ def handle_suppress_resume_codex(
 
         # Resume the new session
         resume_session(new_session_id, match["cwd"])
+        return None
     elif action == 'delete':
-        # Delete the new session file
+        # Delete the new session file and go back to menu
         new_session_file.unlink(missing_ok=True)
         print(f"\n🗑️  Deleted session file: {new_session_file.name}")
+        return 'back'
     else:
-        # Cancel (escape) - keep file, don't resume
+        # Cancel (escape) - keep file, go back to menu
         print(f"\n📁 Session file kept: {new_session_file}")
         print(f"   Session ID: {new_session_id}")
+        return 'back'
 
 
 def handle_smart_trim_resume_codex(
     match: dict,
     codex_home: Path,
-) -> None:
+) -> str | None:
     """
     Smart trim session using parallel agents and resume Codex session.
+
+    Returns:
+        'back' if user wants to go back to menu, None otherwise.
     """
     import uuid
     from datetime import datetime
@@ -634,8 +643,9 @@ def handle_smart_trim_resume_codex(
 
             if action == 'resume':
                 resume_session(match["session_id"], match["cwd"])
-            # 'back' or 'cancel' - just return without resuming
-            return
+                return None
+            # 'back' or 'cancel' - return signal to go back to menu
+            return 'back'
 
         print(f"   Found {len(trimmable)} lines to trim")
 
@@ -668,20 +678,23 @@ def handle_smart_trim_resume_codex(
 
             # Resume the new session
             resume_session(new_session_id, match["cwd"])
+            return None
         elif action == 'delete':
-            # Delete the new session file
+            # Delete the new session file and go back to menu
             output_file.unlink(missing_ok=True)
             print(f"\n🗑️  Deleted session file: {output_file.name}")
+            return 'back'
         else:
-            # Cancel (escape) - keep file, don't resume
+            # Cancel (escape) - keep file, go back to menu
             print(f"\n📁 Session file kept: {output_file}")
             print(f"   Session ID: {new_session_id}")
+            return 'back'
 
     except Exception as e:
         print(f"❌ Error during smart trim: {e}")
         import traceback
         traceback.print_exc()
-        return
+        return None
 
 
 def handle_export_session(session_file_path: str, dest_override: str | None = None) -> None:
