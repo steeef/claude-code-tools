@@ -568,34 +568,37 @@ def handle_suppress_resume_codex(
         return
 
     new_session_id = result["session_id"]
-    new_session_file = result["output_file"]
+    new_session_file = Path(result["output_file"])
 
-    print(f"\n{'='*70}")
-    print(f"✅ TRIM COMPLETE")
-    print(f"{'='*70}")
-    print(f"📁 New session file created:")
-    print(f"   {new_session_file}")
-    print(f"🆔 New session UUID: {new_session_id}")
-    print(
-        f"📊 Trimmed {result['num_tools_trimmed']} tool results, "
-        f"{result['num_assistant_trimmed']} assistant messages, "
-        f"saved ~{result['tokens_saved']:,} tokens"
+    # Calculate total lines trimmed for confirmation UI
+    total_trimmed = result['num_tools_trimmed'] + result['num_assistant_trimmed']
+
+    # Show confirmation UI
+    from claude_code_tools.node_menu_ui import run_trim_confirm_ui
+    action = run_trim_confirm_ui(
+        new_session_id=new_session_id,
+        lines_trimmed=total_trimmed,
+        tokens_saved=result['tokens_saved'],
+        output_file=str(new_session_file),
     )
 
-    # Get first user message from original session
-    first_msg = extract_first_user_message_codex(session_file)
+    if action == 'resume':
+        # Get first user message from original session
+        first_msg = extract_first_user_message_codex(session_file)
 
-    # Append to history
-    history_file = codex_home / "history.jsonl"
-    append_to_codex_history(new_session_id, first_msg, codex_home)
-    print(f"📝 Added entry to Codex history:")
-    print(f"   {history_file}")
+        # Append to history
+        append_to_codex_history(new_session_id, first_msg, codex_home)
 
-    print(f"\n🚀 Resuming suppressed session: {new_session_id[:16]}...")
-    print(f"{'='*70}\n")
-
-    # Resume the new session
-    resume_session(new_session_id, match["cwd"])
+        # Resume the new session
+        resume_session(new_session_id, match["cwd"])
+    elif action == 'delete':
+        # Delete the new session file
+        new_session_file.unlink(missing_ok=True)
+        print(f"\n🗑️  Deleted session file: {new_session_file.name}")
+    else:
+        # Cancel (escape) - keep file, don't resume
+        print(f"\n📁 Session file kept: {new_session_file}")
+        print(f"   Session ID: {new_session_id}")
 
 
 def handle_smart_trim_resume_codex(
@@ -641,31 +644,32 @@ def handle_smart_trim_resume_codex(
         # Perform trimming
         stats = trim_lines(session_file, trimmable, output_file)
 
-        print(f"\n{'='*70}")
-        print(f"✅ SMART TRIM COMPLETE")
-        print(f"{'='*70}")
-        print(f"📁 New session file created:")
-        print(f"   {output_file}")
-        print(f"🆔 New session UUID: {new_session_id}")
-        print(
-            f"📊 Trimmed {stats['num_lines_trimmed']} lines, "
-            f"saved ~{stats['tokens_saved']:,} tokens"
+        # Show confirmation UI
+        from claude_code_tools.node_menu_ui import run_trim_confirm_ui
+        action = run_trim_confirm_ui(
+            new_session_id=new_session_id,
+            lines_trimmed=stats['num_lines_trimmed'],
+            tokens_saved=stats['tokens_saved'],
+            output_file=str(output_file),
         )
 
-        # Get first user message from original session
-        first_msg = extract_first_user_message_codex(session_file)
+        if action == 'resume':
+            # Get first user message from original session
+            first_msg = extract_first_user_message_codex(session_file)
 
-        # Append to history
-        history_file = codex_home / "history.jsonl"
-        append_to_codex_history(new_session_id, first_msg, codex_home)
-        print(f"📝 Added entry to Codex history:")
-        print(f"   {history_file}")
+            # Append to history
+            append_to_codex_history(new_session_id, first_msg, codex_home)
 
-        print(f"\n🚀 Resuming smart-trimmed session: {new_session_id[:16]}...")
-        print(f"{'='*70}\n")
-
-        # Resume the new session
-        resume_session(new_session_id, match["cwd"])
+            # Resume the new session
+            resume_session(new_session_id, match["cwd"])
+        elif action == 'delete':
+            # Delete the new session file
+            output_file.unlink(missing_ok=True)
+            print(f"\n🗑️  Deleted session file: {output_file.name}")
+        else:
+            # Cancel (escape) - keep file, don't resume
+            print(f"\n📁 Session file kept: {output_file}")
+            print(f"   Session ID: {new_session_id}")
 
     except Exception as e:
         print(f"❌ Error during smart trim: {e}")

@@ -40,6 +40,8 @@ const directAction = payload.direct_action || null; // if set, execute this acti
 // Find options form data
 const findOptions = payload.find_options || {};
 const findVariant = payload.find_variant || 'find'; // 'find', 'find-claude', 'find-codex'
+// Trim confirmation data (for trim_confirm screen)
+const trimInfo = payload.trim_info || {};
 const BRANCH_ICON = '';
 const DATE_FMT = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -823,6 +825,86 @@ function TrimView({onBack, onDone, session, clearScreen}) {
       Box,
       {marginTop: 1},
       h(Text, {dimColor: true}, 'Enter: select  Esc: back  ↑/↓: move  number: jump')
+    )
+  );
+}
+
+/**
+ * TrimConfirmView - Confirmation dialog after trim creates a new session file.
+ * Shows two options: Resume (default) or Delete & Exit.
+ * Escape cancels without deleting (file remains).
+ */
+function TrimConfirmView({onDone, onCancel, clearScreen, trimInfo}) {
+  const [index, setIndex] = useState(0);
+  const items = [
+    {value: 'resume', label: 'Resume trimmed session'},
+    {value: 'delete', label: 'Delete session file & exit'},
+  ];
+
+  useInput((input, key) => {
+    if (key.escape) {
+      clearScreen();
+      onCancel();
+    }
+    if (key.return) {
+      clearScreen();
+      onDone(items[index].value);
+      return;
+    }
+    if (key.upArrow || input === 'k') {
+      setIndex((i) => Math.max(0, i - 1));
+    }
+    if (key.downArrow || input === 'j') {
+      setIndex((i) => Math.min(items.length - 1, i + 1));
+    }
+    const num = Number(input);
+    if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
+      setIndex(num - 1);
+    }
+  });
+
+  // Extract info from trimInfo
+  const sessionId = (trimInfo.new_session_id || '').slice(0, 12);
+  const linesTrimmed = trimInfo.lines_trimmed || 0;
+  const tokensSaved = trimInfo.tokens_saved || 0;
+  const outputFile = trimInfo.output_file || '';
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(
+      Box,
+      {flexDirection: 'column', marginBottom: 1},
+      h(Text, null, chalk.bgGreen.black(' Trim Complete ')),
+      h(Text, null, ''),
+      h(Text, null,
+        chalk.green('✓ '), 'New session: ', chalk.cyan(sessionId), '...'
+      ),
+      h(Text, null,
+        chalk.green('✓ '), 'Lines trimmed: ', chalk.yellow(String(linesTrimmed))
+      ),
+      h(Text, null,
+        chalk.green('✓ '), 'Tokens saved: ', chalk.yellow(`~${tokensSaved.toLocaleString()}`)
+      ),
+      outputFile ? h(Text, {dimColor: true}, `   ${outputFile}`) : null
+    ),
+    h(Box, {flexDirection: 'column'},
+      ...items.map((item, idx) => {
+        const isHighlighted = idx === index;
+        return h(
+          Text,
+          {
+            key: item.value,
+            color: isHighlighted ? 'blue' : 'white',
+          },
+          `${isHighlighted ? figures.pointer : ' '} ${idx + 1}. ${item.label}`
+        );
+      })
+    ),
+    h(
+      Box,
+      {marginTop: 1},
+      h(Text, {dimColor: true}, 'Enter: select  Esc: cancel (keep file)  ↑/↓: move')
     )
   );
 }
@@ -1797,6 +1879,24 @@ function App() {
         exit({exitCode: 0});
       },
       onCancel: () => exit({exitCode: 0}),
+    });
+  }
+
+  // Handle trim_confirm screen (confirmation after trim creates new file)
+  if (screen === 'trim_confirm') {
+    return h(TrimConfirmView, {
+      trimInfo,
+      clearScreen,
+      onDone: (action) => {
+        // action is 'resume' or 'delete'
+        fs.writeFileSync(outPath, JSON.stringify({trim_action: action}));
+        exit({exitCode: 0});
+      },
+      onCancel: () => {
+        // Escape pressed - exit without action (file remains)
+        fs.writeFileSync(outPath, JSON.stringify({trim_action: 'cancel'}));
+        exit({exitCode: 0});
+      },
     });
   }
 

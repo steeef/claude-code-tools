@@ -9,6 +9,7 @@ trims content to reduce file size while preserving conversation flow:
 """
 
 import argparse
+import json
 import os
 import sys
 import uuid

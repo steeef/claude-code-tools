@@ -234,3 +234,65 @@ def run_find_options_ui(
             out_file.unlink(missing_ok=True)
         except Exception:
             pass
+
+
+def run_trim_confirm_ui(
+    new_session_id: str,
+    lines_trimmed: int,
+    tokens_saved: int,
+    output_file: str,
+) -> str | None:
+    """
+    Launch Node UI to confirm trim action.
+
+    Shows a confirmation dialog after a trim operation creates a new session file.
+    User can choose to resume, delete the file, or cancel.
+
+    Args:
+        new_session_id: The newly created session ID
+        lines_trimmed: Number of lines that were trimmed
+        tokens_saved: Estimated tokens saved
+        output_file: Path to the new session file
+
+    Returns:
+        'resume' - User wants to resume the trimmed session
+        'delete' - User wants to delete the new file and exit
+        'cancel' - User pressed Escape (keep file, don't resume)
+        None - Error or unexpected result
+    """
+    payload = {
+        "sessions": [],
+        "keywords": [],
+        "start_screen": "trim_confirm",
+        "trim_info": {
+            "new_session_id": new_session_id,
+            "lines_trimmed": lines_trimmed,
+            "tokens_saved": tokens_saved,
+            "output_file": output_file,
+        },
+    }
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix="-trim-confirm.json")
+    Path(tmp.name).write_text(json.dumps(payload), encoding="utf-8")
+    data_path = Path(tmp.name)
+
+    out_fd, out_path = tempfile.mkstemp(suffix="-trim-confirm-out.json")
+    os.close(out_fd)
+    out_file = Path(out_path)
+
+    try:
+        code = _run_node(data_path, out_file)
+        if code != 0:
+            return None
+
+        result = _read_result(out_file)
+        return result.get("trim_action")
+    finally:
+        try:
+            data_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            out_file.unlink(missing_ok=True)
+        except Exception:
+            pass

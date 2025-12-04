@@ -63,7 +63,13 @@ def trim_lines(
             f"original was {len(content):,} chars.{desc_part} "
             f"See line {line_num} of {parent_file} for full content]"
         )
-        return truncated + notice
+        result = truncated + notice
+
+        # Only return truncated version if it actually saves space
+        if len(result) >= len(content):
+            return content
+
+        return result
 
     with open(input_file, 'r') as f:
         lines = f.readlines()
@@ -173,9 +179,12 @@ def trim_lines(
                 if trimmed:
                     # Write modified line
                     new_line = json.dumps(data) + "\n"
-                    chars_saved += original_len - len(new_line)
-                    lines[idx] = new_line
-                    trimmed_count += 1
+                    saved = original_len - len(new_line)
+                    # Only count as trimmed if we actually saved space
+                    if saved > 0:
+                        chars_saved += saved
+                        lines[idx] = new_line
+                        trimmed_count += 1
 
             except json.JSONDecodeError:
                 # Skip malformed lines - don't modify them

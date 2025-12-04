@@ -125,7 +125,14 @@ def truncate_output(
         "metadata": metadata,
     }
 
-    return json.dumps(truncated_obj)
+    result = json.dumps(truncated_obj)
+
+    # Only return truncated version if it actually saves space
+    # Otherwise, keep the original output
+    if len(result) >= len(output_str):
+        return output_str
+
+    return result
 
 
 def create_suppressed_output(
@@ -323,10 +330,13 @@ def process_codex_session(
                     line_num=line_num, parent_file=parent_file
                 )
 
-                # Replace the output
-                payload["output"] = truncated_output
-                num_tools_trimmed += 1
-                chars_saved += output_length - len(truncated_output)
+                # Only count as trimmed if truncation actually saved space
+                # (truncate_output returns original if no savings)
+                saved = len(output_str) - len(truncated_output)
+                if saved > 0:
+                    payload["output"] = truncated_output
+                    num_tools_trimmed += 1
+                    chars_saved += saved
 
             # Write the (potentially modified) line
             outfile.write(json.dumps(data) + "\n")

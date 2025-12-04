@@ -123,7 +123,14 @@ def truncate_content(
             f"{original_length:,} characters, showing first {threshold}]"
         )
 
-    return truncated + truncation_notice
+    result = truncated + truncation_notice
+
+    # Only return truncated version if it actually saves space
+    # Otherwise, keep the original content
+    if len(result) >= original_length:
+        return content_str
+
+    return result
 
 
 def process_claude_session(
@@ -256,9 +263,13 @@ def process_claude_session(
                                     result_content, threshold, tool_name,
                                     line_num=line_num, parent_file=parent_file
                                 )
-                                item["content"] = truncated
-                                num_tools_trimmed += 1
-                                chars_saved += content_length - len(truncated)
+                                # Only count as trimmed if content actually changed
+                                # (truncate_content returns original if no savings)
+                                saved = content_length - len(truncated)
+                                if saved > 0:
+                                    item["content"] = truncated
+                                    num_tools_trimmed += 1
+                                    chars_saved += saved
 
                 # Also suppress in toolUseResult.content if present
                 if (
@@ -294,7 +305,9 @@ def process_claude_session(
                                     result_content, threshold, tool_name,
                                     line_num=line_num, parent_file=parent_file
                                 )
-                                tool_result["content"] = truncated
+                                # Only update if truncation saves space
+                                if len(truncated) < content_length:
+                                    tool_result["content"] = truncated
 
             # Replace sessionId if new_session_id provided
             if new_session_id and "sessionId" in data:
