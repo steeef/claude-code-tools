@@ -1459,111 +1459,127 @@ def search(
 
         print(f"Selected: {session['project']} / {session['session_id'][:12]}...")
 
-        # Dispatch based on action
-        if action == "menu":
-            # Legacy: show Node action menu, loop back on Escape
-            run_node_menu_ui(
-                sessions=[session],
-                keywords=[],
-                action_handler=action_handler,
-                start_action=True,
-                focus_session_id=session["session_id"],
-                rpc_path=rpc_path,
-            )
-            # Loop back to Rust TUI
-        elif action == "view":
-            # View is handled in Rust, shouldn't reach here
-            pass
-        elif action in ("path", "copy", "export"):
-            # Non-launch actions: go directly to nonlaunch screen
-            run_node_menu_ui(
-                sessions=[session],
-                keywords=[],
-                action_handler=action_handler,
-                start_action=False,
-                focus_session_id=session["session_id"],
-                rpc_path=rpc_path,
-                start_screen="nonlaunch",
-                direct_action=action,
-            )
-            # Continue loop to return to Rust TUI
-        elif action == "query":
-            # Query: go directly to query screen
-            run_node_menu_ui(
-                sessions=[session],
-                keywords=[],
-                action_handler=action_handler,
-                start_action=False,
-                focus_session_id=session["session_id"],
-                rpc_path=rpc_path,
-                start_screen="query",
-                direct_action="query",
-            )
-            # Continue loop to return to Rust TUI
-        elif action == "suppress_resume":
-            # Trim + resume: check directory first, then show trim form
-            proceed, original_dir = check_directory_and_confirm(session)
-            if not proceed:
-                continue  # User cancelled - pop back to Rust search
-            run_node_menu_ui(
-                sessions=[session],
-                keywords=[],
-                action_handler=action_handler,
-                start_action=False,
-                focus_session_id=session["session_id"],
-                rpc_path=rpc_path,
-                start_screen="trim",
-                direct_action="suppress_resume",
-                exit_on_back=True,  # Pop back to Rust search on cancel
-            )
-            # If we return here, user cancelled - restore directory and pop back
-            if original_dir:
-                os.chdir(original_dir)
-        elif action == "smart_trim_resume":
-            # Smart trim: check directory first, then execute
-            proceed, original_dir = check_directory_and_confirm(session)
-            if not proceed:
-                continue  # User cancelled - pop back to Rust search
-            result = action_handler(session, action, {})
-            if result == "back":
-                # User cancelled in confirmation UI - restore directory and pop back
+        # Track original directory for restoration on Ctrl+C
+        original_dir_for_interrupt = None
+
+        try:
+            # Dispatch based on action
+            if action == "menu":
+                # Legacy: show Node action menu, loop back on Escape
+                run_node_menu_ui(
+                    sessions=[session],
+                    keywords=[],
+                    action_handler=action_handler,
+                    start_action=True,
+                    focus_session_id=session["session_id"],
+                    rpc_path=rpc_path,
+                )
+                # Loop back to Rust TUI
+            elif action == "view":
+                # View is handled in Rust, shouldn't reach here
+                pass
+            elif action in ("path", "copy", "export"):
+                # Non-launch actions: go directly to nonlaunch screen
+                run_node_menu_ui(
+                    sessions=[session],
+                    keywords=[],
+                    action_handler=action_handler,
+                    start_action=False,
+                    focus_session_id=session["session_id"],
+                    rpc_path=rpc_path,
+                    start_screen="nonlaunch",
+                    direct_action=action,
+                )
+                # Continue loop to return to Rust TUI
+            elif action == "query":
+                # Query: go directly to query screen
+                run_node_menu_ui(
+                    sessions=[session],
+                    keywords=[],
+                    action_handler=action_handler,
+                    start_action=False,
+                    focus_session_id=session["session_id"],
+                    rpc_path=rpc_path,
+                    start_screen="query",
+                    direct_action="query",
+                )
+                # Continue loop to return to Rust TUI
+            elif action == "suppress_resume":
+                # Trim + resume: check directory first, then show trim form
+                proceed, original_dir = check_directory_and_confirm(session)
+                if not proceed:
+                    continue  # User cancelled - pop back to Rust search
+                original_dir_for_interrupt = original_dir
+                run_node_menu_ui(
+                    sessions=[session],
+                    keywords=[],
+                    action_handler=action_handler,
+                    start_action=False,
+                    focus_session_id=session["session_id"],
+                    rpc_path=rpc_path,
+                    start_screen="trim",
+                    direct_action="suppress_resume",
+                    exit_on_back=True,  # Pop back to Rust search on cancel
+                )
+                # If we return here, user cancelled - restore directory and pop back
+                if original_dir:
+                    os.chdir(original_dir)
+            elif action == "smart_trim_resume":
+                # Smart trim: check directory first, then execute
+                proceed, original_dir = check_directory_and_confirm(session)
+                if not proceed:
+                    continue  # User cancelled - pop back to Rust search
+                original_dir_for_interrupt = original_dir
+                result = action_handler(session, action, {})
+                if result == "back":
+                    # User cancelled in confirmation UI - restore directory and pop back
+                    if original_dir:
+                        os.chdir(original_dir)
+                else:
+                    # User resumed - exit (new session is running)
+                    return
+            elif action == "continue":
+                # Continue with context: check directory first, then show options form
+                proceed, original_dir = check_directory_and_confirm(session)
+                if not proceed:
+                    continue  # User cancelled - pop back to Rust search
+                original_dir_for_interrupt = original_dir
+                run_node_menu_ui(
+                    sessions=[session],
+                    keywords=[],
+                    action_handler=action_handler,
+                    start_action=False,
+                    focus_session_id=session["session_id"],
+                    rpc_path=rpc_path,
+                    start_screen="continue_form",
+                    direct_action="continue",
+                    exit_on_back=True,  # Pop back to Rust search on cancel
+                )
+                # If we return here, user cancelled - restore directory and pop back
+                if original_dir:
+                    os.chdir(original_dir)
+            elif action in ("resume", "clone"):
+                # Resume/clone: check directory first, then execute
+                proceed, original_dir = check_directory_and_confirm(session)
+                if not proceed:
+                    continue  # User cancelled - pop back to Rust search
+                original_dir_for_interrupt = original_dir
+                # Note: if successful, action_handler calls os.execvp and never returns
+                action_handler(session, action, {})
+                # If we get here, something failed - restore directory and pop back
                 if original_dir:
                     os.chdir(original_dir)
             else:
-                # User resumed - exit (new session is running)
-                return
-        elif action == "continue":
-            # Continue with context: check directory first, then show options form
-            proceed, original_dir = check_directory_and_confirm(session)
-            if not proceed:
-                continue  # User cancelled - pop back to Rust search
-            run_node_menu_ui(
-                sessions=[session],
-                keywords=[],
-                action_handler=action_handler,
-                start_action=False,
-                focus_session_id=session["session_id"],
-                rpc_path=rpc_path,
-                start_screen="continue_form",
-                direct_action="continue",
-                exit_on_back=True,  # Pop back to Rust search on cancel
-            )
-            # If we return here, user cancelled - restore directory and pop back
-            if original_dir:
-                os.chdir(original_dir)
-        elif action in ("resume", "clone"):
-            # Resume/clone: check directory first, then execute
-            proceed, original_dir = check_directory_and_confirm(session)
-            if not proceed:
-                continue  # User cancelled - pop back to Rust search
-            # Note: if successful, action_handler calls os.execvp and never returns
-            action_handler(session, action, {})
-            # If we get here, something failed - restore directory and pop back
-            if original_dir:
-                os.chdir(original_dir)
-        else:
-            print(f"Unknown action: {action}")
-            # Continue loop
+                print(f"Unknown action: {action}")
+                # Continue loop
+        except KeyboardInterrupt:
+            # Ctrl+C pressed - restore directory if changed and pop back to search
+            if original_dir_for_interrupt:
+                try:
+                    os.chdir(original_dir_for_interrupt)
+                except Exception:
+                    pass
+            # Continue loop to return to Rust TUI
 
 
 if __name__ == "__main__":
