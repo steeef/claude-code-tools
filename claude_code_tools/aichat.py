@@ -1197,11 +1197,13 @@ def index_stats(index, cwd, claude_home, codex_home):
                    'agent, project, branch, cwd, lines, created, modified, '
                    'first_msg, last_msg, file_path, derivation_type, '
                    'is_sidechain, snippet')
+@click.option('--by-time', 'by_time', is_flag=True,
+              help='Sort results by last-modified time (default: sort by relevance)')
 @click.argument('query', required=False)
 def search(
     claude_home_arg, codex_home_arg, global_search, filter_dir, num_results,
     original, sub_agent, trimmed, rollover, min_lines,
-    after, before, agent, json_output, query
+    after, before, agent, json_output, by_time, query
 ):
     """Launch interactive TUI for full-text session search.
 
@@ -1214,11 +1216,13 @@ def search(
         aichat search "langroid agent"     # Pre-fill search query
         aichat search -g --after 11/20/25  # Global, recent sessions
         aichat search --dir ~/Git/myproj   # Filter to specific directory
-        aichat search --json "MCP"         # JSON output for AI agents
+        aichat search --json "MCP"         # JSON output (sorted by relevance)
+        aichat search --json --by-time     # JSON output sorted by time
 
     \b
     Notes:
         --dir overrides -g (global) when both are specified.
+        --by-time sorts by last-modified time; default is relevance.
 
     \b
     Environment variables:
@@ -1292,6 +1296,8 @@ def search(
         rust_args.extend(["--agent", agent])
     if query:
         rust_args.extend(["--query", query])
+    if by_time:
+        rust_args.append("--by-time")
 
     # JSON output mode - run Rust with --json, output to stdout, exit
     if json_output:

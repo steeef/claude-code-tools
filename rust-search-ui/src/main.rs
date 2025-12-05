@@ -721,8 +721,8 @@ impl App {
             filter_dir: cli.filter_dir.clone(),
             // Result limit
             max_results: cli.num_results,
-            // Sort mode
-            sort_by_time: false,
+            // Sort mode (--by-time sorts by last-modified, default is relevance)
+            sort_by_time: cli.sort_by_time,
             // Exit confirmation
             confirming_exit: false,
         };
@@ -3496,6 +3496,7 @@ struct CliOptions {
     agent_filter: Option<String>,
     query: Option<String>,
     json_output: bool,
+    sort_by_time: bool,  // --by-time: sort by last-modified time instead of relevance
 }
 
 impl CliOptions {
@@ -3583,6 +3584,7 @@ fn parse_cli_args() -> CliOptions {
     let query = get_arg_value("--query");
 
     let json_output = has_flag("--json");
+    let sort_by_time = has_flag("--by-time");
 
     CliOptions {
         output_file,
@@ -3601,6 +3603,7 @@ fn parse_cli_args() -> CliOptions {
         agent_filter,
         query,
         json_output,
+        sort_by_time,
     }
 }
 
