@@ -35,6 +35,7 @@ from claude_code_tools.session_utils import (
     default_export_path,
 )
 from claude_code_tools.find_session import extract_first_user_message
+from claude_code_tools.find_claude_session import get_session_start_timestamp
 
 
 def is_sidechain_session(session_file: Path) -> bool:
@@ -379,12 +380,18 @@ Examples:
         except Exception:
             pass
 
+        # Get session start timestamp from JSON metadata, fall back to file stats
+        stat = session_file.stat()
+        create_time = get_session_start_timestamp(session_file)
+        if create_time is None:
+            create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+
         session_dict = {
             "agent": agent,
             "agent_display": agent.title(),
             "session_id": session_id,
-            "mod_time": session_file.stat().st_mtime,
-            "create_time": session_file.stat().st_ctime,
+            "mod_time": stat.st_mtime,
+            "create_time": create_time,
             "lines": line_count,
             "project": project_name,
             "preview": preview,

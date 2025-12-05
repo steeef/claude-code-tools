@@ -40,6 +40,38 @@ from claude_code_tools.trim_session import (
 )
 
 
+def get_session_start_timestamp(jsonl_file: Path) -> Optional[float]:
+    """Extract session start timestamp from first entry with timestamp field.
+
+    Args:
+        jsonl_file: Path to Claude session JSONL file
+
+    Returns:
+        Unix timestamp as float, or None if not found
+    """
+    try:
+        with open(jsonl_file, "r", encoding="utf-8") as f:
+            for i, line in enumerate(f):
+                if i >= 10:  # Only check first 10 lines
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if data.get("timestamp"):
+                        ts = data["timestamp"]
+                        # Parse ISO format (e.g., "2025-10-22T16:05:28.707Z")
+                        if ts.endswith("Z"):
+                            ts = ts[:-1] + "+00:00"
+                        return datetime.fromisoformat(ts).timestamp()
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    continue
+    except (OSError, IOError):
+        pass
+    return None
+
+
 def _read_key() -> str:
     """Read a single keypress (Enter/Esc)."""
     fd = sys.stdin.fileno()
@@ -474,8 +506,10 @@ def find_sessions(
                             session_id = jsonl_file.stem
                             stat = jsonl_file.stat()
                             mod_time = stat.st_mtime
-                            # Get creation time (birthtime on macOS, ctime elsewhere)
-                            create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+                            # Get session start timestamp from JSON metadata, fall back to file stats
+                            create_time = get_session_start_timestamp(jsonl_file)
+                            if create_time is None:
+                                create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                             preview = get_session_preview(jsonl_file)
                             # Extract actual cwd from session file - MUST NOT use reconstructed path as fallback
                             actual_cwd = extract_cwd_from_session(jsonl_file)
@@ -483,7 +517,7 @@ def find_sessions(
                                 # Skip sessions without cwd metadata (shouldn't happen for valid Claude sessions)
                                 continue
                             matching_sessions.append((session_id, mod_time, create_time, line_count, project_name, preview, actual_cwd, git_branch, derivation_type, is_sidechain))
-                    
+
                     progress.advance(task)
         else:
             # Fallback without rich
@@ -521,8 +555,10 @@ def find_sessions(
                         session_id = jsonl_file.stem
                         stat = jsonl_file.stat()
                         mod_time = stat.st_mtime
-                        # Get creation time (birthtime on macOS, ctime elsewhere)
-                        create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+                        # Get session start timestamp from JSON metadata, fall back to file stats
+                        create_time = get_session_start_timestamp(jsonl_file)
+                        if create_time is None:
+                            create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                         preview = get_session_preview(jsonl_file)
                         # Extract actual cwd from session file - MUST NOT use reconstructed path as fallback
                         actual_cwd = extract_cwd_from_session(jsonl_file)
@@ -571,8 +607,10 @@ def find_sessions(
                 session_id = jsonl_file.stem
                 stat = jsonl_file.stat()
                 mod_time = stat.st_mtime
-                # Get creation time (birthtime on macOS, ctime elsewhere)
-                create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+                # Get session start timestamp from JSON metadata, fall back to file stats
+                create_time = get_session_start_timestamp(jsonl_file)
+                if create_time is None:
+                    create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
                 preview = get_session_preview(jsonl_file)
                 # Extract actual cwd from session file for consistency
                 actual_cwd = extract_cwd_from_session(jsonl_file) or os.getcwd()

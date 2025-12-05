@@ -345,10 +345,21 @@ def find_sessions(
                         if no_cont and derivation_type == "continued":
                             continue
 
-                    # Get file stats for timestamps
+                    # Get timestamps - prefer JSON metadata for create_time
                     stat = session_file.stat()
                     mod_time = stat.st_mtime
-                    create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+                    # Use session timestamp from metadata if available
+                    if metadata.get("timestamp"):
+                        try:
+                            ts = metadata["timestamp"]
+                            # Parse ISO format (e.g., "2025-10-22T16:05:28.707Z")
+                            if ts.endswith("Z"):
+                                ts = ts[:-1] + "+00:00"
+                            create_time = datetime.fromisoformat(ts).timestamp()
+                        except (ValueError, TypeError):
+                            create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+                    else:
+                        create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
 
                     # Format dates: "10/04 - 10/09 13:45"
                     create_date = datetime.fromtimestamp(create_time).strftime("%m/%d")
@@ -362,6 +373,7 @@ def find_sessions(
                             "branch": metadata["branch"] or "",
                             "date": date_str,
                             "mod_time": mod_time,  # For sorting
+                            "create_time": create_time,  # For date range display
                             "lines": line_count,
                             "preview": preview or "No preview",
                             "cwd": metadata["cwd"],
@@ -1201,7 +1213,7 @@ To persist directory changes when resuming sessions:
                 "agent_display": "Codex",
                 "session_id": m.get("session_id"),
                 "mod_time": m.get("mod_time"),
-                "create_time": m.get("mod_time"),
+                "create_time": m.get("create_time", m.get("mod_time")),
                 "lines": m.get("lines"),
                 "project": m.get("project"),
                 "preview": m.get("preview"),

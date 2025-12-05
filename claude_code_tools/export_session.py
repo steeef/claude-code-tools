@@ -193,6 +193,9 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
         "last_msg": None,
     }
 
+    # Track session start timestamp from JSON metadata
+    session_start_timestamp: str | None = None
+
     try:
         with open(session_file, "r", encoding="utf-8") as f:
             line_count = 0
@@ -259,6 +262,14 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                     # Extract session ID (UUID only, not the full filename)
                     if payload.get("id"):
                         metadata["session_id"] = payload["id"]
+                    # Extract session start timestamp from session_meta
+                    if session_start_timestamp is None and data.get("timestamp"):
+                        session_start_timestamp = data["timestamp"]
+
+                # Extract session start timestamp from first entry with timestamp
+                # (Claude sessions have timestamp on each message entry)
+                if session_start_timestamp is None and data.get("timestamp"):
+                    session_start_timestamp = data["timestamp"]
 
                 # Stop after first 20 lines (metadata is always at the top)
                 if line_count >= 20:
@@ -267,13 +278,30 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
     except (OSError, IOError):
         pass
 
-    # Get file stats
+    # Get file stats for modified time
     try:
         stat = session_file.stat()
         metadata["modified"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
-        metadata["created"] = datetime.fromtimestamp(stat.st_ctime).isoformat()
     except OSError:
         pass
+
+    # Use session start timestamp from JSON metadata if available,
+    # otherwise fall back to file birthtime (macOS) or mtime
+    if session_start_timestamp:
+        metadata["created"] = session_start_timestamp
+    else:
+        try:
+            stat = session_file.stat()
+            # On macOS, st_birthtime is actual creation time; st_ctime is metadata
+            # change time. Fall back to mtime if birthtime unavailable.
+            if hasattr(stat, "st_birthtime"):
+                metadata["created"] = datetime.fromtimestamp(
+                    stat.st_birthtime
+                ).isoformat()
+            else:
+                metadata["created"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+        except OSError:
+            pass
 
     # Count lines
     try:

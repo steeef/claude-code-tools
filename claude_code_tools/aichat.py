@@ -248,7 +248,7 @@ def _find_and_run_session_ui(
                     "agent_display": "Codex",
                     "session_id": s["session_id"],
                     "mod_time": s.get("mod_time", 0),
-                    "create_time": s.get("mod_time", 0),
+                    "create_time": s.get("create_time", s.get("mod_time", 0)),
                     "lines": s.get("lines", 0),
                     "project": s.get("project", ""),
                     "preview": s.get("preview", ""),
