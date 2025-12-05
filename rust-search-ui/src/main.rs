@@ -1155,7 +1155,7 @@ fn render(frame: &mut Frame, app: &mut App) {
 
     let area = frame.area();
 
-    // Status bar height: 2 for nav+actions, +1 if we have annotations OR active filters
+    // Status bar height: 1 for shortcuts, +1 if we have annotations OR active filters
     let show_legend = app.has_annotations();
     let has_filters = !app.include_original
         || app.include_sub
@@ -1165,7 +1165,7 @@ fn render(frame: &mut Frame, app: &mut App) {
         || app.filter_min_lines.is_some()
         || app.filter_after_date.is_some()
         || app.filter_before_date.is_some();
-    let status_height = if show_legend || has_filters { 3 } else { 2 };
+    let status_height = if show_legend || has_filters { 2 } else { 1 };
 
     // Main layout
     let main_layout = Layout::default()
@@ -1226,10 +1226,10 @@ fn render(frame: &mut Frame, app: &mut App) {
 
     render_status_bar(frame, app, &t, status_area[1], show_legend);
 
-    // Terminal width warning (shown at bottom when too narrow)
+    // Terminal width warning (shown above status bar when too narrow)
     let min_width = app.min_width_for_full_display();
     if area.width < min_width {
-        render_width_warning(frame, area, min_width);
+        render_width_warning(frame, area, min_width, status_height);
     }
 
     // Filter modal overlay
@@ -1253,9 +1253,10 @@ fn render(frame: &mut Frame, app: &mut App) {
     }
 }
 
-fn render_width_warning(frame: &mut Frame, area: Rect, min_width: u16) {
-    // Render a bright warning bar at the very bottom of the screen
-    let warning_area = Rect::new(0, area.height.saturating_sub(1), area.width, 1);
+fn render_width_warning(frame: &mut Frame, area: Rect, min_width: u16, status_height: u16) {
+    // Render a bright warning bar just above the status bar
+    let warning_y = area.height.saturating_sub(status_height + 1);
+    let warning_area = Rect::new(0, warning_y, area.width, 1);
 
     let msg = format!(
         " ⚠ Terminal too narrow ({} cols). Widen to {} cols for best display. ",
@@ -1909,23 +1910,22 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         || app.filter_after_date.is_some()
         || app.filter_before_date.is_some();
 
-    let needs_third_row = show_legend || has_filters;
+    let needs_legend_row = show_legend || has_filters;
 
-    // Split area: line 1 (nav), line 2 (actions), optional line 3 (legend + filters)
-    let status_layout = if needs_third_row {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
-            .split(area)
-    } else {
+    // Split area: line 1 (shortcuts), optional line 2 (legend + filters)
+    let status_layout = if needs_legend_row {
         Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Length(1)])
             .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1)])
+            .split(area)
     };
 
     let nav_area = status_layout[0];
-    let action_area = status_layout[1];
 
     let keycap = Style::default().bg(t.keycap_bg);
     let label = Style::default();
@@ -1951,69 +1951,44 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         nav_spans.push(Span::styled(" CMD ", Style::default().bg(t.accent).fg(Color::Black)));
         nav_spans.push(Span::styled(" :x clear :o orig :s sub :t trim :c cont :a agent :m lines :> after :< before ", label));
     } else {
-        // Normal mode - Line 1: Navigation keybindings (aligned with line 2)
+        // Normal mode - single line with all shortcuts
         let has_selection = !app.filtered.is_empty();
 
-        // Aligned columns - each section padded to match line 2:
-        // Col1: 21 chars (" Enter " + " view/actions "), Col2: 11 (" / " + " dir    ")
-        // Col3: 14 (" C-f " + " filter "), Col4: 17 (" C-s " + " time-sort  ")
+        // Navigation group: [↑/↓ PgUp/Dn Home/End] Nav
         nav_spans.extend([
-            Span::styled(" ↑↓ ", keycap),            // 4 chars
-            Span::styled(" nav             ", label), // 17 chars = 21 total
-            Span::styled("│ ", dim),
-            Span::styled(" PgUp/Dn ", keycap),       // 9 chars
-            Span::styled("  ", label),               // 2 chars = 11 total
+            Span::styled(" ↑/↓ PgUp/Dn Home/End ", keycap),
+            Span::styled(" nav ", label),
         ]);
 
         if has_selection {
             nav_spans.extend([
                 Span::styled("│ ", dim),
-                Span::styled(" Home/End ", keycap),  // 10 chars
-                Span::styled("    ", label),         // 4 chars = 14 total
-                Span::styled("│ ", dim),
-                Span::styled(" C-g ", keycap),       // 5 chars
-                Span::styled(" goto        ", label), // 12 chars = 17 total
-            ]);
-        }
-    }
-
-    let nav_line = Line::from(nav_spans);
-    frame.render_widget(Paragraph::new(nav_line), nav_area);
-
-    // Line 2: Action shortcuts (only in normal mode)
-    let mut action_spans: Vec<Span> = Vec::new();
-
-    if app.input_mode.is_none() && !app.command_mode {
-        let has_selection = !app.filtered.is_empty();
-
-        if has_selection {
-            action_spans.extend([
-                Span::styled(" Enter ", keycap),      // 7 chars
-                Span::styled(" view/actions ", label), // 14 chars = 21 total
-                Span::styled("│ ", dim),
+                Span::styled(" Enter ", keycap),
+                Span::styled(" actions ", label),
             ]);
         }
 
-        action_spans.extend([
-            Span::styled(" / ", keycap),             // 3 chars
-            Span::styled(" dir    ", label),         // 8 chars = 11 total
+        nav_spans.extend([
             Span::styled("│ ", dim),
-            Span::styled(" C-f ", keycap),           // 5 chars
-            Span::styled(" filter  ", label),        // 9 chars = 14 total
+            Span::styled(" / ", keycap),
+            Span::styled(" dir ", label),
             Span::styled("│ ", dim),
-            Span::styled(" C-s ", keycap),           // 5 chars
-            Span::styled(if app.sort_by_time { " match-sort  " } else { " time-sort   " }, label), // 12 chars = 17 total
+            Span::styled(" C-f ", keycap),
+            Span::styled(" filter ", label),
+            Span::styled("│ ", dim),
+            Span::styled(" C-s ", keycap),
+            Span::styled(if app.sort_by_time { " match-sort " } else { " time-sort " }, label),
             Span::styled("│ ", dim),
             Span::styled(" Esc ", keycap),
             Span::styled(" quit", label),
         ]);
     }
 
-    let action_line = Line::from(action_spans);
-    frame.render_widget(Paragraph::new(action_line), action_area);
+    let nav_line = Line::from(nav_spans);
+    frame.render_widget(Paragraph::new(nav_line), nav_area);
 
-    // Third row: annotation legend (if needed) + active filter indicators
-    if needs_third_row {
+    // Second row: annotation legend (if needed) + active filter indicators
+    if needs_legend_row {
         let mut row3_spans: Vec<Span> = Vec::new();
 
         // Annotation legend (if annotations exist in results)
@@ -2055,8 +2030,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             row3_spans.push(Span::styled(format!(" [<{}]", date), filter_active));
         }
 
-        let row3 = Paragraph::new(Line::from(row3_spans));
-        frame.render_widget(row3, status_layout[2]);
+        let legend_row = Paragraph::new(Line::from(row3_spans));
+        frame.render_widget(legend_row, status_layout[1]);
     }
 }
 
@@ -4266,7 +4241,6 @@ fn main() -> Result<()> {
                                 }
                             }
                             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_up(10),
-                            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_down(10),
                             KeyCode::Backspace => app.on_backspace(),
                             KeyCode::Char('/') => {
                                 // Open scope modal
