@@ -1376,14 +1376,23 @@ def search(
             return
 
         try:
-            selected = json_lib.loads(content)
+            result = json_lib.loads(content)
         except json_lib.JSONDecodeError as e:
             print(f"Error parsing Rust output: {e}")
             print(f"Output was: {content[:200]}")
             return
 
-        # Convert to session format expected by Node menu
-        # Note: Rust JSON output uses "file_path" key (see output_json in main.rs)
+        # New format: {"session": {...}, "action": "..."}
+        # Legacy format: just the session object
+        if "session" in result and "action" in result:
+            selected = result["session"]
+            action = result["action"]
+        else:
+            # Legacy: session only, show Node menu
+            selected = result
+            action = "menu"
+
+        # Convert to session format expected by handlers
         session = {
             "session_id": selected.get("session_id", ""),
             "agent": selected.get("agent", "claude"),
@@ -1392,14 +1401,13 @@ def search(
             "branch": selected.get("branch", ""),
             "lines": selected.get("lines", 0),
             "file_path": selected.get("file_path", ""),
-            "cwd": selected.get("cwd", ""),  # Use cwd from Rust output
-            "is_sidechain": selected.get("is_sidechain", False),  # For action filtering
+            "cwd": selected.get("cwd", ""),
+            "is_sidechain": selected.get("is_sidechain", False),
         }
 
         # Extract cwd from file_path metadata if needed (for older export format)
         file_path = selected.get("file_path", "")
         if file_path and file_path.endswith(".txt"):
-            # Only try YAML extraction for old .txt export format
             try:
                 with open(file_path, "r") as f:
                     file_content = f.read(2000)
@@ -1416,16 +1424,77 @@ def search(
 
         print(f"Selected: {session['project']} / {session['session_id'][:12]}...")
 
-        # Launch Node action menu - returns None normally, loops back on Escape
-        run_node_menu_ui(
-            sessions=[session],
-            keywords=[],
-            action_handler=action_handler,
-            start_action=True,
-            focus_session_id=session["session_id"],
-            rpc_path=rpc_path,
-        )
-        # After Node menu exits (Escape or action complete), loop back to Rust TUI
+        # Dispatch based on action
+        if action == "menu":
+            # Legacy: show Node action menu, loop back on Escape
+            run_node_menu_ui(
+                sessions=[session],
+                keywords=[],
+                action_handler=action_handler,
+                start_action=True,
+                focus_session_id=session["session_id"],
+                rpc_path=rpc_path,
+            )
+            # Loop back to Rust TUI
+        elif action == "view":
+            # View is handled in Rust, shouldn't reach here
+            pass
+        elif action in ("path", "copy", "export"):
+            # Non-launch actions: go directly to nonlaunch screen
+            run_node_menu_ui(
+                sessions=[session],
+                keywords=[],
+                action_handler=action_handler,
+                start_action=False,
+                focus_session_id=session["session_id"],
+                rpc_path=rpc_path,
+                start_screen="nonlaunch",
+                direct_action=action,
+            )
+            # Continue loop to return to Rust TUI
+        elif action == "query":
+            # Query: go directly to query screen
+            run_node_menu_ui(
+                sessions=[session],
+                keywords=[],
+                action_handler=action_handler,
+                start_action=False,
+                focus_session_id=session["session_id"],
+                rpc_path=rpc_path,
+                start_screen="query",
+                direct_action="query",
+            )
+            # Continue loop to return to Rust TUI
+        elif action == "suppress_resume":
+            # Trim + resume: show trim form in Node UI, with pop-back on cancel
+            run_node_menu_ui(
+                sessions=[session],
+                keywords=[],
+                action_handler=action_handler,
+                start_action=False,
+                focus_session_id=session["session_id"],
+                rpc_path=rpc_path,
+                start_screen="trim",
+                direct_action="suppress_resume",
+                exit_on_back=True,  # Pop back to Rust search on cancel
+            )
+            # If we return here, user cancelled - continue loop to return to Rust TUI
+        elif action == "smart_trim_resume":
+            # Smart trim: execute directly (confirmation UI shown by action_handler)
+            result = action_handler(session, action, {})
+            if result == "back":
+                # User cancelled in confirmation UI - continue loop to pop back
+                pass
+            else:
+                # User resumed - exit (new session is running)
+                return
+        elif action in ("resume", "clone", "continue"):
+            # Launch actions: execute directly and exit (new session starts)
+            action_handler(session, action, {})
+            return  # Exit - new session is running
+        else:
+            print(f"Unknown action: {action}")
+            # Continue loop
 
 
 if __name__ == "__main__":

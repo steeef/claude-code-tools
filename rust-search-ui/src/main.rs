@@ -352,6 +352,8 @@ struct App {
 
     // Action mode for Enter (view/actions)
     action_mode: Option<ActionMode>,
+    action_modal_selected: usize,
+    selected_action: Option<String>,
 
     // Filter modal
     filter_modal_open: bool,
@@ -384,7 +386,7 @@ enum InputMode {
 
 #[derive(Clone, PartialEq)]
 enum ActionMode {
-    ViewOrActions,  // User pressed Enter, choosing between view (1) or actions (2)
+    ActionMenu,  // User pressed Enter, showing flattened action menu
 }
 
 #[derive(Clone, PartialEq)]
@@ -452,6 +454,95 @@ impl FilterMenuItem {
     }
 }
 
+#[derive(Clone, PartialEq)]
+enum ActionMenuItem {
+    View,       // (v) View full session - handled in Rust
+    Path,       // (p) Show session file path
+    Copy,       // (c) Copy session file
+    Export,     // (e) Export to text file (.txt)
+    Query,      // (q) Query the session
+    Resume,     // (r) Resume as-is
+    Clone,      // (l) Clone session + resume clone
+    Trim,       // (t) Trim + resume
+    SmartTrim,  // (s) Smart trim + resume
+    Continue,   // (x) Continue with context in fresh session
+}
+
+impl ActionMenuItem {
+    fn all() -> Vec<ActionMenuItem> {
+        vec![
+            ActionMenuItem::View,
+            ActionMenuItem::Path,
+            ActionMenuItem::Copy,
+            ActionMenuItem::Export,
+            ActionMenuItem::Query,
+            ActionMenuItem::Resume,
+            ActionMenuItem::Clone,
+            ActionMenuItem::Trim,
+            ActionMenuItem::SmartTrim,
+            ActionMenuItem::Continue,
+        ]
+    }
+
+    fn label(&self) -> &str {
+        match self {
+            ActionMenuItem::View => "(v) View full session",
+            ActionMenuItem::Path => "(p) Show session file path",
+            ActionMenuItem::Copy => "(c) Copy session file",
+            ActionMenuItem::Export => "(e) Export to text file (.txt)",
+            ActionMenuItem::Query => "(q) Query the session",
+            ActionMenuItem::Resume => "(r) Resume as-is",
+            ActionMenuItem::Clone => "(l) Clone session + resume clone",
+            ActionMenuItem::Trim => "(t) Trim + resume",
+            ActionMenuItem::SmartTrim => "(s) Smart trim + resume",
+            ActionMenuItem::Continue => "(x) Continue with context in fresh session",
+        }
+    }
+
+    fn shortcut(&self) -> char {
+        match self {
+            ActionMenuItem::View => 'v',
+            ActionMenuItem::Path => 'p',
+            ActionMenuItem::Copy => 'c',
+            ActionMenuItem::Export => 'e',
+            ActionMenuItem::Query => 'q',
+            ActionMenuItem::Resume => 'r',
+            ActionMenuItem::Clone => 'l',
+            ActionMenuItem::Trim => 't',
+            ActionMenuItem::SmartTrim => 's',
+            ActionMenuItem::Continue => 'x',
+        }
+    }
+
+    /// Returns the action string to pass to Python handler
+    fn action_string(&self) -> &str {
+        match self {
+            ActionMenuItem::View => "view",
+            ActionMenuItem::Path => "path",
+            ActionMenuItem::Copy => "copy",
+            ActionMenuItem::Export => "export",
+            ActionMenuItem::Query => "query",
+            ActionMenuItem::Resume => "resume",
+            ActionMenuItem::Clone => "clone",
+            ActionMenuItem::Trim => "suppress_resume",
+            ActionMenuItem::SmartTrim => "smart_trim_resume",
+            ActionMenuItem::Continue => "continue",
+        }
+    }
+
+    /// Returns true if this action launches a new session (no pop-back)
+    fn is_launch_action(&self) -> bool {
+        matches!(
+            self,
+            ActionMenuItem::Resume
+                | ActionMenuItem::Clone
+                | ActionMenuItem::Trim
+                | ActionMenuItem::SmartTrim
+                | ActionMenuItem::Continue
+        )
+    }
+}
+
 impl App {
     fn new(sessions: Vec<Session>, index_path: String, filter_claude_home: Option<String>, filter_codex_home: Option<String>) -> Self {
         let total = sessions.len();
@@ -508,6 +599,8 @@ impl App {
             input_buffer: String::new(),
             // Action mode
             action_mode: None,
+            action_modal_selected: 0,
+            selected_action: None,
             // Filter modal
             filter_modal_open: false,
             filter_modal_selected: 0,
@@ -607,6 +700,8 @@ impl App {
             input_buffer: String::new(),
             // Action mode
             action_mode: None,
+            action_modal_selected: 0,
+            selected_action: None,
             // Filter modal
             filter_modal_open: false,
             filter_modal_selected: 0,
@@ -1089,9 +1184,9 @@ fn render(frame: &mut Frame, app: &mut App) {
         render_scope_modal(frame, app, &t, area);
     }
 
-    // View/Actions modal overlay
-    if matches!(app.action_mode, Some(ActionMode::ViewOrActions)) {
-        render_view_actions_modal(frame, &t, area);
+    // Action menu modal overlay
+    if matches!(app.action_mode, Some(ActionMode::ActionMenu)) {
+        render_action_modal(frame, app, &t, area);
     }
 
     // Exit confirmation modal overlay
@@ -1146,51 +1241,51 @@ fn render_exit_confirmation_modal(frame: &mut Frame, t: &Theme, area: Rect) {
     frame.render_widget(paragraph, inner);
 }
 
-fn render_view_actions_modal(frame: &mut Frame, t: &Theme, area: Rect) {
+fn render_action_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
     use ratatui::widgets::{Block, Borders, Clear};
 
-    // Center the modal
-    let modal_width = 60u16;
-    let modal_height = 7u16; // 3 options + 2 border + 2 padding
+    // Center the modal - sized for 10 action items + Esc hint
+    let modal_width = 50u16;
+    let modal_height = 14u16; // 10 items + 1 hint + 2 border + 1 padding
     let x = (area.width.saturating_sub(modal_width)) / 2;
     let y = (area.height.saturating_sub(modal_height)) / 2;
     let modal_area = Rect::new(x, y, modal_width, modal_height);
 
-    // Clear the area behind the modal
     frame.render_widget(Clear, modal_area);
 
-    // Modal border
     let block = Block::default()
-        .title(" Session ")
+        .title(" Session Actions ")
         .borders(Borders::ALL)
         .style(Style::default().bg(t.search_bg));
     frame.render_widget(block, modal_area);
 
-    // Inner content area
     let inner = Rect::new(x + 2, y + 1, modal_width - 4, modal_height - 2);
 
-    let keycap = Style::default().bg(t.keycap_bg);
-    let label = Style::default();
-    let dim = Style::default().fg(t.dim_fg);
+    let items = ActionMenuItem::all();
+    let mut lines: Vec<Line> = Vec::new();
 
-    let lines = vec![
-        Line::from(vec![
-            Span::styled(" (v) ", keycap),
-            Span::styled(" view full session", label),
-        ]),
-        Line::from(vec![
-            Span::styled(" (a) ", keycap),
-            Span::styled(" actions ", label),
-            Span::styled("(session operations/info, trim, resume, transfer context...)", dim),
-        ]),
-        Line::from(vec![
-            Span::styled(" Esc ", keycap),
-            Span::styled(" cancel and return", label),
-        ]),
-    ];
+    for (i, item) in items.iter().enumerate() {
+        let is_selected = i == app.action_modal_selected;
+        let style = if is_selected {
+            Style::default().bg(t.selection_bg).fg(t.selection_header_fg)
+        } else {
+            Style::default()
+        };
+        let prefix = if is_selected { "▶ " } else { "  " };
+        lines.push(Line::from(vec![
+            Span::styled(prefix, style),
+            Span::styled(item.label(), style),
+        ]));
+    }
 
-    let paragraph = Paragraph::new(lines);
-    frame.render_widget(paragraph, inner);
+    // Add Esc hint at bottom
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("Esc", Style::default().bg(t.keycap_bg)),
+        Span::styled(" cancel", Style::default().fg(t.dim_fg)),
+    ]));
+
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 fn render_filter_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
@@ -3052,6 +3147,67 @@ fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> Str
 // JSONL Parsing for Full Conversation View
 // ============================================================================
 
+/// Execute the selected action from the action menu modal.
+/// View action is handled in Rust, others set selected_action and quit to Python.
+fn execute_action_item(app: &mut App, item: ActionMenuItem) {
+    match item {
+        ActionMenuItem::View => {
+            // View: enter full view mode (stays in Rust)
+            if let Some(session) = app.selected_session() {
+                let raw_content = std::fs::read_to_string(&session.export_path)
+                    .unwrap_or_else(|_| "Error loading content".to_string());
+                app.full_content = if session.export_path.ends_with(".jsonl") {
+                    parse_jsonl_to_conversation(&raw_content)
+                } else {
+                    raw_content
+                };
+                app.full_content_scroll = 0;
+                app.full_view_mode = true;
+                app.view_search_mode = false;
+                app.view_search_pattern.clear();
+                app.view_search_matches.clear();
+                app.view_search_current = 0;
+
+                // Build query match lines using SnippetGenerator
+                app.query_match_lines.clear();
+                app.query_match_current = 0;
+                if !app.query.is_empty() {
+                    if let Ok(index) = Index::open_in_dir(&app.index_path) {
+                        if let Ok(content_field) = index.schema().get_field("content") {
+                            let query_parser = QueryParser::for_index(&index, vec![content_field]);
+                            let parsed_query = query_parser.parse_query_lenient(&app.query).0;
+                            if let Ok(reader) = index.reader() {
+                                let searcher = reader.searcher();
+                                if let Ok(mut gen) = SnippetGenerator::create(&searcher, &*parsed_query, content_field) {
+                                    gen.set_max_num_chars(10000);
+                                    for (idx, line) in app.full_content.lines().enumerate() {
+                                        let html = gen.snippet(line).to_html();
+                                        if html.contains("<b>") {
+                                            app.query_match_lines.push(idx);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            app.action_mode = None;
+            app.action_modal_selected = 0;
+        }
+        _ => {
+            // All other actions: hand off to Python/Node
+            if let Some(session) = app.selected_session() {
+                app.should_select = Some(session.clone());
+                app.selected_action = Some(item.action_string().to_string());
+                app.should_quit = true;
+            }
+            app.action_mode = None;
+            app.action_modal_selected = 0;
+        }
+    }
+}
+
 /// Parse JSONL file content into conversational text format.
 /// Handles both Claude and Codex JSONL formats.
 /// Returns text with "> " prefix for user messages and "⏺ " for assistant messages.
@@ -3790,62 +3946,33 @@ fn main() -> Result<()> {
                             _ => {}
                         }
                     } else if app.action_mode.is_some() {
-                        // Handle action mode (view/actions)
-                        let mode = app.action_mode.clone().unwrap();
+                        // Handle action menu modal
+                        let items = ActionMenuItem::all();
                         match key.code {
                             KeyCode::Esc => {
                                 app.action_mode = None;
+                                app.action_modal_selected = 0;
                             }
-                            KeyCode::Char('v') if mode == ActionMode::ViewOrActions => {
-                                // View: enter full view mode
-                                if let Some(session) = app.selected_session() {
-                                    let raw_content = std::fs::read_to_string(&session.export_path)
-                                        .unwrap_or_else(|_| "Error loading content".to_string());
-                                    // Parse JSONL files into conversational format
-                                    app.full_content = if session.export_path.ends_with(".jsonl") {
-                                        parse_jsonl_to_conversation(&raw_content)
-                                    } else {
-                                        raw_content
-                                    };
-                                    app.full_content_scroll = 0;
-                                    app.full_view_mode = true;
-                                    // Clear any previous search state
-                                    app.view_search_mode = false;
-                                    app.view_search_pattern.clear();
-                                    app.view_search_matches.clear();
-                                    app.view_search_current = 0;
-
-                                    // Build query match lines using SnippetGenerator
-                                    app.query_match_lines.clear();
-                                    app.query_match_current = 0;
-                                    if !app.query.is_empty() {
-                                        if let Ok(index) = Index::open_in_dir(&app.index_path) {
-                                            if let Ok(content_field) = index.schema().get_field("content") {
-                                                let query_parser = QueryParser::for_index(&index, vec![content_field]);
-                                                let parsed_query = query_parser.parse_query_lenient(&app.query).0;
-                                                if let Ok(reader) = index.reader() {
-                                                    let searcher = reader.searcher();
-                                                    if let Ok(mut gen) = SnippetGenerator::create(&searcher, &*parsed_query, content_field) {
-                                                        gen.set_max_num_chars(10000);
-                                                        for (idx, line) in app.full_content.lines().enumerate() {
-                                                            let html = gen.snippet(line).to_html();
-                                                            // Line has a match if SnippetGenerator added <b> tags
-                                                            if html.contains("<b>") {
-                                                                app.query_match_lines.push(idx);
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                if app.action_modal_selected > 0 {
+                                    app.action_modal_selected -= 1;
                                 }
-                                app.action_mode = None;
                             }
-                            KeyCode::Char('a') if mode == ActionMode::ViewOrActions => {
-                                // Actions: select session and quit to show actions menu
-                                app.on_enter();
-                                app.action_mode = None;
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                if app.action_modal_selected < items.len() - 1 {
+                                    app.action_modal_selected += 1;
+                                }
+                            }
+                            KeyCode::Enter | KeyCode::Char(' ') => {
+                                // Execute selected action
+                                let item = items[app.action_modal_selected].clone();
+                                execute_action_item(&mut app, item);
+                            }
+                            // Single-letter shortcuts move selection to that item
+                            KeyCode::Char(c) => {
+                                if let Some(idx) = items.iter().position(|i| i.shortcut() == c) {
+                                    app.action_modal_selected = idx;
+                                }
                             }
                             _ => {}
                         }
@@ -4040,7 +4167,7 @@ fn main() -> Result<()> {
                                     app.process_jump_enter();
                                 } else if app.selected_session().is_some() {
                                     // Enter action mode to choose view or actions
-                                    app.action_mode = Some(ActionMode::ViewOrActions);
+                                    app.action_mode = Some(ActionMode::ActionMenu);
                                 }
                             }
                             KeyCode::Up => app.on_up(),
@@ -4097,7 +4224,12 @@ fn main() -> Result<()> {
     execute!(io::stdout(), LeaveAlternateScreen)?;
 
     if let Some(session) = app.should_select {
-        let json = serde_json::to_string(&session)?;
+        // Output session with action for Python handler
+        let output = serde_json::json!({
+            "session": session,
+            "action": app.selected_action.as_deref().unwrap_or("menu")
+        });
+        let json = serde_json::to_string(&output)?;
         if let Some(ref out_path) = cli.output_file {
             std::fs::write(out_path, &json)?;
         } else {

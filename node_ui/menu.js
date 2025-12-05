@@ -1540,8 +1540,10 @@ function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
 // Get default query from action config
 const DEFAULT_QUERY = ACTIONS.find(a => a.value === 'query')?.defaultQuery || 'Summarize this session';
 
-function QueryView({session, rpcPath, onBack, clearScreen}) {
+function QueryView({session, rpcPath, onBack, onExit, clearScreen, exitOnBack = false}) {
   const {exit} = useApp();
+  // If exitOnBack is true, Esc also exits (for direct invocation from Rust search)
+  const handleBack = exitOnBack ? () => { onExit(); exit({exitCode: 0}); } : onBack;
   const [query, setQuery] = useState('');
   const [hasTyped, setHasTyped] = useState(false); // Track if user started typing
   const [stage, setStage] = useState('prompt'); // 'prompt', 'running', 'result'
@@ -1594,7 +1596,7 @@ function QueryView({session, rpcPath, onBack, clearScreen}) {
     if (stage === 'prompt') {
       if (key.escape) {
         clearScreen();
-        return onBack();
+        return handleBack();
       }
       if (key.return) {
         // Use default if user hasn't typed anything
@@ -1625,7 +1627,7 @@ function QueryView({session, rpcPath, onBack, clearScreen}) {
     } else if (stage === 'result') {
       if (key.escape || key.return) {
         clearScreen();
-        return onBack();
+        return handleBack();
       }
     }
   });
@@ -1674,7 +1676,7 @@ function QueryView({session, rpcPath, onBack, clearScreen}) {
           {flexDirection: 'column', marginTop: 1},
           h(Text, null, 'Enter your question about this session (or Enter for default):'),
           h(Text, null, '>', ' ', hasTyped ? (query || chalk.dim('type query...')) : chalk.dim(DEFAULT_QUERY)),
-          h(Text, {dimColor: true}, 'Enter: run query  Esc: back')
+          h(Text, {dimColor: true}, exitOnBack ? 'Enter: run query  Esc: back to search' : 'Enter: run query  Esc: back')
         )
       : h(
           Box,
@@ -1687,14 +1689,16 @@ function QueryView({session, rpcPath, onBack, clearScreen}) {
                 h(Text, {color: 'cyan', bold: true}, '─── Response ───'),
                 h(Text, null, result)
               ),
-          h(Text, {dimColor: true, marginTop: 1}, 'Enter/Esc: back to menu')
+          h(Text, {dimColor: true, marginTop: 1}, exitOnBack ? 'Enter/Esc: back to search' : 'Enter/Esc: back to menu')
         )
   );
 }
 
-function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) {
+function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen, exitOnBack = false}) {
   const {exit} = useApp();
   const needsDest = action === 'copy' || action === 'export';
+  // If exitOnBack is true, Esc also exits (for direct invocation from Rust search)
+  const handleBack = exitOnBack ? () => { onExit(); exit({exitCode: 0}); } : onBack;
   const [dest, setDest] = useState('');
   const [stage, setStage] = useState(needsDest ? 'prompt' : 'running');
   const [message, setMessage] = useState('');
@@ -1752,7 +1756,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
     if (stage === 'prompt') {
       if (key.escape) {
         clearScreen();
-        return onBack();
+        return handleBack();
       }
       if (key.return) {
         const submittedDest = dest.trim();
@@ -1775,7 +1779,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
     } else if (stage === 'result') {
       if (key.escape) {
         clearScreen();
-        return onBack();
+        return handleBack();
       }
       if (key.return) {
         onExit();
@@ -1821,7 +1825,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
             ),
             h(Text, null, '>', ' ', dest || chalk.dim('type path...')),
             defaultPathHint ? h(Text, {dimColor: true}, `Default (blank = use): ${defaultPathHint}`) : null,
-            h(Text, {dimColor: true}, 'Enter: run  Esc: back')
+            h(Text, {dimColor: true}, exitOnBack ? 'Enter: run  Esc: back to search' : 'Enter: run  Esc: back')
           );
         })()
       : h(
@@ -1835,7 +1839,7 @@ function NonLaunchView({session, action, rpcPath, onBack, onExit, clearScreen}) 
             h(Text, {color: 'green'}, message || 'Done'),
             resultPath && resultPath !== message && h(Text, {dimColor: true}, resultPath)
           ),
-          h(Text, {dimColor: true}, 'Enter: exit  Esc: back')
+          h(Text, {dimColor: true}, exitOnBack ? 'Enter/Esc: back' : 'Enter: exit  Esc: back')
         )
   );
 }
@@ -1854,8 +1858,14 @@ function App() {
     focusId ? Math.max(0, sessions.findIndex((s) => s.session_id === focusId)) : 0
   );
   const [selectedSession, setSelectedSession] = useState(null); // Directly store selected session
-  const [nonLaunch, setNonLaunch] = useState(null);
-  const [trimSource, setTrimSource] = useState(null); // Track where we entered trim from
+  // Initialize nonLaunch if starting at nonlaunch screen with directAction
+  const [nonLaunch, setNonLaunch] = useState(
+    startScreen === 'nonlaunch' && directAction ? {action: directAction} : null
+  );
+  // Track where we entered trim from; 'direct' means from Rust search (back exits)
+  const [trimSource, setTrimSource] = useState(
+    startScreen === 'trim' && directAction ? 'direct' : null
+  );
 
   const safeCurrent = React.useMemo(() => {
     if (!sessions.length) return 0;
@@ -1947,6 +1957,10 @@ function App() {
             switchScreen('query');
           } else if (directAction === 'resume_menu') {
             switchScreen('resume');
+          } else if (directAction === 'suppress_resume') {
+            // Trim: go to trim form, with back exiting to Rust search
+            setTrimSource('direct');  // Special value for direct invocation
+            switchScreen('trim');
           } else {
             // Actions like smart_trim_resume execute directly
             finish(directAction);
@@ -2014,8 +2028,10 @@ function App() {
       clearScreen,
     });
   } else if (screen === 'trim') {
+    // If trimSource is 'direct', back exits to Rust search; otherwise go to trimSource screen
+    const trimBack = trimSource === 'direct' ? quit : () => switchScreen(trimSource || 'resume');
     view = h(TrimForm, {
-      onBack: () => switchScreen(trimSource || 'resume'),
+      onBack: trimBack,
       onSubmit: (opts) => finish('suppress_resume', opts),
       session,
       clearScreen,
@@ -2043,7 +2059,9 @@ function App() {
       session,
       rpcPath,
       onBack: () => switchScreen(queryBackTarget),
+      onExit: quit,
       clearScreen,
+      exitOnBack: !!directAction,  // Exit completely when invoked from Rust search
     });
   } else if (screen === 'nonlaunch') {
     // If we came via directAction, back goes to results; otherwise to action menu
@@ -2055,6 +2073,7 @@ function App() {
       onBack: () => switchScreen(nonlaunchBackTarget),
       onExit: quit,
       clearScreen,
+      exitOnBack: !!directAction,  // Exit completely when invoked from Rust search
     });
   }
 

@@ -190,14 +190,22 @@ def run_node_menu_ui(
     start_zoomed: bool = False,
     lineage_back_target: str | None = None,
     direct_action: str | None = None,
+    exit_on_back: bool = False,
 ) -> str | None:
     """Launch Node UI and dispatch selected action.
 
     Handles 'back to resume' internally - if action_handler returns 'back',
-    automatically re-shows the resume menu. This works for ALL callers.
+    automatically re-shows the resume menu (unless exit_on_back=True).
+
+    Args:
+        exit_on_back: If True, return 'back' to caller instead of looping to
+            resume menu. Use this when invoking from Rust search where we want
+            to pop back to search results on cancel.
 
     Returns:
-        "back_to_options" if user wants to go back to options menu, None otherwise.
+        "back_to_options" if user wants to go back to options menu.
+        "back" if exit_on_back=True and action was cancelled.
+        None otherwise.
     """
     current_screen = start_screen
     current_direct_action = direct_action
@@ -212,6 +220,9 @@ def run_node_menu_ui(
         )
 
         if result == 'back':
+            if exit_on_back:
+                # Return to caller (for Rust search pop-back)
+                return 'back'
             # Go back to resume menu
             current_screen = 'resume'
             current_direct_action = None
