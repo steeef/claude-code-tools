@@ -1310,7 +1310,7 @@ def search(
             sys.exit(1)
 
     # Import for interactive TUI mode
-    from claude_code_tools.node_menu_ui import run_node_menu_ui
+    from claude_code_tools.node_menu_ui import run_node_menu_ui, run_dir_confirm_ui
     from claude_code_tools.session_menu_cli import execute_action
 
     # RPC path for action execution
@@ -1334,6 +1334,41 @@ def search(
             action_kwargs=kwargs,
             session_id=sess.get("session_id"),
         )
+
+    def check_directory_and_confirm(sess):
+        """Check if session is from different directory and get user confirmation.
+
+        Returns:
+            (proceed, original_dir) tuple:
+            - proceed: True if user wants to proceed, False if cancelled
+            - original_dir: The directory before any change (to restore on cancel),
+                           or None if no directory change was made
+        """
+        session_dir = sess.get("cwd") or "."
+        current_dir = os.getcwd()
+
+        # If same directory, proceed (no restore needed)
+        if os.path.realpath(session_dir) == os.path.realpath(current_dir):
+            return (True, None)
+
+        # Show confirmation dialog
+        choice = run_dir_confirm_ui(current_dir, session_dir)
+
+        if choice == "yes":
+            # Change directory and proceed
+            original_dir = current_dir
+            try:
+                os.chdir(session_dir)
+            except Exception as e:
+                print(f"Error changing directory: {e}")
+                original_dir = None  # No restore needed if change failed
+            return (True, original_dir)
+        elif choice == "no":
+            # Proceed without changing directory (no restore needed)
+            return (True, None)
+        else:
+            # 'cancel' or None - user wants to go back
+            return (False, None)
 
     # Main loop: Rust TUI → Node menu → back to Rust TUI
     while True:
@@ -1466,7 +1501,10 @@ def search(
             )
             # Continue loop to return to Rust TUI
         elif action == "suppress_resume":
-            # Trim + resume: show trim form in Node UI, with pop-back on cancel
+            # Trim + resume: check directory first, then show trim form
+            proceed, original_dir = check_directory_and_confirm(session)
+            if not proceed:
+                continue  # User cancelled - pop back to Rust search
             run_node_menu_ui(
                 sessions=[session],
                 keywords=[],
@@ -1478,18 +1516,27 @@ def search(
                 direct_action="suppress_resume",
                 exit_on_back=True,  # Pop back to Rust search on cancel
             )
-            # If we return here, user cancelled - continue loop to return to Rust TUI
+            # If we return here, user cancelled - restore directory and pop back
+            if original_dir:
+                os.chdir(original_dir)
         elif action == "smart_trim_resume":
-            # Smart trim: execute directly (confirmation UI shown by action_handler)
+            # Smart trim: check directory first, then execute
+            proceed, original_dir = check_directory_and_confirm(session)
+            if not proceed:
+                continue  # User cancelled - pop back to Rust search
             result = action_handler(session, action, {})
             if result == "back":
-                # User cancelled in confirmation UI - continue loop to pop back
-                pass
+                # User cancelled in confirmation UI - restore directory and pop back
+                if original_dir:
+                    os.chdir(original_dir)
             else:
                 # User resumed - exit (new session is running)
                 return
         elif action == "continue":
-            # Continue with context: show options form in Node UI
+            # Continue with context: check directory first, then show options form
+            proceed, original_dir = check_directory_and_confirm(session)
+            if not proceed:
+                continue  # User cancelled - pop back to Rust search
             run_node_menu_ui(
                 sessions=[session],
                 keywords=[],
@@ -1501,11 +1548,19 @@ def search(
                 direct_action="continue",
                 exit_on_back=True,  # Pop back to Rust search on cancel
             )
-            # If we return here, user cancelled - continue loop to return to Rust TUI
+            # If we return here, user cancelled - restore directory and pop back
+            if original_dir:
+                os.chdir(original_dir)
         elif action in ("resume", "clone"):
-            # Launch actions: execute directly and exit (new session starts)
+            # Resume/clone: check directory first, then execute
+            proceed, original_dir = check_directory_and_confirm(session)
+            if not proceed:
+                continue  # User cancelled - pop back to Rust search
+            # Note: if successful, action_handler calls os.execvp and never returns
             action_handler(session, action, {})
-            return  # Exit - new session is running
+            # If we get here, something failed - restore directory and pop back
+            if original_dir:
+                os.chdir(original_dir)
         else:
             print(f"Unknown action: {action}")
             # Continue loop

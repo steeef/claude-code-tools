@@ -349,3 +349,58 @@ def run_trim_confirm_ui(
             out_file.unlink(missing_ok=True)
         except Exception:
             pass
+
+
+def run_dir_confirm_ui(
+    current_dir: str,
+    session_dir: str,
+) -> str | None:
+    """
+    Launch Node UI to confirm directory change.
+
+    Shows a confirmation dialog when a session is from a different directory.
+
+    Args:
+        current_dir: The current working directory
+        session_dir: The session's project directory
+
+    Returns:
+        'yes' - User wants to change directory and proceed
+        'no' - User wants to proceed without changing directory
+        'cancel' - User pressed Escape (cancel action)
+        None - Error or unexpected result
+    """
+    payload = {
+        "sessions": [],
+        "keywords": [],
+        "start_screen": "dir_confirm",
+        "dir_info": {
+            "current_dir": current_dir,
+            "session_dir": session_dir,
+        },
+    }
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix="-dir-confirm.json")
+    Path(tmp.name).write_text(json.dumps(payload), encoding="utf-8")
+    data_path = Path(tmp.name)
+
+    out_fd, out_path = tempfile.mkstemp(suffix="-dir-confirm-out.json")
+    os.close(out_fd)
+    out_file = Path(out_path)
+
+    try:
+        code = _run_node(data_path, out_file)
+        if code != 0:
+            return None
+
+        result = _read_result(out_file)
+        return result.get("dir_choice")
+    finally:
+        try:
+            data_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            out_file.unlink(missing_ok=True)
+        except Exception:
+            pass

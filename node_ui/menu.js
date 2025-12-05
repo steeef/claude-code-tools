@@ -42,6 +42,8 @@ const findOptions = payload.find_options || {};
 const findVariant = payload.find_variant || 'find'; // 'find', 'find-claude', 'find-codex'
 // Trim confirmation data (for trim_confirm screen)
 const trimInfo = payload.trim_info || {};
+// Directory confirmation data (for dir_confirm screen)
+const dirInfo = payload.dir_info || {};
 const BRANCH_ICON = '';
 const DATE_FMT = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -929,6 +931,80 @@ function TrimConfirmView({onDone, onCancel, clearScreen, trimInfo}) {
       Box,
       {marginTop: 1},
       h(Text, {dimColor: true}, footerText)
+    )
+  );
+}
+
+/**
+ * DirConfirmView - Confirmation dialog when session is from a different directory.
+ * Shows current dir vs session dir with Yes/No options.
+ * Escape cancels and goes back.
+ */
+function DirConfirmView({onDone, onCancel, clearScreen, dirInfo}) {
+  const [index, setIndex] = useState(0);
+
+  const items = [
+    {value: 'yes', label: 'Yes, change directory and proceed'},
+    {value: 'no', label: 'No, proceed without changing directory'},
+  ];
+
+  useInput((input, key) => {
+    if (key.escape) {
+      clearScreen();
+      onCancel();
+    }
+    if (key.return) {
+      clearScreen();
+      onDone(items[index].value);
+      return;
+    }
+    if (key.upArrow || input === 'k') {
+      setIndex((i) => (i === 0 ? items.length - 1 : i - 1));
+    }
+    if (key.downArrow || input === 'j') {
+      setIndex((i) => (i === items.length - 1 ? 0 : i + 1));
+    }
+    const num = Number(input);
+    if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
+      setIndex(num - 1);
+    }
+  });
+
+  const currentDir = dirInfo.current_dir || '';
+  const sessionDir = dirInfo.session_dir || '';
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(
+      Box,
+      {flexDirection: 'column', marginBottom: 1},
+      h(Text, null, chalk.bgYellow.black(' Different Directory ')),
+      h(Text, null, ''),
+      h(Text, null, 'This session is from a different project directory:'),
+      h(Text, null, ''),
+      h(Text, null, '  Current:  ', chalk.dim(currentDir)),
+      h(Text, null, '  Session:  ', chalk.cyan(sessionDir)),
+      h(Text, null, ''),
+      h(Text, null, 'Change to the session\'s directory?')
+    ),
+    h(Box, {flexDirection: 'column'},
+      ...items.map((item, idx) => {
+        const isHighlighted = idx === index;
+        return h(
+          Text,
+          {
+            key: item.value,
+            color: isHighlighted ? 'blue' : 'white',
+          },
+          `${isHighlighted ? figures.pointer : ' '} ${idx + 1}. ${item.label}`
+        );
+      })
+    ),
+    h(
+      Box,
+      {marginTop: 1},
+      h(Text, {dimColor: true}, 'Enter: select  Esc: cancel  ↑/↓: move')
     )
   );
 }
@@ -1929,6 +2005,24 @@ function App() {
       onCancel: () => {
         // Escape pressed - exit without action (file remains)
         fs.writeFileSync(outPath, JSON.stringify({trim_action: 'cancel'}));
+        exit({exitCode: 0});
+      },
+    });
+  }
+
+  // Handle dir_confirm screen (confirmation when session is from different directory)
+  if (screen === 'dir_confirm') {
+    return h(DirConfirmView, {
+      dirInfo,
+      clearScreen,
+      onDone: (choice) => {
+        // choice is 'yes' (change dir) or 'no' (don't change)
+        fs.writeFileSync(outPath, JSON.stringify({dir_choice: choice}));
+        exit({exitCode: 0});
+      },
+      onCancel: () => {
+        // Escape pressed - cancel action
+        fs.writeFileSync(outPath, JSON.stringify({dir_choice: 'cancel'}));
         exit({exitCode: 0});
       },
     });
