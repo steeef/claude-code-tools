@@ -694,6 +694,42 @@ class SessionIndex:
 
         return stats
 
+    def prune_deleted(self) -> int:
+        """
+        Remove deleted files from the index.
+
+        Checks all files tracked in the index state and removes any that
+        no longer exist on disk. This handles the case where sessions are
+        deleted outside of the search tool.
+
+        Returns:
+            Number of entries pruned from the index.
+        """
+        if not self.state.indexed_files:
+            return 0
+
+        # First pass: identify deleted files
+        files_to_remove = [
+            file_path for file_path in self.state.indexed_files
+            if not Path(file_path).exists()
+        ]
+
+        if not files_to_remove:
+            return 0
+
+        # Only create writer if we have deletions
+        writer = self.get_writer()
+
+        for file_path in files_to_remove:
+            # Delete from Tantivy index
+            writer.delete_documents("export_path", file_path)
+            # Remove from state tracking
+            del self.state.indexed_files[file_path]
+
+        self.commit_and_reload(writer)
+
+        return len(files_to_remove)
+
     def _generate_snippet(
         self, content: str, query: str, max_len: int = 200
     ) -> str:
@@ -829,6 +865,10 @@ class SessionIndex:
             if project and doc_project != project:
                 continue
 
+            # Skip if session file no longer exists (deleted outside of search)
+            if export_path and not Path(export_path).exists():
+                continue
+
             # Generate snippet
             snippet = self._generate_snippet(content, query)
 
@@ -891,9 +931,14 @@ class SessionIndex:
             doc = searcher.doc(doc_address)
 
             doc_project = doc.get_first("project")
+            export_path = doc.get_first("export_path")
 
             # Apply project filter
             if project and doc_project != project:
+                continue
+
+            # Skip if session file no longer exists (deleted outside of search)
+            if export_path and not Path(export_path).exists():
                 continue
 
             modified = doc.get_first("modified")
@@ -908,7 +953,7 @@ class SessionIndex:
                 "created": doc.get_first("created"),
                 "modified": modified,
                 "lines": doc.get_first("lines"),
-                "export_path": doc.get_first("export_path"),
+                "export_path": export_path,
                 "snippet": self._generate_snippet(content, ""),
                 "score": 0.0,
                 "first_msg_role": doc.get_first("first_msg_role") or "",
@@ -1081,10 +1126,18 @@ def auto_index(
     stats["claude_files"] = claude_file_count
     stats["codex_files"] = codex_file_count
 
-    if verbose and not silent:
+    # Prune deleted sessions from index
+    pruned = index.prune_deleted()
+    stats["pruned"] = pruned
+
+    # Always show indexing/pruning activity (even non-verbose), but suppress in silent mode
+    if not silent:
         if stats["indexed"] > 0:
             print(f"Indexed {stats['indexed']} new/modified sessions")
-        else:
+        if pruned > 0:
+            print(f"Pruned {pruned} deleted sessions from index")
+        # Only show "up to date" in verbose mode (avoid noise on every command)
+        if verbose and stats["indexed"] == 0 and pruned == 0:
             print("Index up to date")
 
     return stats
