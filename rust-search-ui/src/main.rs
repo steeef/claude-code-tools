@@ -341,6 +341,7 @@ struct App {
     // Original query match navigation (blue highlights)
     query_match_lines: Vec<usize>,  // Line numbers with original query matches
     query_match_current: usize,     // Current match index for query navigation
+    query_nav_mode: bool,           // True when navigating original query matches (empty / search)
 
     // Jump mode (num+Enter)
     jump_input: String,
@@ -499,6 +500,7 @@ impl App {
             // Original query match navigation
             query_match_lines: Vec::new(),
             query_match_current: 0,
+            query_nav_mode: false,
             // Jump mode
             jump_input: String::new(),
             // Input mode
@@ -597,6 +599,7 @@ impl App {
             // Original query match navigation
             query_match_lines: Vec::new(),
             query_match_current: 0,
+            query_nav_mode: false,
             // Jump mode
             jump_input: String::new(),
             // Input mode
@@ -2107,27 +2110,43 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
             Span::styled(" /", Style::default().fg(t.accent)),
             Span::styled(&app.view_search_pattern, label),
             Span::styled("█", Style::default().fg(t.accent)),
-            Span::styled("  (Enter to search, Esc to cancel)", dim),
+            Span::styled("  [Enter: search original; keywords+Enter: search; Esc: cancel]", dim),
         ])
-    } else if !app.view_search_pattern.is_empty() {
-        // Active search - show match count and navigation
-        let match_info = if app.view_search_matches.is_empty() {
-            "No matches".to_string()
+    } else if !app.view_search_pattern.is_empty() || app.query_nav_mode {
+        // Active search mode - either view search (yellow) or query nav (blue/original)
+        let (pattern_display, match_info) = if !app.view_search_pattern.is_empty() {
+            // Yellow search mode
+            let info = if app.view_search_matches.is_empty() {
+                "No matches".to_string()
+            } else {
+                format!(
+                    "Match {}/{}",
+                    app.view_search_current + 1,
+                    app.view_search_matches.len()
+                )
+            };
+            (app.view_search_pattern.clone(), info)
         } else {
-            format!(
-                "Match {}/{}",
-                app.view_search_current + 1,
-                app.view_search_matches.len()
-            )
+            // Blue/original query nav mode
+            let info = if app.query_match_lines.is_empty() {
+                "No matches".to_string()
+            } else {
+                format!(
+                    "Match {}/{}",
+                    app.query_match_current + 1,
+                    app.query_match_lines.len()
+                )
+            };
+            ("[original]".to_string(), info)
         };
         Line::from(vec![
             Span::styled(" /", Style::default().fg(t.accent)),
-            Span::styled(&app.view_search_pattern, highlight),
+            Span::styled(pattern_display, highlight),
             Span::styled(format!("  {} ", match_info), dim),
             Span::styled(" │ ", dim),
-            Span::styled(" n ", keycap),
+            Span::styled(" f ", keycap),
             Span::styled(" next ", label),
-            Span::styled(" N ", keycap),
+            Span::styled(" d ", keycap),
             Span::styled(" prev ", label),
             Span::styled(" │ ", dim),
             Span::styled(" Esc ", keycap),
@@ -3470,10 +3489,21 @@ fn main() -> Result<()> {
                                 KeyCode::Enter => {
                                     // Confirm search and jump to first match
                                     app.view_search_mode = false;
-                                    app.update_view_search_matches();
-                                    if !app.view_search_matches.is_empty() {
-                                        app.view_search_current = 0;
-                                        app.full_content_scroll = app.view_search_matches[0];
+                                    if app.view_search_pattern.is_empty() {
+                                        // Empty pattern: activate query nav mode (blue/original)
+                                        app.query_nav_mode = true;
+                                        if !app.query_match_lines.is_empty() {
+                                            app.query_match_current = 0;
+                                            app.full_content_scroll = app.query_match_lines[0];
+                                        }
+                                    } else {
+                                        // Non-empty pattern: activate view search mode (yellow)
+                                        app.query_nav_mode = false;
+                                        app.update_view_search_matches();
+                                        if !app.view_search_matches.is_empty() {
+                                            app.view_search_current = 0;
+                                            app.full_content_scroll = app.view_search_matches[0];
+                                        }
                                     }
                                 }
                                 KeyCode::Backspace => {
@@ -3484,30 +3514,44 @@ fn main() -> Result<()> {
                                 }
                                 _ => {}
                             }
-                        } else if !app.view_search_pattern.is_empty() {
-                            // Active search (yellow highlights) - handle search navigation
+                        } else if !app.view_search_pattern.is_empty() || app.query_nav_mode {
+                            // Active search mode - yellow (view search) or blue (query nav)
                             match key.code {
-                                KeyCode::Char('d') => {
-                                    // Next yellow match
-                                    app.view_search_next();
+                                KeyCode::Char('f') => {
+                                    // Next match
+                                    if !app.view_search_pattern.is_empty() {
+                                        app.view_search_next();
+                                    } else {
+                                        app.query_match_next();
+                                    }
                                 }
-                                KeyCode::Char('a') => {
-                                    // Prev yellow match
-                                    app.view_search_prev();
+                                KeyCode::Char('d') => {
+                                    // Prev match
+                                    if !app.view_search_pattern.is_empty() {
+                                        app.view_search_prev();
+                                    } else {
+                                        app.query_match_prev();
+                                    }
                                 }
                                 KeyCode::Enter => {
                                     // Enter also goes to next match
-                                    app.view_search_next();
+                                    if !app.view_search_pattern.is_empty() {
+                                        app.view_search_next();
+                                    } else {
+                                        app.query_match_next();
+                                    }
                                 }
                                 KeyCode::Esc => {
-                                    // Clear search pattern
+                                    // Clear search/nav mode
                                     app.view_search_pattern.clear();
                                     app.view_search_matches.clear();
                                     app.view_search_current = 0;
+                                    app.query_nav_mode = false;
                                 }
                                 KeyCode::Char('/') => {
                                     // Start new search
                                     app.view_search_pattern.clear();
+                                    app.query_nav_mode = false;
                                     app.view_search_mode = true;
                                 }
                                 KeyCode::Char(' ') | KeyCode::Char('q') => {
@@ -3515,6 +3559,7 @@ fn main() -> Result<()> {
                                     app.view_search_pattern.clear();
                                     app.view_search_matches.clear();
                                     app.view_search_mode = false;
+                                    app.query_nav_mode = false;
                                     app.full_view_mode = false;
                                 }
                                 KeyCode::Up | KeyCode::Char('k') => {
@@ -3544,12 +3589,12 @@ fn main() -> Result<()> {
                         } else {
                             // Normal view mode (no active search) - a/d navigate original query (blue) matches
                             match key.code {
-                                KeyCode::Char('d') => {
-                                    // Next blue match (original query)
+                                KeyCode::Char('f') => {
+                                    // Next match (original query)
                                     app.query_match_next();
                                 }
-                                KeyCode::Char('a') => {
-                                    // Prev blue match (original query)
+                                KeyCode::Char('d') => {
+                                    // Prev match (original query)
                                     app.query_match_prev();
                                 }
                                 KeyCode::Char('/') => {
@@ -3558,6 +3603,7 @@ fn main() -> Result<()> {
                                 }
                                 KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('q') => {
                                     app.full_view_mode = false;
+                                    app.query_nav_mode = false;
                                 }
                                 KeyCode::Up | KeyCode::Char('k') => {
                                     app.full_content_scroll = app.full_content_scroll.saturating_sub(1);
@@ -3796,7 +3842,7 @@ fn main() -> Result<()> {
                                 }
                                 app.action_mode = None;
                             }
-                            KeyCode::Char('a') if mode == ActionMode::ViewOrActions => {
+                            KeyCode::Char('d') if mode == ActionMode::ViewOrActions => {
                                 // Actions: select session and quit to show actions menu
                                 app.on_enter();
                                 app.action_mode = None;
@@ -3934,7 +3980,7 @@ fn main() -> Result<()> {
                                 app.include_continued = !app.include_continued;
                                 app.filter();
                             }
-                            KeyCode::Char('a') => {
+                            KeyCode::Char('d') => {
                                 // Enter agent input mode
                                 app.input_mode = Some(InputMode::Agent);
                                 app.input_buffer.clear();
@@ -4014,7 +4060,7 @@ fn main() -> Result<()> {
                                 }
                             }
                             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_up(10),
-                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_down(10),
+                            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => app.page_down(10),
                             KeyCode::Backspace => app.on_backspace(),
                             KeyCode::Char('/') => {
                                 // Open scope modal
