@@ -1906,7 +1906,30 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
 
     let content_width = layout[1].width.saturating_sub(2) as usize;
 
-    // Search highlighting style - yellow background
+    // Original query highlighting (blue) - pre-process with SnippetGenerator
+    let query_highlight = Style::default().bg(Color::Rgb(30, 80, 180)).fg(Color::White).add_modifier(Modifier::BOLD);
+    let mut query_html_lines: Vec<String> = Vec::new();
+    if !app.query.is_empty() {
+        if let Ok(index) = Index::open_in_dir(&app.index_path) {
+            if let Ok(content_field) = index.schema().get_field("content") {
+                let query_parser = QueryParser::for_index(&index, vec![content_field]);
+                let parsed_query = query_parser.parse_query_lenient(&app.query).0;
+                if let Ok(reader) = index.reader() {
+                    let searcher = reader.searcher();
+                    if let Ok(mut gen) = SnippetGenerator::create(&searcher, &*parsed_query, content_field) {
+                        gen.set_max_num_chars(10000); // Large enough for full lines
+                        for line in app.full_content.lines() {
+                            let html = gen.snippet(line).to_html();
+                            query_html_lines.push(if html.is_empty() { line.to_string() } else { html });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let use_query_html = !query_html_lines.is_empty() && query_html_lines.len() == app.full_content.lines().count();
+
+    // View search highlighting (yellow) - from / command
     let search_pattern = &app.view_search_pattern;
     let search_highlight = Style::default().bg(Color::Yellow).fg(Color::Black);
 
@@ -1916,14 +1939,25 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
     enum MsgContext { None, User, Assistant }
     let mut context = MsgContext::None;
 
+    // Helper to get HTML version of content (skipping prefix chars)
+    let get_html_content = |idx: usize, skip_chars: usize, original: &str| -> String {
+        if use_query_html {
+            query_html_lines[idx].chars().skip(skip_chars).collect()
+        } else {
+            original.chars().skip(skip_chars).collect()
+        }
+    };
+
     let content_lines: Vec<Line> = app
         .full_content
         .lines()
-        .map(|line| {
+        .enumerate()
+        .map(|(idx, line)| {
             if line.starts_with("> ") {
                 // User message - skip "> " (2 chars)
                 context = MsgContext::User;
                 let msg_content: String = line.chars().skip(2).collect();
+                let html_content = get_html_content(idx, 2, line);
                 let used = 6 + 1 + msg_content.chars().count(); // " User " + " " + content
                 let padding = content_width.saturating_sub(used);
                 let base_style = Style::default().bg(t.user_bubble_bg);
@@ -1931,13 +1965,14 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                     Span::styled(" User ", Style::default().fg(t.user_label).add_modifier(Modifier::BOLD)),
                     Span::styled(" ", base_style),
                 ];
-                spans.extend(highlight_search_in_text(&msg_content, search_pattern, base_style, search_highlight));
+                spans.extend(render_with_dual_highlighting(&html_content, search_pattern, base_style, query_highlight, search_highlight));
                 spans.push(Span::styled(" ".repeat(padding), base_style));
                 Line::from(spans)
             } else if line.starts_with("⏺ ") {
                 // Assistant message - ⏺ is 3 bytes + space = 4 bytes
                 context = MsgContext::Assistant;
                 let msg_content: String = line.chars().skip(2).collect(); // Skip icon + space
+                let html_content = get_html_content(idx, 2, line);
                 let label_with_space = format!(" {} ", agent_label);
                 let used = label_with_space.chars().count() + 1 + msg_content.chars().count();
                 let padding = content_width.saturating_sub(used);
@@ -1946,22 +1981,24 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                     Span::styled(label_with_space, Style::default().fg(assistant_fg).add_modifier(Modifier::BOLD)),
                     Span::styled(" ", base_style),
                 ];
-                spans.extend(highlight_search_in_text(&msg_content, search_pattern, base_style, search_highlight));
+                spans.extend(render_with_dual_highlighting(&html_content, search_pattern, base_style, query_highlight, search_highlight));
                 spans.push(Span::styled(" ".repeat(padding), base_style));
                 Line::from(spans)
             } else if line.starts_with("  ⎿") {
                 // Tool result - style as dimmed (2 spaces + ⎿ character)
                 context = MsgContext::None;
                 let content: String = line.chars().skip(3).collect(); // Skip "  ⎿"
+                let html_content = get_html_content(idx, 3, line);
                 let base_style = Style::default().fg(t.dim_fg);
                 let mut spans = vec![Span::styled("      ", base_style)];
-                spans.extend(highlight_search_in_text(&content, search_pattern, base_style, search_highlight));
+                spans.extend(render_with_dual_highlighting(&html_content, search_pattern, base_style, query_highlight, search_highlight));
                 Line::from(spans)
             } else if line.is_empty() {
                 // Empty line - keep context for multi-paragraph messages
                 Line::from("")
             } else if context != MsgContext::None {
                 // Continuation line within a message block (indented or not)
+                let html_line = if use_query_html { &query_html_lines[idx] } else { line };
                 match context {
                     MsgContext::User => {
                         let used = 6 + 1 + line.chars().count(); // prefix + " " + content
@@ -1971,7 +2008,7 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                             Span::styled("      ", Style::default()),
                             Span::styled(" ", base_style),
                         ];
-                        spans.extend(highlight_search_in_text(line, search_pattern, base_style, search_highlight));
+                        spans.extend(render_with_dual_highlighting(html_line, search_pattern, base_style, query_highlight, search_highlight));
                         spans.push(Span::styled(" ".repeat(padding), base_style));
                         Line::from(spans)
                     }
@@ -1984,19 +2021,20 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                             Span::styled(" ".repeat(label_width), Style::default()),
                             Span::styled(" ", base_style),
                         ];
-                        spans.extend(highlight_search_in_text(line, search_pattern, base_style, search_highlight));
+                        spans.extend(render_with_dual_highlighting(html_line, search_pattern, base_style, query_highlight, search_highlight));
                         spans.push(Span::styled(" ".repeat(padding), base_style));
                         Line::from(spans)
                     }
                     MsgContext::None => {
                         let base_style = Style::default();
-                        Line::from(highlight_search_in_text(line, search_pattern, base_style, search_highlight))
+                        Line::from(render_with_dual_highlighting(html_line, search_pattern, base_style, query_highlight, search_highlight))
                     }
                 }
             } else {
                 // Plain line outside message context (metadata, etc.)
+                let html_line = if use_query_html { &query_html_lines[idx] } else { line };
                 let base_style = Style::default();
-                Line::from(highlight_search_in_text(line, search_pattern, base_style, search_highlight))
+                Line::from(render_with_dual_highlighting(html_line, search_pattern, base_style, query_highlight, search_highlight))
             }
         })
         .collect();
@@ -2347,6 +2385,97 @@ fn render_snippet_with_html_tags<'a>(
 /// Strip HTML tags from snippet for plain text output (e.g., JSON)
 fn strip_html_tags(text: &str) -> String {
     text.replace("<b>", "").replace("</b>", "")
+}
+
+/// Render text with two-layer highlighting:
+/// 1. Blue highlighting from HTML <b> tags (original query via SnippetGenerator)
+/// 2. Yellow highlighting for view search pattern (overlays on top)
+fn render_with_dual_highlighting<'a>(
+    html_text: &str,          // Text with <b> tags from SnippetGenerator
+    view_pattern: &str,       // View search pattern (may be empty)
+    base_style: Style,
+    query_highlight: Style,   // Blue for original query
+    view_highlight: Style,    // Yellow for view search
+) -> Vec<Span<'a>> {
+    // First pass: parse <b> tags and build a list of (text, is_query_match)
+    let mut segments: Vec<(String, bool)> = Vec::new();
+    let mut current_pos = 0;
+
+    while current_pos < html_text.len() {
+        if let Some(start_tag_pos) = html_text[current_pos..].find("<b>") {
+            let abs_start = current_pos + start_tag_pos;
+            // Add text before <b> as non-match
+            if abs_start > current_pos {
+                segments.push((html_text[current_pos..abs_start].to_string(), false));
+            }
+            // Find closing </b>
+            let content_start = abs_start + 3;
+            if let Some(end_tag_pos) = html_text[content_start..].find("</b>") {
+                let content_end = content_start + end_tag_pos;
+                // Add matched text
+                segments.push((html_text[content_start..content_end].to_string(), true));
+                current_pos = content_end + 4;
+            } else {
+                segments.push((html_text[current_pos..].to_string(), false));
+                break;
+            }
+        } else {
+            segments.push((html_text[current_pos..].to_string(), false));
+            break;
+        }
+    }
+
+    if segments.is_empty() {
+        return vec![Span::styled(html_text.to_string(), base_style)];
+    }
+
+    // Second pass: for each segment, apply view search highlighting on top
+    let mut spans: Vec<Span<'a>> = Vec::new();
+
+    for (text, is_query_match) in segments {
+        if view_pattern.is_empty() {
+            // No view search - just apply query highlight or base
+            let style = if is_query_match { query_highlight } else { base_style };
+            spans.push(Span::styled(text, style));
+        } else {
+            // Apply view search highlighting within this segment
+            let segment_base = if is_query_match { query_highlight } else { base_style };
+            let pattern_lower = view_pattern.to_lowercase();
+            let text_lower = text.to_lowercase();
+            let text_chars: Vec<char> = text.chars().collect();
+            let pattern_chars: Vec<char> = pattern_lower.chars().collect();
+            let text_lower_chars: Vec<char> = text_lower.chars().collect();
+
+            let mut last_end = 0;
+            let mut i = 0;
+            while i + pattern_chars.len() <= text_lower_chars.len() {
+                let match_found = (0..pattern_chars.len())
+                    .all(|j| text_lower_chars[i + j] == pattern_chars[j]);
+                if match_found {
+                    if i > last_end {
+                        let before: String = text_chars[last_end..i].iter().collect();
+                        spans.push(Span::styled(before, segment_base));
+                    }
+                    let matched: String = text_chars[i..i + pattern_chars.len()].iter().collect();
+                    spans.push(Span::styled(matched, view_highlight));
+                    last_end = i + pattern_chars.len();
+                    i = last_end;
+                } else {
+                    i += 1;
+                }
+            }
+            if last_end < text_chars.len() {
+                let remaining: String = text_chars[last_end..].iter().collect();
+                spans.push(Span::styled(remaining, segment_base));
+            }
+        }
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(strip_html_tags(html_text), base_style));
+    }
+
+    spans
 }
 
 /// Highlight search pattern matches in text, returning spans with base and highlight styles
