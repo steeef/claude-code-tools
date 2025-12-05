@@ -1488,7 +1488,21 @@ def search(
             else:
                 # User resumed - exit (new session is running)
                 return
-        elif action in ("resume", "clone", "continue"):
+        elif action == "continue":
+            # Continue with context: show options form in Node UI
+            run_node_menu_ui(
+                sessions=[session],
+                keywords=[],
+                action_handler=action_handler,
+                start_action=False,
+                focus_session_id=session["session_id"],
+                rpc_path=rpc_path,
+                start_screen="continue_form",
+                direct_action="continue",
+                exit_on_back=True,  # Pop back to Rust search on cancel
+            )
+            # If we return here, user cancelled - continue loop to return to Rust TUI
+        elif action in ("resume", "clone"):
             # Launch actions: execute directly and exit (new session starts)
             action_handler(session, action, {})
             return  # Exit - new session is running

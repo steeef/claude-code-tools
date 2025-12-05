@@ -2021,8 +2021,10 @@ function App() {
       clearScreen,
     });
   } else if (screen === 'continue_form') {
+    // If directAction is set, back exits to Rust search; otherwise go to lineage
+    const continueBack = directAction ? quit : () => switchScreen('lineage');
     view = h(ContinueForm, {
-      onBack: () => switchScreen('lineage'),
+      onBack: continueBack,
       onSubmit: (opts) => finish('continue', opts),
       session,
       clearScreen,
