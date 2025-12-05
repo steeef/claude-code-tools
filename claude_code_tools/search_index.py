@@ -1049,9 +1049,10 @@ def auto_index(
         claude_file_count = len(claude_files)
         jsonl_files.extend(claude_files)
 
-    # Codex sessions: ~/.codex/**/*.jsonl (various subdirs)
-    if codex_home.exists():
-        codex_files = list(codex_home.glob("**/*.jsonl"))
+    # Codex sessions: ~/.codex/sessions/YYYY/MM/DD/*.jsonl (fixed depth)
+    codex_sessions = codex_home / "sessions"
+    if codex_sessions.exists():
+        codex_files = list(codex_sessions.glob("????/??/??/*.jsonl"))
         codex_file_count = len(codex_files)
         jsonl_files.extend(codex_files)
 
