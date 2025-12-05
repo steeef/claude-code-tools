@@ -338,6 +338,10 @@ struct App {
     view_search_matches: Vec<usize>, // Line numbers with matches
     view_search_current: usize,  // Current match index
 
+    // Original query match navigation (blue highlights)
+    query_match_lines: Vec<usize>,  // Line numbers with original query matches
+    query_match_current: usize,     // Current match index for query navigation
+
     // Jump mode (num+Enter)
     jump_input: String,
 
@@ -492,6 +496,9 @@ impl App {
             view_search_pattern: String::new(),
             view_search_matches: Vec::new(),
             view_search_current: 0,
+            // Original query match navigation
+            query_match_lines: Vec::new(),
+            query_match_current: 0,
             // Jump mode
             jump_input: String::new(),
             // Input mode
@@ -587,6 +594,9 @@ impl App {
             view_search_pattern: String::new(),
             view_search_matches: Vec::new(),
             view_search_current: 0,
+            // Original query match navigation
+            query_match_lines: Vec::new(),
+            query_match_current: 0,
             // Jump mode
             jump_input: String::new(),
             // Input mode
@@ -951,6 +961,32 @@ impl App {
             self.view_search_current -= 1;
         }
         self.full_content_scroll = self.view_search_matches[self.view_search_current];
+    }
+
+    /// Jump to next original query match in view mode (blue highlights)
+    fn query_match_next(&mut self) {
+        if self.query_match_lines.is_empty() {
+            return;
+        }
+
+        // Move to next match index (wrap around if at end)
+        self.query_match_current = (self.query_match_current + 1) % self.query_match_lines.len();
+        self.full_content_scroll = self.query_match_lines[self.query_match_current];
+    }
+
+    /// Jump to previous original query match in view mode (blue highlights)
+    fn query_match_prev(&mut self) {
+        if self.query_match_lines.is_empty() {
+            return;
+        }
+
+        // Move to previous match index (wrap around if at beginning)
+        if self.query_match_current == 0 {
+            self.query_match_current = self.query_match_lines.len() - 1;
+        } else {
+            self.query_match_current -= 1;
+        }
+        self.full_content_scroll = self.query_match_lines[self.query_match_current];
     }
 }
 
@@ -3449,12 +3485,14 @@ fn main() -> Result<()> {
                                 _ => {}
                             }
                         } else if !app.view_search_pattern.is_empty() {
-                            // Active search - handle search navigation
+                            // Active search (yellow highlights) - handle search navigation
                             match key.code {
-                                KeyCode::Char('n') => {
+                                KeyCode::Char('d') => {
+                                    // Next yellow match
                                     app.view_search_next();
                                 }
-                                KeyCode::Char('N') => {
+                                KeyCode::Char('a') => {
+                                    // Prev yellow match
                                     app.view_search_prev();
                                 }
                                 KeyCode::Enter => {
@@ -3504,8 +3542,16 @@ fn main() -> Result<()> {
                                 _ => {}
                             }
                         } else {
-                            // Normal view mode (no active search)
+                            // Normal view mode (no active search) - a/d navigate original query (blue) matches
                             match key.code {
+                                KeyCode::Char('d') => {
+                                    // Next blue match (original query)
+                                    app.query_match_next();
+                                }
+                                KeyCode::Char('a') => {
+                                    // Prev blue match (original query)
+                                    app.query_match_prev();
+                                }
                                 KeyCode::Char('/') => {
                                     app.view_search_mode = true;
                                     app.view_search_pattern.clear();
@@ -3722,6 +3768,31 @@ fn main() -> Result<()> {
                                     app.view_search_pattern.clear();
                                     app.view_search_matches.clear();
                                     app.view_search_current = 0;
+
+                                    // Build query match lines using SnippetGenerator
+                                    app.query_match_lines.clear();
+                                    app.query_match_current = 0;
+                                    if !app.query.is_empty() {
+                                        if let Ok(index) = Index::open_in_dir(&app.index_path) {
+                                            if let Ok(content_field) = index.schema().get_field("content") {
+                                                let query_parser = QueryParser::for_index(&index, vec![content_field]);
+                                                let parsed_query = query_parser.parse_query_lenient(&app.query).0;
+                                                if let Ok(reader) = index.reader() {
+                                                    let searcher = reader.searcher();
+                                                    if let Ok(mut gen) = SnippetGenerator::create(&searcher, &*parsed_query, content_field) {
+                                                        gen.set_max_num_chars(10000);
+                                                        for (idx, line) in app.full_content.lines().enumerate() {
+                                                            let html = gen.snippet(line).to_html();
+                                                            // Line has a match if SnippetGenerator added <b> tags
+                                                            if html.contains("<b>") {
+                                                                app.query_match_lines.push(idx);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 app.action_mode = None;
                             }
