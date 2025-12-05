@@ -3842,7 +3842,7 @@ fn main() -> Result<()> {
                                 }
                                 app.action_mode = None;
                             }
-                            KeyCode::Char('d') if mode == ActionMode::ViewOrActions => {
+                            KeyCode::Char('a') if mode == ActionMode::ViewOrActions => {
                                 // Actions: select session and quit to show actions menu
                                 app.on_enter();
                                 app.action_mode = None;
