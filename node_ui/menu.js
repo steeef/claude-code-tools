@@ -62,10 +62,12 @@ const TIME_FMT = new Intl.DateTimeFormat('en', {
   minute: '2-digit',
 });
 
+// Generate annotation string for session display
+// Note: "continued" is the internal derivation_type for what users see as "rolled-over" (r)
 const toAnno = (s) => {
   const annos = [];
-  if (s.derivation_type === 'continue' || s.derivation_type === 'continuation' || s.is_continuation) annos.push('c');
-  if (s.is_trimmed || s.derivation_type === 'trim') annos.push('t');
+  if (s.derivation_type === 'continue' || s.derivation_type === 'continuation' || s.derivation_type === 'continued' || s.is_continuation) annos.push('r');
+  if (s.is_trimmed || s.derivation_type === 'trim' || s.derivation_type === 'trimmed') annos.push('t');
   if (s.is_sidechain) annos.push('sub');
   return annos.length ? `(${annos.join(',')})` : '';
 };
@@ -483,14 +485,15 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, 
   sessions.forEach((s) => {
     const a = toAnno(s);
     if (a.includes('t')) annoSet.add('t');
-    if (a.includes('c')) annoSet.add('c');
+    if (a.includes('r')) annoSet.add('r');
     if (a.includes('sub')) annoSet.add('sub');
   });
+  // Legend for annotation symbols - (r) is "rolled-over" (internally "continued")
   const annoLine = (() => {
     if (!annoSet.size) return null;
     const parts = [];
     if (annoSet.has('t')) parts.push('(t)=trimmed');
-    if (annoSet.has('c')) parts.push('(c)=continued');
+    if (annoSet.has('r')) parts.push('(r)=rolled-over');
     if (annoSet.has('sub')) parts.push('(sub)=sub-agent (not resumable)');
     return parts.join(' ');
   })();
@@ -1324,7 +1327,7 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       Box,
       {flexDirection: 'column'},
       h(Text, null,
-        chalk.bgCyan.black(' Continue options '), ' ',
+        chalk.bgCyan.black(' Rollover options '), ' ',
         colorize.project(session.project || ''), ' ',
         colorize.branch(branchDisplay)
       ),
@@ -1349,7 +1352,7 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
         Text,
         null,
         field === 'agent' ? chalk.cyan(arrow) : ' ',
-        ' Agent to continue with'
+        ' Agent for rollover'
       ),
       h(Text, {dimColor: true}, '    Type 1 for Claude, 2 for Codex'),
       h(
@@ -1582,9 +1585,9 @@ function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
         h(Text, null, renderBool(noTrim))
       ),
 
-      // No cont
+      // No rollover (internally "no_cont")
       h(Box, null,
-        h(Text, null, inEdit && field === 'no_cont' ? chalk.cyan(arrow) : ' ', ' Exclude continued (--no-cont): '),
+        h(Text, null, inEdit && field === 'no_cont' ? chalk.cyan(arrow) : ' ', ' Exclude rollover (--no-roll): '),
         h(Text, null, renderBool(noCont))
       ),
 

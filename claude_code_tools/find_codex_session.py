@@ -264,10 +264,10 @@ def find_sessions(
         keywords: List of keywords to search for
         num_matches: Maximum number of results to return
         global_search: If False, filter to current directory only
-        original_only: If True, show only original sessions (excludes trimmed and continued)
+        original_only: If True, show only original sessions (excludes trimmed and rollover)
         no_sub: If True, exclude sub-agent sessions (Note: Codex doesn't have sub-agents)
         no_trim: If True, exclude trimmed sessions
-        no_cont: If True, exclude continued sessions
+        no_cont: If True, exclude rollover sessions (internally "continued")
 
     Returns list of dicts with: session_id, project, branch, date,
                                  lines, preview, cwd, file_path, is_trimmed
@@ -1059,9 +1059,10 @@ To persist directory changes when resuming sessions:
         help="Exclude trimmed sessions from results",
     )
     parser.add_argument(
-        "--no-cont",
+        "--no-roll",
+        dest="no_cont",  # Keep internal name for compatibility
         action="store_true",
-        help="Exclude continued sessions from results",
+        help="Exclude rollover sessions from results",
     )
     parser.add_argument(
         "--simple-ui",
@@ -1135,7 +1136,7 @@ To persist directory changes when resuming sessions:
         if args.no_trim:
             cmd_parts.append("--no-trim")
         if args.no_cont:
-            cmd_parts.append("--no-cont")
+            cmd_parts.append("--no-roll")
         if args.min_lines:
             cmd_parts.append(f"--min-lines {args.min_lines}")
         if args.before:
@@ -1156,21 +1157,21 @@ To persist directory changes when resuming sessions:
 
     # Display informational message about what session types are being shown
     if args.original:
-        print("Showing: Original sessions only (excluding trimmed and continued sessions)", file=sys.stderr)
+        print("Showing: Original sessions only (excluding trimmed and rollover sessions)", file=sys.stderr)
     else:
         # Build list of excluded types (note: Codex doesn't have sub-agents)
         excluded_types = []
         if args.no_trim:
             excluded_types.append("trimmed")
         if args.no_cont:
-            excluded_types.append("continued")
+            excluded_types.append("rollover")
 
         if excluded_types:
             excluded_str = ", ".join(excluded_types)
             print(f"Showing: All sessions except {excluded_str}", file=sys.stderr)
         else:
-            print("Showing: All session types (original, trimmed, and continued)", file=sys.stderr)
-            print("Tip: Use --no-trim or --no-cont to exclude specific types", file=sys.stderr)
+            print("Showing: All session types (original, trimmed, and rollover)", file=sys.stderr)
+            print("Tip: Use --no-trim or --no-roll to exclude specific types", file=sys.stderr)
     print(file=sys.stderr)  # Blank line for readability
 
     # Find matching sessions

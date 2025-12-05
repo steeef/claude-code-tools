@@ -48,12 +48,13 @@ export const ACTIONS = [
 ];
 
 // Resume submenu options (shown when 'resume_menu' is selected)
+// Note: 'continue' is the internal action name for what users see as "Rollover"
 export const RESUME_SUBMENU = [
   {value: 'resume', label: 'Resume as-is'},
   {value: 'clone', label: 'Clone session and resume clone'},
   {value: 'suppress_resume', label: 'Trim + resume...'},
   {value: 'smart_trim_resume', label: 'Smart trim + resume'},
-  {value: 'continue', label: 'Continue with context in fresh session'},
+  {value: 'continue', label: 'Rollover: handoff work to fresh session'},
 ];
 
 // Trim-only submenu (for aichat trim command)

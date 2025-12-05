@@ -144,10 +144,10 @@ debugging steps, design decisions—gone with no way to recover them.
 
 Instead of compacting, **transfer your context to a fresh session**. Running
 `aichat resume` finds the latest Claude and Codex sessions for your current
-project and lets you choose which one to continue:
+project and lets you choose which one to roll over:
 
 ```bash
-aichat resume  # select session and choose "Continue with context in fresh session"
+aichat resume  # select session and choose "Rollover: handoff work to fresh session"
 ```
 
 This gives you:
@@ -173,7 +173,7 @@ sessions. Search, resume, export, and navigate your AI conversation history.
 
 - **Session ID optional:** Commands find the latest sessions for your current
   project/branch when no ID is provided.
-- **No extra API costs:** Features using AI agents (smart-trim, query, continue)
+- **No extra API costs:** Features using AI agents (smart-trim, query, rollover)
   use your existing Claude or Codex subscription.
 
 ```bash
@@ -208,21 +208,21 @@ aichat search --json -g "error"    # JSONL output for AI agents
 
 **Session type filters:**
 
-By default, search includes original, trimmed, and continued sessions (but not
+By default, search includes original, trimmed, and rollover sessions (but not
 sub-agents). Use flags to include only specific types:
 
 ```bash
-aichat search                           # Default: original + trimmed + continued
+aichat search                           # Default: original + trimmed + rollover
 aichat search --sub-agent               # Only sub-agents
 aichat search --original                # Only original sessions
 aichat search --original --sub-agent    # Only originals and sub-agents
-aichat search --trimmed --continued     # Only trimmed and continued
+aichat search --trimmed --rollover      # Only trimmed and rollover
 ```
 
-The flags are: `--original`, `--trimmed`, `--continued`, `--sub-agent`
+The flags are: `--original`, `--trimmed`, `--rollover`, `--sub-agent`
 
 When ANY type flag is specified, ONLY those types are included. When no type
-flags are specified, defaults apply (original + trimmed + continued).
+flags are specified, defaults apply (original + trimmed + rollover).
 
 ---
 
@@ -308,23 +308,23 @@ parent session**. This link is the key difference from compacting.
 Compacting (built into Claude/Codex) summarizes your conversation to free up
 context, but it **loses detailed information** with no way to recover it.
 
-Continue with fresh context also summarizes for the new session, but critically:
+Rollover to fresh session also summarizes for the new session, but critically:
 
 - **Preserves the full parent session** — nothing is lost
 - **Agent receives the lineage chain** — at the start of the new session, the
-  agent sees the full chain of past continued sessions back to the original
+  agent sees the full chain of past rollover sessions back to the original
 - **On-demand context retrieval** — the agent can look up any past session in
   the chain to recover specific details
 
 **Recursive chaining:**
 
-You can continue multiple times, building a chain of linked sessions:
+You can roll over multiple times, building a chain of linked sessions:
 
 ```
 Original Session (abc123)
- └─► Continued Session 1 (def456)
-      └─► Continued Session 2 (ghi789)
-           └─► Continued Session 3 (jkl012)
+ └─► Rollover Session 1 (def456)
+      └─► Rollover Session 2 (ghi789)
+           └─► Rollover Session 3 (jkl012)
                 └─► ... and so on
 ```
 

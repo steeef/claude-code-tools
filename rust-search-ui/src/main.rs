@@ -169,7 +169,8 @@ impl Session {
         if self.derivation_type == "trimmed" {
             display.push_str(" (t)");
         } else if self.derivation_type == "continued" {
-            display.push_str(" (c)");
+            // "continued" internally = "rolled-over" in UI, shown as (r)
+            display.push_str(" (r)");
         }
         if self.is_sidechain {
             display.push_str(" (s)");
@@ -403,7 +404,7 @@ enum FilterMenuItem {
     IncludeOriginal,
     IncludeSub,
     IncludeTrimmed,
-    IncludeContinued,
+    IncludeContinued,  // Internally "continued", displayed as "rollover" to user
     AgentAll,
     AgentClaude,
     AgentCodex,
@@ -435,7 +436,7 @@ impl FilterMenuItem {
             FilterMenuItem::IncludeOriginal => "(o) Include original sessions",
             FilterMenuItem::IncludeSub => "(s) Include sub-agent sessions",
             FilterMenuItem::IncludeTrimmed => "(t) Include trimmed sessions",
-            FilterMenuItem::IncludeContinued => "(c) Include continued sessions",
+            FilterMenuItem::IncludeContinued => "(r) Include rollover sessions",
             FilterMenuItem::AgentAll => "(a) All agents",
             FilterMenuItem::AgentClaude => "(d) Claude only",
             FilterMenuItem::AgentCodex => "(e) Codex only",
@@ -451,7 +452,7 @@ impl FilterMenuItem {
             FilterMenuItem::IncludeOriginal => 'o',
             FilterMenuItem::IncludeSub => 's',
             FilterMenuItem::IncludeTrimmed => 't',
-            FilterMenuItem::IncludeContinued => 'c',
+            FilterMenuItem::IncludeContinued => 'r',
             FilterMenuItem::AgentAll => 'a',
             FilterMenuItem::AgentClaude => 'd',
             FilterMenuItem::AgentCodex => 'e',
@@ -473,7 +474,7 @@ enum ActionMenuItem {
     Clone,      // (l) Clone session + resume clone
     Trim,       // (t) Trim + resume
     SmartTrim,  // (s) Smart trim + resume
-    Continue,   // (x) Continue with context in fresh session
+    Continue,   // (o) Rollover - internally "continue", displayed as "rollover" to user
 }
 
 impl ActionMenuItem {
@@ -503,7 +504,7 @@ impl ActionMenuItem {
             ActionMenuItem::Clone => "(l) Clone session + resume clone",
             ActionMenuItem::Trim => "(t) Trim + resume",
             ActionMenuItem::SmartTrim => "(s) Smart trim + resume",
-            ActionMenuItem::Continue => "(x) Continue with context in fresh session",
+            ActionMenuItem::Continue => "(o) Rollover: handoff work to fresh session",
         }
     }
 
@@ -518,11 +519,12 @@ impl ActionMenuItem {
             ActionMenuItem::Clone => 'l',
             ActionMenuItem::Trim => 't',
             ActionMenuItem::SmartTrim => 's',
-            ActionMenuItem::Continue => 'x',
+            ActionMenuItem::Continue => 'o',
         }
     }
 
-    /// Returns the action string to pass to Python handler
+    /// Returns the action string to pass to Python handler.
+    /// Note: "continue" is the internal name for what users see as "rollover".
     fn action_string(&self) -> &str {
         match self {
             ActionMenuItem::View => "view",
@@ -534,7 +536,7 @@ impl ActionMenuItem {
             ActionMenuItem::Clone => "clone",
             ActionMenuItem::Trim => "suppress_resume",
             ActionMenuItem::SmartTrim => "smart_trim_resume",
-            ActionMenuItem::Continue => "continue",
+            ActionMenuItem::Continue => "continue",  // "rollover" in UI
         }
     }
 
@@ -1992,11 +1994,12 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         let mut row3_spans: Vec<Span> = Vec::new();
 
         // Annotation legend (if annotations exist in results)
+        // Note: "rolled-over" sessions are internally called "continued"
         if show_legend {
             row3_spans.extend([
                 Span::styled("  ", dim),
-                Span::styled("(c)", Style::default().fg(t.dim_fg)),
-                Span::styled(" continued  ", dim),
+                Span::styled("(r)", Style::default().fg(t.dim_fg)),
+                Span::styled(" rolled-over  ", dim),
                 Span::styled("(t)", Style::default().fg(t.dim_fg)),
                 Span::styled(" trimmed  ", dim),
                 Span::styled("(s)", Style::default().fg(t.dim_fg)),
@@ -2015,7 +2018,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             row3_spans.push(Span::styled(" [-trim]", filter_active));
         }
         if !app.include_continued {
-            row3_spans.push(Span::styled(" [-cont]", filter_active));
+            row3_spans.push(Span::styled(" [-roll]", filter_active));
         }
         if let Some(ref agent) = app.filter_agent {
             row3_spans.push(Span::styled(format!(" [{}]", agent), filter_active));
@@ -3563,10 +3566,11 @@ fn parse_cli_args() -> CliOptions {
         .and_then(|s| s.parse().ok());
 
     // Filter inclusion flags (if specified, include that type)
+    // Note: --rollover is the user-facing name for internally "continued" sessions
     let include_original = has_flag("--original");
     let include_sub = has_flag("--sub-agent");
     let include_trimmed = has_flag("--trimmed");
-    let include_continued = has_flag("--continued");
+    let include_continued = has_flag("--rollover");
 
     let min_lines = get_arg_value("--min-lines")
         .and_then(|s| s.parse().ok());

@@ -447,10 +447,10 @@ def find_sessions(
         keywords: List of keywords to search for
         global_search: If True, search all projects; if False, search current project only
         claude_home: Optional custom Claude home directory (defaults to ~/.claude)
-        original_only: If True, show only original sessions (excludes trimmed, continued, and sub-agent sessions)
+        original_only: If True, show only original sessions (excludes trimmed, rollover, and sub-agent sessions)
         no_sub: If True, exclude sub-agent sessions
         no_trim: If True, exclude trimmed sessions
-        no_cont: If True, exclude continued sessions
+        no_cont: If True, exclude rollover sessions (internally "continued")
 
     Returns:
         List of tuples (session_id, modification_time, creation_time, line_count, project_name, preview, project_path, git_branch, is_trimmed) sorted by modification time
@@ -1382,9 +1382,10 @@ To persist directory changes when resuming sessions:
         help="Exclude trimmed sessions from results"
     )
     parser.add_argument(
-        "--no-cont",
+        "--no-roll",
+        dest="no_cont",  # Keep internal name for compatibility
         action="store_true",
-        help="Exclude continued sessions from results"
+        help="Exclude rollover sessions from results"
     )
     parser.add_argument(
         "--simple-ui",
@@ -1462,7 +1463,7 @@ To persist directory changes when resuming sessions:
         if args.no_trim:
             cmd_parts.append("--no-trim")
         if args.no_cont:
-            cmd_parts.append("--no-cont")
+            cmd_parts.append("--no-roll")
         if args.min_lines:
             cmd_parts.append(f"--min-lines {args.min_lines}")
         if args.before:
@@ -1477,7 +1478,7 @@ To persist directory changes when resuming sessions:
 
     # Display informational message about what session types are being shown
     if args.original:
-        print("Showing: Original sessions only (excluding trimmed, continued, and sub-agent sessions)", file=sys.stderr)
+        print("Showing: Original sessions only (excluding trimmed, rollover, and sub-agent sessions)", file=sys.stderr)
     else:
         # Build list of included/excluded types
         excluded_types = []
@@ -1486,14 +1487,14 @@ To persist directory changes when resuming sessions:
         if args.no_trim:
             excluded_types.append("trimmed")
         if args.no_cont:
-            excluded_types.append("continued")
+            excluded_types.append("rollover")
 
         if excluded_types:
             excluded_str = ", ".join(excluded_types)
             print(f"Showing: All sessions except {excluded_str}", file=sys.stderr)
         else:
-            print("Showing: All session types (original, trimmed, continued, and sub-agent)", file=sys.stderr)
-            print("Tip: Use --no-sub, --no-trim, or --no-cont to exclude specific types", file=sys.stderr)
+            print("Showing: All session types (original, trimmed, rollover, and sub-agent)", file=sys.stderr)
+            print("Tip: Use --no-sub, --no-trim, or --no-roll to exclude specific types", file=sys.stderr)
     print(file=sys.stderr)  # Blank line for readability
 
     # Check if searching current project only

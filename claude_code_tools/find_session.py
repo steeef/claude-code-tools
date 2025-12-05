@@ -128,7 +128,7 @@ def build_scope_lines(args) -> tuple[str, str | None]:
     """Return scope line and optional tip line mirroring Rich UI messaging."""
     if args.original:
         return (
-            "Showing: Original sessions only (excluding trimmed, continued, and sub-agent sessions)",
+            "Showing: Original sessions only (excluding trimmed, rollover, and sub-agent sessions)",
             None,
         )
 
@@ -138,15 +138,15 @@ def build_scope_lines(args) -> tuple[str, str | None]:
     if args.no_trim:
         excluded_types.append("trimmed")
     if args.no_cont:
-        excluded_types.append("continued")
+        excluded_types.append("rollover")
 
     if excluded_types:
         excluded_str = ", ".join(excluded_types)
         return (f"Showing: All sessions except {excluded_str}", None)
 
     return (
-        "Showing: All session types (original, trimmed, continued, and sub-agent)",
-        "Tip: Use --no-sub, --no-trim, or --no-cont to exclude specific types",
+        "Showing: All session types (original, trimmed, rollover, and sub-agent)",
+        "Tip: Use --no-sub, --no-trim, or --no-roll to exclude specific types",
     )
 
 
@@ -172,10 +172,10 @@ def search_all_agents(
         agents: List of agent names to search
         claude_home: Claude home directory
         codex_home: Codex home directory
-        original_only: Only return original sessions (excludes trimmed, continued, and sub-agent)
+        original_only: Only return original sessions (excludes trimmed, rollover, and sub-agent)
         no_sub: Exclude sub-agent sessions
         no_trim: Exclude trimmed sessions
-        no_cont: Exclude continued sessions
+        no_cont: Exclude rollover sessions (internally "continued")
 
     Returns list of dicts with agent metadata added.
     """
@@ -373,7 +373,7 @@ def display_interactive_ui(
         if has_trimmed:
             footnotes.append("(t) = Trimmed session")
         if has_continued:
-            footnotes.append("(c) = Continued session")
+            footnotes.append("(r) = Rollover session")
         if has_sidechain:
             footnotes.append("(sub) = Sub-agent session (not directly resumable)")
         ui_console.print("[dim]" + " | ".join(footnotes) + "[/dim]")
@@ -932,7 +932,7 @@ To persist directory changes when resuming sessions:
     parser.add_argument(
         "--original",
         action="store_true",
-        help="Show only original sessions (excludes trimmed, continued, and sub-agent sessions)",
+        help="Show only original sessions (excludes trimmed, rollover, and sub-agent sessions)",
     )
     parser.add_argument(
         "--no-sub",
@@ -945,9 +945,10 @@ To persist directory changes when resuming sessions:
         help="Exclude trimmed sessions from results",
     )
     parser.add_argument(
-        "--no-cont",
+        "--no-roll",
+        dest="no_cont",  # Keep internal name for compatibility
         action="store_true",
-        help="Exclude continued sessions from results",
+        help="Exclude rollover sessions from results",
     )
     parser.add_argument(
         "--simple-ui",
@@ -1033,7 +1034,7 @@ To persist directory changes when resuming sessions:
             if args.no_trim:
                 cmd_parts.append("--no-trim")
             if args.no_cont:
-                cmd_parts.append("--no-cont")
+                cmd_parts.append("--no-roll")
             if args.min_lines:
                 cmd_parts.append(f"--min-lines {args.min_lines}")
             if args.before:
