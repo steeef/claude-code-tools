@@ -84,6 +84,14 @@ impl Theme {
 }
 
 // ============================================================================
+// Terminal Size Constants
+// ============================================================================
+
+/// Minimum terminal width to properly display all session fields without truncation.
+/// Fields: row# + session_id + project + branch + lines + date + annotations
+const MIN_TERMINAL_WIDTH: u16 = 110;
+
+// ============================================================================
 // Session Data
 // ============================================================================
 
@@ -1018,6 +1026,50 @@ impl App {
         })
     }
 
+    /// Calculate minimum terminal width needed to display all fields without truncation.
+    /// Based on the actual field widths in the current filtered results.
+    fn min_width_for_full_display(&self) -> u16 {
+        if self.filtered.is_empty() {
+            return MIN_TERMINAL_WIDTH; // Fallback to default
+        }
+
+        // Calculate max widths for each field (same logic as render_session_list)
+        let row_num_width = self.filtered.len().to_string().len().max(2);
+
+        let mut max_session_id_len = 0usize;
+        let mut max_project_len = 0usize;
+        let mut max_branch_len = 0usize;
+        let mut max_lines_len = 0usize;
+        for &idx in &self.filtered {
+            let s = &self.sessions[idx];
+            max_session_id_len = max_session_id_len.max(s.session_id_display().len());
+            max_project_len = max_project_len.max(s.project_name().len());
+            max_branch_len = max_branch_len.max(s.branch_display().len());
+            max_lines_len = max_lines_len.max(format!("{}L", s.lines).len());
+        }
+        // Apply same min/max constraints as render_session_list
+        max_session_id_len = max_session_id_len.max(10).min(20);
+        max_project_len = max_project_len.max(10).min(40);
+        max_branch_len = max_branch_len.max(8).min(35);
+        max_lines_len = max_lines_len.max(4);
+
+        // Fixed overhead: row_num + space + icon/agent (8) + 4 separators (12) + padding (2)
+        let fixed_overhead = row_num_width + 1 + 8 + 12 + 2;
+
+        // Non-date width
+        let non_date_width = fixed_overhead + max_session_id_len + max_project_len + max_branch_len + max_lines_len;
+
+        // Full date format needs ~19 chars ("11/27 - 11/29 15:23")
+        // Add some extra margin for the 70/30 split (list gets 70% of content area)
+        // Content area is about (width - 4) for margins, list gets 70% of that
+        // So we need: non_date_width + 19 = 0.7 * (width - 4)
+        // => width = (non_date_width + 19) / 0.7 + 4
+        let list_width_needed = non_date_width + 19;
+        let total_width = ((list_width_needed as f64 / 0.7) as usize) + 6; // +6 for margins and rounding
+
+        (total_width as u16).max(MIN_TERMINAL_WIDTH)
+    }
+
     /// Update search matches for view mode search
     fn update_view_search_matches(&mut self) {
         self.view_search_matches.clear();
@@ -1174,6 +1226,12 @@ fn render(frame: &mut Frame, app: &mut App) {
 
     render_status_bar(frame, app, &t, status_area[1], show_legend);
 
+    // Terminal width warning (shown at bottom when too narrow)
+    let min_width = app.min_width_for_full_display();
+    if area.width < min_width {
+        render_width_warning(frame, area, min_width);
+    }
+
     // Filter modal overlay
     if app.filter_modal_open {
         render_filter_modal(frame, app, &t, area);
@@ -1193,6 +1251,27 @@ fn render(frame: &mut Frame, app: &mut App) {
     if app.confirming_exit {
         render_exit_confirmation_modal(frame, &t, area);
     }
+}
+
+fn render_width_warning(frame: &mut Frame, area: Rect, min_width: u16) {
+    // Render a bright warning bar at the very bottom of the screen
+    let warning_area = Rect::new(0, area.height.saturating_sub(1), area.width, 1);
+
+    let msg = format!(
+        " ⚠ Terminal too narrow ({} cols). Widen to {} cols for best display. ",
+        area.width,
+        min_width
+    );
+
+    let warning = Paragraph::new(Span::styled(
+        msg,
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    ));
+
+    frame.render_widget(warning, warning_area);
 }
 
 fn render_exit_confirmation_modal(frame: &mut Frame, t: &Theme, area: Rect) {
