@@ -1527,23 +1527,16 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
                 let snippet = truncate(&s.last_msg_content, snippet_width);
                 Line::from(Span::styled(format!("{}...{}", indent, snippet), snippet_style))
             } else {
-                // With query: use Tantivy snippet if available, else fall back to metadata
-                let content_to_search = app
-                    .search_snippets
-                    .get(&s.session_id)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        format!("{} {}", s.first_msg_content, s.last_msg_content)
-                    });
-                if let Some(mut spans) = find_matching_snippet(
-                    &content_to_search,
-                    &app.query,
-                    snippet_width,
-                    snippet_style,
-                    highlight_style,
-                ) {
-                    // Prepend indent
-                    spans.insert(0, Span::styled(indent, snippet_style));
+                // With query: use Tantivy snippet with HTML tags for highlighting
+                if let Some(snippet_html) = app.search_snippets.get(&s.session_id) {
+                    // Truncate the plain text version but render with HTML tags
+                    let snippet_plain = strip_html_tags(snippet_html);
+                    let truncated_plain = truncate(&snippet_plain, snippet_width);
+                    // Find how much of the HTML snippet to use based on plain text length
+                    let mut spans = vec![Span::styled(indent, snippet_style)];
+                    // Truncate HTML snippet approximately (allow extra for tags)
+                    let html_truncated: String = snippet_html.chars().take(snippet_width + 50).collect();
+                    spans.extend(render_snippet_with_html_tags(&html_truncated, snippet_style, highlight_style));
                     Line::from(spans)
                 } else {
                     let snippet = truncate(&s.first_msg_content, snippet_width);
@@ -1632,16 +1625,20 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
                 let base_style = Style::default().bg(match_bg).fg(t.accent);
                 let highlight_style = Style::default().bg(Color::Yellow).fg(Color::Black).add_modifier(Modifier::BOLD);
 
+                // Strip HTML tags for wrapping calculation, but use original for display
+                let snippet_plain = strip_html_tags(snippet);
                 // Display 12 lines (50% more than original 8)
-                for wrapped in wrap_text(snippet, bubble_width).iter().take(12) {
-                    let padding = bubble_width.saturating_sub(wrapped.chars().count());
+                for wrapped in wrap_text(snippet, bubble_width + 7).iter().take(12) {
+                    // Account for <b></b> tags in padding calculation
+                    let visible_chars = strip_html_tags(wrapped).chars().count();
+                    let padding = bubble_width.saturating_sub(visible_chars);
 
-                    // Build line with keyword highlighting
+                    // Build line with HTML tag-based highlighting
                     let mut line_spans: Vec<Span> = Vec::new();
                     line_spans.push(Span::styled(" ", Style::default().bg(match_bg)));
 
-                    // Highlight keywords in this line
-                    let highlighted = highlight_keywords_in_line(wrapped, &app.query, base_style, highlight_style);
+                    // Parse <b>...</b> tags for highlighting
+                    let highlighted = render_snippet_with_html_tags(wrapped, base_style, highlight_style);
                     line_spans.extend(highlighted);
 
                     line_spans.push(Span::styled(" ".repeat(padding + 1), Style::default().bg(match_bg)));
@@ -2300,6 +2297,58 @@ fn highlight_keywords_in_line<'a>(
     spans
 }
 
+/// Render snippet with Tantivy's <b> tags as highlighted spans.
+/// Parses <b>...</b> tags and applies highlight_style to matched text.
+fn render_snippet_with_html_tags<'a>(
+    text: &str,
+    base_style: Style,
+    highlight_style: Style,
+) -> Vec<Span<'a>> {
+    let mut spans: Vec<Span<'a>> = Vec::new();
+    let mut current_pos = 0;
+    let bytes = text.as_bytes();
+
+    while current_pos < text.len() {
+        // Find next <b> tag
+        if let Some(start_tag_pos) = text[current_pos..].find("<b>") {
+            let abs_start = current_pos + start_tag_pos;
+
+            // Add text before <b> as normal
+            if abs_start > current_pos {
+                spans.push(Span::styled(text[current_pos..abs_start].to_string(), base_style));
+            }
+
+            // Find closing </b>
+            let content_start = abs_start + 3; // skip "<b>"
+            if let Some(end_tag_pos) = text[content_start..].find("</b>") {
+                let content_end = content_start + end_tag_pos;
+                // Add highlighted text
+                spans.push(Span::styled(text[content_start..content_end].to_string(), highlight_style));
+                current_pos = content_end + 4; // skip "</b>"
+            } else {
+                // No closing tag, treat rest as normal
+                spans.push(Span::styled(text[current_pos..].to_string(), base_style));
+                break;
+            }
+        } else {
+            // No more <b> tags, add remaining text as normal
+            spans.push(Span::styled(text[current_pos..].to_string(), base_style));
+            break;
+        }
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(text.to_string(), base_style));
+    }
+
+    spans
+}
+
+/// Strip HTML tags from snippet for plain text output (e.g., JSON)
+fn strip_html_tags(text: &str) -> String {
+    text.replace("<b>", "").replace("</b>", "")
+}
+
 /// Highlight search pattern matches in text, returning spans with base and highlight styles
 fn highlight_search_in_text<'a>(
     text: &str,
@@ -2701,6 +2750,7 @@ fn search_tantivy(
 
                 let final_score = *score * recency_mult as f32;
                 // Use Tantivy's snippet generator if available, else fallback to manual extraction
+                // Keep <b> tags for highlighting - they'll be parsed when rendering
                 let snippet = if let Some(ref gen) = snippet_generator {
                     let tantivy_snippet = gen.snippet(content);
                     let html = tantivy_snippet.to_html();
@@ -2708,7 +2758,7 @@ fn search_tantivy(
                         // Fallback if Tantivy snippet is empty
                         extract_snippet(content, &keywords, 100)
                     } else {
-                        html.replace("<b>", "").replace("</b>", "")
+                        html
                     }
                 } else {
                     extract_snippet(content, &keywords, 100)
@@ -3022,7 +3072,7 @@ fn output_json(app: &App, limit: Option<usize>) -> Result<()> {
             "file_path": s.export_path,
             "derivation_type": s.derivation_type,
             "is_sidechain": s.is_sidechain,
-            "snippet": app.search_snippets.get(&s.session_id).cloned(),
+            "snippet": app.search_snippets.get(&s.session_id).map(|s| strip_html_tags(s)),
         });
         println!("{}", serde_json::to_string(&obj)?);
     }
