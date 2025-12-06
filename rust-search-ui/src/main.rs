@@ -727,6 +727,22 @@ impl App {
             confirming_exit: false,
         };
         app.filter();
+
+        // Restore scroll/selection state from CLI if provided
+        // Must be done after filter() populates the filtered list
+        if let Some(sel) = cli.selected {
+            // Clamp to valid range
+            if !app.filtered.is_empty() {
+                app.selected = sel.min(app.filtered.len() - 1);
+            }
+        }
+        if let Some(scroll) = cli.list_scroll {
+            // Clamp to valid range
+            if !app.filtered.is_empty() {
+                app.list_scroll = scroll.min(app.filtered.len().saturating_sub(1));
+            }
+        }
+
         app
     }
 
@@ -3497,6 +3513,9 @@ struct CliOptions {
     query: Option<String>,
     json_output: bool,
     sort_by_time: bool,  // --by-time: sort by last-modified time instead of relevance
+    // Scroll/selection state restoration
+    selected: Option<usize>,    // --selected: restore selected row index
+    list_scroll: Option<usize>, // --scroll: restore scroll offset
 }
 
 impl CliOptions {
@@ -3586,6 +3605,12 @@ fn parse_cli_args() -> CliOptions {
     let json_output = has_flag("--json");
     let sort_by_time = has_flag("--by-time");
 
+    // Scroll/selection state restoration
+    let selected = get_arg_value("--selected")
+        .and_then(|s| s.parse().ok());
+    let list_scroll = get_arg_value("--scroll")
+        .and_then(|s| s.parse().ok());
+
     CliOptions {
         output_file,
         claude_home,
@@ -3604,6 +3629,8 @@ fn parse_cli_args() -> CliOptions {
         query,
         json_output,
         sort_by_time,
+        selected,
+        list_scroll,
     }
 }
 
@@ -4284,10 +4311,26 @@ fn main() -> Result<()> {
     execute!(io::stdout(), LeaveAlternateScreen)?;
 
     if let Some(session) = app.should_select {
-        // Output session with action for Python handler
+        // Output session with action and filter state for Python handler
         let output = serde_json::json!({
             "session": session,
-            "action": app.selected_action.as_deref().unwrap_or("menu")
+            "action": app.selected_action.as_deref().unwrap_or("menu"),
+            "filter_state": {
+                "query": app.query,
+                "scope_global": app.scope_global,
+                "filter_dir": app.filter_dir,
+                "include_original": app.include_original,
+                "include_sub": app.include_sub,
+                "include_trimmed": app.include_trimmed,
+                "include_continued": app.include_continued,
+                "filter_agent": app.filter_agent,
+                "filter_min_lines": app.filter_min_lines,
+                "filter_after_date": app.filter_after_date,
+                "filter_before_date": app.filter_before_date,
+                "sort_by_time": app.sort_by_time,
+                "selected": app.selected,
+                "list_scroll": app.list_scroll,
+            }
         });
         let json = serde_json::to_string(&output)?;
         if let Some(ref out_path) = cli.output_file {

@@ -1423,7 +1423,7 @@ def search(
             print(f"Output was: {content[:200]}")
             return
 
-        # New format: {"session": {...}, "action": "..."}
+        # New format: {"session": {...}, "action": "...", "filter_state": {...}}
         # Legacy format: just the session object
         if "session" in result and "action" in result:
             selected = result["session"]
@@ -1432,6 +1432,54 @@ def search(
             # Legacy: session only, show Node menu
             selected = result
             action = "menu"
+
+        # Extract and apply filter state for next loop iteration
+        filter_state = result.get("filter_state", {})
+        if filter_state:
+            # Rebuild rust_args with preserved filter state
+            rust_args = [str(rust_binary)]
+            rust_args.extend(["--claude-home", str(claude_home)])
+            rust_args.extend(["--codex-home", str(codex_home)])
+
+            # Scope: --dir overrides --global
+            if filter_state.get("filter_dir"):
+                rust_args.extend(["--dir", filter_state["filter_dir"]])
+            elif filter_state.get("scope_global"):
+                rust_args.append("--global")
+
+            # Session type filters (only add if true)
+            if filter_state.get("include_original"):
+                rust_args.append("--original")
+            if filter_state.get("include_sub"):
+                rust_args.append("--sub-agent")
+            if filter_state.get("include_trimmed"):
+                rust_args.append("--trimmed")
+            if filter_state.get("include_continued"):
+                rust_args.append("--rollover")
+
+            # Other filters
+            if filter_state.get("filter_min_lines"):
+                rust_args.extend(["--min-lines", str(filter_state["filter_min_lines"])])
+            if filter_state.get("filter_after_date"):
+                rust_args.extend(["--after", filter_state["filter_after_date"]])
+            if filter_state.get("filter_before_date"):
+                rust_args.extend(["--before", filter_state["filter_before_date"]])
+            if filter_state.get("filter_agent"):
+                rust_args.extend(["--agent", filter_state["filter_agent"]])
+            if filter_state.get("query"):
+                rust_args.extend(["--query", filter_state["query"]])
+            if filter_state.get("sort_by_time"):
+                rust_args.append("--by-time")
+
+            # Restore scroll/selection state
+            if filter_state.get("selected") is not None:
+                rust_args.extend(["--selected", str(filter_state["selected"])])
+            if filter_state.get("list_scroll") is not None:
+                rust_args.extend(["--scroll", str(filter_state["list_scroll"])])
+
+            # Preserve num_results if originally specified
+            if num_results:
+                rust_args.extend(["--num-results", str(num_results)])
 
         # Convert to session format expected by handlers
         session = {
