@@ -664,7 +664,7 @@ def handle_smart_trim_resume_codex(
         # Generate new session ID with Codex timestamp format
         timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         new_uuid = str(uuid.uuid4())
-        new_session_id = f"smart-trim-{timestamp}-{new_uuid}"
+        new_session_id = f"rollout-{timestamp}-{new_uuid}"
 
         # Create output path in same directory as original
         output_file = session_file.parent / f"{new_session_id}.jsonl"

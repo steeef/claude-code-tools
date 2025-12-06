@@ -377,7 +377,7 @@ def main():
         # Codex style
         timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         new_uuid = str(uuid.uuid4())
-        output_file = output_dir / f"smart-trim-{timestamp}-{new_uuid[:8]}.jsonl"
+        output_file = output_dir / f"rollout-{timestamp}-{new_uuid}.jsonl"
 
     # Perform trimming (pass descriptions from verbose mode)
     stats = trim_lines(session_file, line_indices, output_file, descriptions=descriptions)
