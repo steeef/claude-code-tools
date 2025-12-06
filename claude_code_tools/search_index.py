@@ -409,9 +409,10 @@ class SessionIndex:
             agent: Agent type ('claude' or 'codex')
 
         Returns:
-            Tuple of (content_string, message_count)
+            Tuple of (content_string, user_message_count)
         """
         messages = []
+        user_count = 0  # Count only user messages for the "lines" metric
 
         try:
             with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -435,6 +436,8 @@ class SessionIndex:
                             continue
 
                         role = msg_type
+                        if role == "user":
+                            user_count += 1
                         message = data.get("message", {})
                         content = message.get("content")
 
@@ -469,6 +472,8 @@ class SessionIndex:
                             continue
 
                         role = payload.get("role")
+                        if role == "user":
+                            user_count += 1
                         content = payload.get("content", [])
 
                         if not isinstance(content, list):
@@ -488,7 +493,7 @@ class SessionIndex:
         except (OSError, IOError):
             pass
 
-        return "\n\n".join(messages), len(messages)
+        return "\n\n".join(messages), user_count
 
     def _parse_jsonl_session(self, jsonl_path: Path) -> Optional[dict[str, Any]]:
         """
