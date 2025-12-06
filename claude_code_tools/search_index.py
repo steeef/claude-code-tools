@@ -436,10 +436,21 @@ class SessionIndex:
                             continue
 
                         role = msg_type
-                        if role == "user":
-                            user_count += 1
                         message = data.get("message", {})
                         content = message.get("content")
+
+                        # Count user messages, but exclude tool results
+                        # Tool results have content as list with {"type": "tool_result"}
+                        # Real user messages have content as string or list with text
+                        if role == "user":
+                            is_tool_result = (
+                                isinstance(content, list)
+                                and len(content) > 0
+                                and isinstance(content[0], dict)
+                                and content[0].get("type") == "tool_result"
+                            )
+                            if not is_tool_result:
+                                user_count += 1
 
                         if not content:
                             continue
