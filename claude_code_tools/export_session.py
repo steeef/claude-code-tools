@@ -198,9 +198,7 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
 
     try:
         with open(session_file, "r", encoding="utf-8") as f:
-            line_count = 0
-            for line in f:
-                line_count += 1
+            for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
@@ -210,9 +208,13 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                 except json.JSONDecodeError:
                     continue
 
-                # Extract cwd
+                # Extract cwd (first line that has it)
                 if metadata["cwd"] is None and data.get("cwd"):
                     metadata["cwd"] = data["cwd"]
+
+                # Extract git branch (first line that has it)
+                if metadata["branch"] is None and data.get("gitBranch"):
+                    metadata["branch"] = data["gitBranch"]
 
                 # Extract session ID from sessionId field if available
                 if data.get("sessionId"):
@@ -240,18 +242,17 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                 if "isSidechain" in data and data["isSidechain"] is True:
                     metadata["is_sidechain"] = True
 
-                # Extract git branch for Claude sessions
-                # Method 1: From file-history-snapshot metadata
-                if agent == "claude" and data.get("type") == "file-history-snapshot":
+                # Extract git branch for Claude from file-history-snapshot metadata
+                if (
+                    agent == "claude"
+                    and metadata["branch"] is None
+                    and data.get("type") == "file-history-snapshot"
+                ):
                     git_info = data.get("metadata", {}).get("git", {})
                     if git_info.get("branch"):
                         metadata["branch"] = git_info["branch"]
 
-                # Method 2: From gitBranch field on user messages
-                if metadata["branch"] is None and data.get("gitBranch"):
-                    metadata["branch"] = data["gitBranch"]
-
-                # Extract git branch for Codex sessions
+                # Extract git branch for Codex sessions from session_meta
                 if agent == "codex" and data.get("type") == "session_meta":
                     payload = data.get("payload", {})
                     git_info = payload.get("git", {})
@@ -259,20 +260,18 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                         metadata["branch"] = git_info["branch"]
                     if payload.get("cwd"):
                         metadata["cwd"] = payload["cwd"]
-                    # Extract session ID (UUID only, not the full filename)
                     if payload.get("id"):
                         metadata["session_id"] = payload["id"]
-                    # Extract session start timestamp from session_meta
                     if session_start_timestamp is None and data.get("timestamp"):
                         session_start_timestamp = data["timestamp"]
 
                 # Extract session start timestamp from first entry with timestamp
-                # (Claude sessions have timestamp on each message entry)
                 if session_start_timestamp is None and data.get("timestamp"):
                     session_start_timestamp = data["timestamp"]
 
-                # Stop after first 20 lines (metadata is always at the top)
-                if line_count >= 20:
+                # Stop once we have the essential metadata (cwd and branch)
+                # or after 500 lines as a safety limit
+                if (metadata["cwd"] and metadata["branch"]) or line_num >= 500:
                     break
 
     except (OSError, IOError):
