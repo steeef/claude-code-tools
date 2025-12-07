@@ -56,7 +56,7 @@ def claude_continue(
             these JSONL session files directly. Used by continue_with_options()
             to avoid duplicate work.
     """
-    print("🔄 Claude Continue - Transferring context to new session")
+    print("🔄 Claude Rollover - Transferring context to fresh session")
     print()
 
     # Resolve old session file path (needed for metadata)
@@ -74,6 +74,14 @@ def claude_continue(
         all_session_files = precomputed_session_files
         print(f"ℹ️  Using {len(all_session_files)} precomputed session file(s)")
         print()
+        # Still need derivation types for the file list - trace from last file
+        from claude_code_tools.session_lineage import get_full_lineage_chain
+        try:
+            lineage_chain = get_full_lineage_chain(all_session_files[-1])
+            chronological_chain = list(reversed(lineage_chain))
+        except Exception:
+            # Fall back to assuming all are original (shouldn't happen)
+            chronological_chain = [(p, "original") for p in all_session_files]
     else:
         # Step 1: Trace continuation lineage to find all parent sessions
         print("Step 1: Tracing session lineage...")
@@ -92,46 +100,17 @@ def claude_continue(
 
             # Collect all session files in chronological order (oldest first)
             # lineage_chain is newest-first, so reverse it
-            all_session_files = [path for path, _ in reversed(lineage_chain)]
+            # Keep both path and derivation_type for building file list
+            chronological_chain = list(reversed(lineage_chain))
+            all_session_files = [path for path, _ in chronological_chain]
 
         except Exception as e:
             print(f"⚠️  Warning: Could not trace lineage: {e}", file=sys.stderr)
             # Fall back to just the current session
             all_session_files = [old_session_file]
+            chronological_chain = [(old_session_file, "original")]
 
-    # Step 2: Create new session with dummy message
-    print("Step 2: Creating new Claude Code session...")
-
-    try:
-        # Run shell in interactive mode to load rc files (for shell functions like ccrja)
-        # Use jq to add a marker prefix so we can reliably extract the session ID
-        shell = os.environ.get('SHELL', '/bin/sh')
-        cmd = f'{claude_cli} -p {shlex.quote("Hello")} --output-format json | jq -r \'"SESSION_ID:" + .session_id\''
-        print(f"$ {cmd}")
-        result = subprocess.run(
-            [shell, "-i", "-c", cmd],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        # Extract session ID from marker (ignore any shell prompt/title junk)
-        output = result.stdout
-        marker = "SESSION_ID:"
-        if marker in output:
-            new_session_id = output.split(marker)[1].strip().split()[0]  # Get first token after marker
-        else:
-            raise ValueError(f"Could not find {marker} in output: {output}")
-        print(f"✅ Created new session: {new_session_id}")
-        print()
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error creating new session: {e}", file=sys.stderr)
-        print(f"   stdout: {e.stdout}", file=sys.stderr)
-        print(f"   stderr: {e.stderr}", file=sys.stderr)
-        sys.exit(1)
-
-    # Step 3: Have Claude analyze the session file(s) with parallel sub-agents
-    print("Step 3: 🤖 Analyzing session history with parallel sub-agents...")
-
+    # Step 2: Build analysis prompt with lineage
     # Build prompt based on number of session files
     if len(all_session_files) == 1:
         # Simple case: just the current session
@@ -148,26 +127,44 @@ If in this conversation you need more information about what happened during tha
 
 When done exploring, state your understanding of the most recent task to me."""
     else:
-        # Complex case: multiple sessions in the continuation chain
-        file_list = "\n".join([f"{i+1}. {path}" for i, path in enumerate(all_session_files)])
+        # Complex case: multiple sessions in the chain
+        # Build file list with derivation relationships
+        def friendly_type(dtype: str) -> str:
+            if dtype == "continued":
+                return "rolled over"
+            return dtype
 
-        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work was continued across multiple sessions as we ran out of context. Here are ALL the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
+        file_lines = []
+        for i, (path, derivation_type) in enumerate(chronological_chain):
+            if derivation_type == "original":
+                file_lines.append(f"{i+1}. {path} (original)")
+            else:
+                parent_num = i  # previous item in 1-indexed
+                friendly = friendly_type(derivation_type)
+                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num})")
+        file_list = "\n".join(file_lines)
+
+        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work progressed across multiple sessions as context filled up. Here are ALL the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
 
 {file_list}
 
-Each file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc. This format is easy to parse and understand.
+**Terminology:**
+- "trimmed" = Long messages were strategically truncated to free up context space. The full content is preserved in the parent session.
+- "rolled over" = Work was handed off to a fresh session by summarizing the previous session's state.
 
-Each session was a continuation of the previous one. The LAST file ({all_session_files[-1]}) is the most recent session that ran out of context.
+Each file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc.
+
+The LAST file ({all_session_files[-1]}) is the most recent session that ran out of context.
 
 Strategically use PARALLEL SUB-AGENTS to explore ALL these files so that YOU have proper CONTEXT to continue the task. You should understand:
 - The original task and requirements
 - How the work progressed across sessions
-- What was accomplished in each continuation
+- What was accomplished in each session
 - The current state and what needs to be done next
 
 DO NOT TRY TO READ these files by YOURSELF! To save your own context, you must use parallel sub-agents to explore these files. Consider:
 - Exploring the beginning of the first file to understand the original task
-- Exploring the end of each continuation to see what was accomplished
+- Exploring the end of each session to see what was accomplished
 - Exploring the most recent file ({all_session_files[-1]}) thoroughly to understand the current state
 
 If later in this conversation you need more information about what happened during those previous sessions, you can again use sub-agent(s) to explore the relevant files.
@@ -187,26 +184,36 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
 {custom_prompt}
 === END USER INSTRUCTIONS ==="""
 
+    # Step 3: Create new session with analysis prompt and capture session ID
+    print("Step 2: 🤖 Creating session and analyzing history with sub-agents...")
     print(f"   Analyzing {len(all_session_files)} session file(s)...")
     print()
 
     try:
-        # Send analysis prompt - suppress output since we'll see it in interactive mode
+        # Run shell in interactive mode to load rc files (for shell functions like ccrja)
+        # Use jq to add a marker prefix so we can reliably extract the session ID
         shell = os.environ.get('SHELL', '/bin/sh')
-        cmd = f"{claude_cli} -p {shlex.quote(analysis_prompt)} --resume {shlex.quote(new_session_id)}"
-        print(f"$ {claude_cli} -p '<analysis prompt>' --resume {new_session_id}")
+        cmd = f'{claude_cli} -p {shlex.quote(analysis_prompt)} --output-format json | jq -r \'"SESSION_ID:" + .session_id\''
+        print(f"$ {claude_cli} -p '<analysis prompt>' --output-format json | jq ...")
         result = subprocess.run(
             [shell, "-i", "-c", cmd],
             capture_output=True,
             text=True,
             check=True
         )
-        print("✅ Analysis complete - context transferred to new session")
+        # Extract session ID from marker (ignore any shell prompt/title junk)
+        output = result.stdout
+        marker = "SESSION_ID:"
+        if marker in output:
+            new_session_id = output.split(marker)[1].strip().split()[0]
+        else:
+            raise ValueError(f"Could not find {marker} in output: {output}")
+        print(f"✅ Session created and analysis complete: {new_session_id}")
         print()
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error during analysis: {e}", file=sys.stderr)
-        if e.stderr:
-            print(f"   {e.stderr}", file=sys.stderr)
+        print(f"❌ Error creating session: {e}", file=sys.stderr)
+        print(f"   stdout: {e.stdout}", file=sys.stderr)
+        print(f"   stderr: {e.stderr}", file=sys.stderr)
         sys.exit(1)
 
     # Inject continue_metadata into new session file
@@ -254,8 +261,8 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
         if verbose:
             print(f"⚠️  Could not add continue_metadata: {e}", file=sys.stderr)
 
-    # Step 4: Resume in interactive mode - hand off to Claude
-    print("🚀 Launching interactive Claude Code session...")
+    # Step 3: Resume in interactive mode - hand off to Claude
+    print("Step 3: 🚀 Launching interactive Claude Code session...")
     print(f"   Session ID: {new_session_id}")
     print(f"$ {claude_cli} --resume {new_session_id}")
     print()

@@ -42,7 +42,7 @@ def codex_continue(
             these JSONL session files directly. Used by continue_with_options()
             to avoid duplicate work.
     """
-    print("🔄 Codex Continue - Transferring context to new session")
+    print("🔄 Codex Rollover - Transferring context to fresh session")
     print()
 
     # Resolve session file path
@@ -58,6 +58,14 @@ def codex_continue(
         all_session_files = precomputed_session_files
         print(f"ℹ️  Using {len(all_session_files)} precomputed session file(s)")
         print()
+        # Still need derivation types for the file list - trace from last file
+        from claude_code_tools.session_lineage import get_full_lineage_chain
+        try:
+            lineage_chain = get_full_lineage_chain(all_session_files[-1])
+            chronological_chain = list(reversed(lineage_chain))
+        except Exception:
+            # Fall back to assuming all are original (shouldn't happen)
+            chronological_chain = [(p, "original") for p in all_session_files]
     else:
         # Step 1: Trace continuation lineage to find all parent sessions
         print("Step 1: Tracing session lineage...")
@@ -76,15 +84,17 @@ def codex_continue(
 
             # Collect all session files in chronological order (oldest first)
             # lineage_chain is newest-first, so reverse it
-            all_session_files = [path for path, _ in reversed(lineage_chain)]
+            # Keep both path and derivation_type for building file list
+            chronological_chain = list(reversed(lineage_chain))
+            all_session_files = [path for path, _ in chronological_chain]
 
         except Exception as e:
             print(f"⚠️  Warning: Could not trace lineage: {e}", file=sys.stderr)
             # Fall back to just the current session
             all_session_files = [session_file]
+            chronological_chain = [(session_file, "original")]
 
-    # Step 2: Build analysis prompt
-    print("Step 2: Preparing analysis prompt...")
+    # Step 2: Build analysis prompt with lineage
 
     # Build prompt based on number of session files
     if len(all_session_files) == 1:
@@ -98,20 +108,38 @@ CAUTION: {session_file_path} may be very large. Strategically use parallel sub-a
 
 When done exploring, state your understanding of the most recent task to me."""
     else:
-        # Complex case: multiple sessions in the continuation chain
-        file_list = "\n".join([f"{i+1}. {path}" for i, path in enumerate(all_session_files)])
+        # Complex case: multiple sessions in the chain
+        # Build file list with derivation relationships
+        def friendly_type(dtype: str) -> str:
+            if dtype == "continued":
+                return "rolled over"
+            return dtype
 
-        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work was continued across multiple sessions as we ran out of context. Here are ALL the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
+        file_lines = []
+        for i, (path, derivation_type) in enumerate(chronological_chain):
+            if derivation_type == "original":
+                file_lines.append(f"{i+1}. {path} (original)")
+            else:
+                parent_num = i  # previous item in 1-indexed
+                friendly = friendly_type(derivation_type)
+                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num})")
+        file_list = "\n".join(file_lines)
+
+        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work progressed across multiple sessions as context filled up. Here are ALL the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
 
 {file_list}
 
-Each file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc. This format is easy to parse and understand.
+**Terminology:**
+- "trimmed" = Long messages were strategically truncated to free up context space. The full content is preserved in the parent session.
+- "rolled over" = Work was handed off to a fresh session by summarizing the previous session's state.
 
-Each session was a continuation of the previous one. The LAST file ({all_session_files[-1]}) is the most recent session that ran out of context.
+Each file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc.
+
+The LAST file ({all_session_files[-1]}) is the most recent session that ran out of context.
 
 CAUTION: These files may be very large. Strategically use parallel sub-agents if available, or use another strategy to efficiently read the files so your context window is not overloaded. Consider:
 - Reading the beginning of the first file to understand the original task
-- Reading the end of each continuation to see what was accomplished
+- Reading the end of each session to see what was accomplished
 - Reading the most recent file ({all_session_files[-1]}) thoroughly to understand the current state
 
 When done exploring, state your understanding of the full task history and the most recent work to me."""
@@ -129,18 +157,17 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
 {custom_prompt}
 === END USER INSTRUCTIONS ==="""
 
+    # Step 3: Create new Codex session with analysis prompt and capture thread_id
+    print("Step 2: 🤖 Creating session and analyzing history...")
     print(f"   Analyzing {len(all_session_files)} session file(s)...")
     print()
 
-    # Step 3: Create new Codex session with simple prompt
-    print("Step 3: Creating new Codex session...")
-
     try:
-        # Use codex exec --json with simple hello to create session
-        cmd = ["codex", "exec", "--json", "Hello"]
+        # Use codex exec --json with analysis prompt to create session and analyze
+        cmd = ["codex", "exec", "--json", analysis_prompt]
 
         if verbose:
-            print(f"$ {' '.join(shlex.quote(arg) for arg in cmd)}")
+            print(f"$ codex exec --json '<analysis prompt>'")
 
         # Run and capture JSON stream
         result = subprocess.run(
@@ -166,11 +193,11 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
         if not thread_id:
             raise ValueError("Could not extract thread_id from codex exec output")
 
-        print(f"✅ Created new session: {thread_id}")
+        print(f"✅ Session created and analysis complete: {thread_id}")
         print()
 
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error creating new session: {e}", file=sys.stderr)
+        print(f"❌ Error creating session: {e}", file=sys.stderr)
         if e.stderr:
             print(f"   {e.stderr}", file=sys.stderr)
         sys.exit(1)
@@ -178,41 +205,8 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
         print(f"❌ Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Step 4: Send analysis prompt to the new session
-    print("Step 4: 🤖 Analyzing session history...")
-
-    try:
-        # Use codex exec resume with analysis prompt
-        cmd = [
-            "codex", "exec", "resume", thread_id,
-            analysis_prompt
-        ]
-
-        if verbose:
-            print(f"$ codex exec resume {thread_id} '<analysis prompt>'")
-
-        # Run analysis - suppress output since we'll see it in interactive mode
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-
-        print("✅ Analysis complete - context transferred to new session")
-        print()
-
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error during analysis: {e}", file=sys.stderr)
-        if e.stderr:
-            print(f"   {e.stderr}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    # Step 5: Resume in interactive mode - hand off to Codex
-    print("🚀 Launching interactive Codex session...")
+    # Step 3: Resume in interactive mode - hand off to Codex
+    print("Step 3: 🚀 Launching interactive Codex session...")
     print(f"   Session ID: {thread_id}")
     print(f"$ codex resume {thread_id}")
     print()

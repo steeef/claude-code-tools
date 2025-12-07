@@ -27,6 +27,7 @@ def inject_lineage_into_first_user_message(
     output_file: Path,
     input_file: Path,
     agent: str,
+    current_derivation_type: str = "trimmed",
 ) -> None:
     """
     Inject parent session lineage information into the first user message.
@@ -38,6 +39,8 @@ def inject_lineage_into_first_user_message(
         output_file: Path to the trimmed output session file
         input_file: Path to the original input session file
         agent: Agent type ('claude' or 'codex')
+        current_derivation_type: How this session was derived ("trimmed" or
+            "continued"/"rolled over")
     """
     # Get lineage chain (newest first, ending with original)
     try:
@@ -52,17 +55,51 @@ def inject_lineage_into_first_user_message(
 
     # Build lineage message - reverse to get chronological order (oldest first)
     chronological_chain = list(reversed(lineage_chain))
-    file_list = "\n".join([
-        f"  {i+1}. {path} ({derivation_type})"
-        for i, (path, derivation_type) in enumerate(chronological_chain)
-    ])
+
+    # Map internal derivation types to user-friendly names
+    def friendly_type(dtype: str) -> str:
+        if dtype == "continued":
+            return "rolled over"
+        return dtype
+
+    # Build numbered list with relationships
+    file_lines = []
+    for i, (path, derivation_type) in enumerate(chronological_chain):
+        if derivation_type == "original":
+            file_lines.append(f"  {i+1}. {path} (original)")
+        else:
+            parent_num = i  # previous item in 1-indexed list
+            friendly = friendly_type(derivation_type)
+            file_lines.append(f"  {i+1}. {path} ({friendly} from {parent_num})")
+    file_list = "\n".join(file_lines)
+
+    # Determine how this session was produced
+    current_friendly = friendly_type(current_derivation_type)
+
+    # Build context explanation based on derivation type
+    if current_derivation_type in ("continued", "rolled over"):
+        context_explanation = (
+            f"This session was ROLLED OVER from a parent session. Work was "
+            f"handed off to this fresh session with a summary of the task. "
+            f"The parent session is fully preserved and you can read it for "
+            f"detailed context if needed."
+        )
+    else:
+        context_explanation = (
+            f"This session was TRIMMED from a parent session. Long messages "
+            f"(tool results and assistant responses) were truncated to free "
+            f"up context space. Each truncated message shows a marker like:\n"
+            f"  [... See line N of /path/to/parent.jsonl for full content]\n"
+            f"You can read the parent file at that line number to retrieve "
+            f"the full original content."
+        )
 
     lineage_note = (
-        f"\n\n[PARENT SESSION LINEAGE - For full context on trimmed content, "
-        f"you can refer to these parent sessions in CHRONOLOGICAL ORDER "
-        f"(oldest to newest):\n{file_list}\n"
-        f"Use sub-agents to explore these files if you need more context "
-        f"on any trimmed content.]\n\n"
+        f"\n\n[SESSION LINEAGE]\n\n"
+        f"{context_explanation}\n\n"
+        f"Parent sessions in chronological order (oldest to newest):\n"
+        f"{file_list}\n\n"
+        f"Use sub-agents to read these files if you need more context.\n\n"
     )
 
     # Read the output file

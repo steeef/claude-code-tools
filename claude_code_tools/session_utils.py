@@ -462,7 +462,7 @@ def continue_with_options(
     """
     session_file = Path(session_file_path)
 
-    print("\n🔄 Starting continuation in fresh session...")
+    print("\n🔄 Starting rollover to fresh session...")
     print()
 
     # Step 1: Display lineage and collect session files
@@ -483,11 +483,11 @@ def continue_with_options(
     elif not is_agent_available(other_agent_name):
         # Other agent not available, use current agent without prompting
         continue_agent = current_agent
-        print(f"ℹ️  Continuing with {current_agent.upper()}")
+        print(f"ℹ️  Rolling over with {current_agent.upper()}")
     else:
         # Both agents available, offer choice
         print(f"Current session is from: {current_agent.upper()}")
-        print("Which agent should continue the work?")
+        print("Which agent should take over the work?")
         print(f"1. {current_agent.upper()} (default - same agent)")
         print(f"2. {other_agent_name.upper()} (cross-agent)")
         print()
@@ -507,7 +507,7 @@ def continue_with_options(
             print("\nCancelled.")
             return
 
-    print(f"\nℹ️  Continuing with {continue_agent.upper()}")
+    print(f"\nℹ️  Rolling over with {continue_agent.upper()}")
 
     # Step 4: Prompt for custom instructions (unless preset provided)
     # preset_prompt can be:
