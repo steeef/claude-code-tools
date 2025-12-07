@@ -556,6 +556,7 @@ class SessionIndex:
                     "modified": metadata.get("modified", "") or "",
                     "is_sidechain": metadata.get("is_sidechain", False),
                     "derivation_type": metadata.get("derivation_type", "") or "",
+                    "session_type": metadata.get("session_type"),
                 },
                 "content": content,
                 "first_msg": first_msg,
@@ -642,6 +643,13 @@ class SessionIndex:
             metadata = parsed["metadata"]
             first_msg = parsed["first_msg"]
             last_msg = parsed["last_msg"]
+
+            # Skip helper sessions (SDK/headless sessions used for analysis)
+            if metadata.get("session_type") == "helper":
+                stats["skipped"] += 1
+                # Mark as indexed so we don't re-check next time
+                self.state.mark_indexed(jsonl_path)
+                continue
 
             # Skip sessions run from inside claude_home or codex_home directories
             cwd = metadata.get("cwd", "") or ""

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Optional, Any, Dict
@@ -9,10 +10,17 @@ from typing import List, Optional, Any, Dict
 # Import Claude SDK only when needed (may not be installed for Codex-only users)
 try:
     from claude_agent_sdk import query, ClaudeAgentOptions
-    from claude_agent_sdk.types import AssistantMessage
+    from claude_agent_sdk.types import AssistantMessage, ResultMessage
     CLAUDE_SDK_AVAILABLE = True
 except ImportError:
     CLAUDE_SDK_AVAILABLE = False
+
+from claude_code_tools.session_utils import (
+    encode_claude_project_path,
+    extract_cwd_from_session,
+    get_claude_home,
+    mark_session_as_helper,
+)
 
 # Minimum content length (in chars) for a line to be considered for trimming
 SMART_TRIM_THRESHOLD = 500
@@ -200,6 +208,7 @@ async def _analyze_chunk(
     chunk_end: int,
     verbose: bool = False,
     trim_threshold: int = SMART_TRIM_THRESHOLD,
+    cwd: Optional[str] = None,
 ):
     """
     Analyze a single chunk of session lines.
@@ -212,6 +221,8 @@ async def _analyze_chunk(
         chunk_end: Ending line number in original session
         verbose: If True, return list of (line_idx, rationale, description) tuples
         trim_threshold: Minimum content length for trimming consideration
+        cwd: Working directory for constructing session file path (for marking
+            the helper session)
 
     Returns:
         If verbose=False: List of line indices to trim
@@ -241,12 +252,30 @@ async def _analyze_chunk(
     )
 
     response_text = ""
+    session_id = None
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, AssistantMessage):
             # Extract text from TextBlock objects in content
             for block in message.content:
                 if hasattr(block, 'text'):
                     response_text += block.text
+        elif CLAUDE_SDK_AVAILABLE and isinstance(message, ResultMessage):
+            # Capture session_id from ResultMessage
+            session_id = getattr(message, 'session_id', None)
+
+    # Mark the helper session if we got a session_id
+    # Note: SDK creates sessions in os.getcwd(), not the cwd of the session being analyzed
+    if session_id:
+        try:
+            claude_home = get_claude_home()
+            current_cwd = os.getcwd()
+            encoded_path = encode_claude_project_path(current_cwd)
+            session_file = (
+                claude_home / "projects" / encoded_path / f"{session_id}.jsonl"
+            )
+            mark_session_as_helper(session_file)
+        except Exception:
+            pass  # Don't fail analysis if marking fails
 
     # Parse response to get line numbers (and rationales/descriptions if verbose)
     try:
@@ -414,6 +443,7 @@ async def _analyze_session_async(
     content_threshold: int = 200,
     preserve_head: int = 0,
     preserve_tail: Optional[int] = None,
+    cwd: Optional[str] = None,
 ):
     """
     Use Claude Agent SDK to identify trimmable lines using parallel agents.
@@ -430,6 +460,7 @@ async def _analyze_session_async(
             (default: 0)
         preserve_tail: Number of messages at end to always preserve (default:
             None, uses preserve_recent)
+        cwd: Working directory for constructing helper session file paths
 
     Returns:
         If verbose=False: List of line indices to trim
@@ -568,7 +599,7 @@ async def _analyze_session_async(
         tasks = [
             _analyze_chunk(
                 chunk, chunk_idx, total_chunks, chunk_start, chunk_end,
-                verbose, trim_threshold=SMART_TRIM_THRESHOLD
+                verbose, trim_threshold=SMART_TRIM_THRESHOLD, cwd=cwd
             )
             for chunk, chunk_idx, chunk_start, chunk_end in chunks
         ]
@@ -655,6 +686,9 @@ def identify_trimmable_lines(
     with open(session_file, 'r') as f:
         session_lines = f.readlines()
 
+    # Extract cwd for marking helper sessions
+    cwd = extract_cwd_from_session(session_file)
+
     # Run async analysis with parallel agents
     return asyncio.run(_analyze_session_async(
         session_lines,
@@ -664,5 +698,6 @@ def identify_trimmable_lines(
         verbose,
         content_threshold,
         preserve_head,
-        preserve_tail
+        preserve_tail,
+        cwd=cwd,
     ))

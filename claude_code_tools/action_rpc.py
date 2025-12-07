@@ -40,6 +40,12 @@ import io
 BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE.parent))
 
+from claude_code_tools.session_utils import (
+    encode_claude_project_path,
+    get_claude_home,
+    mark_session_as_helper,
+)
+
 
 def _error(msg: str) -> None:
     sys.stdout.write(json.dumps({"status": "error", "message": msg}) + "\n")
@@ -283,9 +289,10 @@ Provide a clear and concise answer."""
                 if result.returncode != 0:
                     _error(f"Claude command failed: {result.stderr}")
 
-                # Parse JSON output to get the response
-                # Claude outputs JSON with "result" field containing the actual response
+                # Parse JSON output to get the response and session_id
+                # Claude outputs JSON with "result" and "session_id" fields
                 response_text = ""
+                session_id = None
                 for line in result.stdout.strip().splitlines():
                     if not line.strip():
                         continue
@@ -293,9 +300,20 @@ Provide a clear and concise answer."""
                         data = json.loads(line)
                         if "result" in data:
                             response_text = data["result"]
-                            break
+                        if "session_id" in data:
+                            session_id = data["session_id"]
                     except json.JSONDecodeError:
                         continue
+
+                # Mark the helper session if we got a session_id
+                if session_id and cwd:
+                    try:
+                        claude_home = get_claude_home()
+                        encoded_path = encode_claude_project_path(cwd)
+                        session_file = claude_home / "projects" / encoded_path / f"{session_id}.jsonl"
+                        mark_session_as_helper(session_file)
+                    except Exception:
+                        pass  # Don't fail query if marking fails
 
                 if not response_text:
                     # Fallback to raw output if parsing failed
@@ -319,17 +337,22 @@ Provide a clear and concise answer."""
                 if result.returncode != 0:
                     _error(f"Codex command failed: {result.stderr}")
 
-                # Parse JSON stream to get the final response
+                # Parse JSON stream to get the final response and thread_id
                 # Codex outputs events like:
+                # {"type":"thread.started","thread_id":"..."}
                 # {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
                 response_text = ""
+                thread_id = None
                 for line in result.stdout.splitlines():
                     if not line.strip():
                         continue
                     try:
                         event = json.loads(line)
+                        # Capture thread_id from thread.started event
+                        if event.get("type") == "thread.started":
+                            thread_id = event.get("thread_id")
                         # Look for item.completed with agent_message type
-                        if event.get("type") == "item.completed":
+                        elif event.get("type") == "item.completed":
                             item = event.get("item", {})
                             if item.get("type") == "agent_message":
                                 text = item.get("text", "")
@@ -347,6 +370,21 @@ Provide a clear and concise answer."""
                                     response_text = item.get("text", "")
                     except json.JSONDecodeError:
                         continue
+
+                # Mark the helper session if we got a thread_id
+                if thread_id:
+                    try:
+                        # Codex session files are in ~/.codex/sessions/YYYY/MM/DD/
+                        # with format rollout-timestamp-thread_id.jsonl
+                        codex_home = Path.home() / ".codex"
+                        sessions_dir = codex_home / "sessions"
+                        if sessions_dir.exists():
+                            # Search for session file containing thread_id
+                            for session_file in sessions_dir.rglob(f"*{thread_id}*.jsonl"):
+                                mark_session_as_helper(session_file)
+                                break  # Only mark the first match
+                    except Exception:
+                        pass  # Don't fail query if marking fails
 
                 if not response_text:
                     response_text = result.stdout.strip() or "No response received"

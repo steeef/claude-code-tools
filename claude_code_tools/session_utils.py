@@ -843,6 +843,54 @@ def format_session_id_display(
     return display
 
 
+def mark_session_as_helper(session_file: Path) -> bool:
+    """
+    Mark a session file as a helper session by adding sessionType metadata.
+
+    Helper sessions are created by programmatic tools (smart-trim, query, etc.)
+    and should be excluded from search indexing.
+
+    This adds/updates `"sessionType": "helper"` in the first JSON line of the
+    session file.
+
+    Args:
+        session_file: Path to the session JSONL file
+
+    Returns:
+        True if successfully marked, False otherwise
+    """
+    if not session_file.exists():
+        return False
+
+    try:
+        with open(session_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        if not lines:
+            return False
+
+        # Parse and modify first line
+        first_line = lines[0].strip()
+        if not first_line:
+            return False
+
+        try:
+            data = json.loads(first_line)
+            data["sessionType"] = "helper"
+            lines[0] = json.dumps(data) + "\n"
+        except json.JSONDecodeError:
+            return False
+
+        # Write back
+        with open(session_file, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+
+        return True
+
+    except (OSError, IOError):
+        return False
+
+
 def default_export_path(
     session_file: Path,
     agent: str,

@@ -185,6 +185,7 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
         "branch": None,
         "derivation_type": None,
         "is_sidechain": False,
+        "session_type": None,  # "helper" for SDK/headless sessions
         "parent_session_id": None,
         "parent_session_file": None,
         "original_session_id": None,
@@ -241,6 +242,10 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                 # Check if sidechain (sub-agent session)
                 if "isSidechain" in data and data["isSidechain"] is True:
                     metadata["is_sidechain"] = True
+
+                # Extract sessionType (e.g., "helper" for SDK/headless sessions)
+                if "sessionType" in data and metadata["session_type"] is None:
+                    metadata["session_type"] = data["sessionType"]
 
                 # Extract git branch for Claude from file-history-snapshot metadata
                 if (
