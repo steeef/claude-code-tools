@@ -2,12 +2,17 @@
 
 import asyncio
 import json
+import subprocess
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 
-from claude_agent_sdk import query, ClaudeAgentOptions
-from claude_agent_sdk.types import AssistantMessage
-from typing import Any, Dict
+# Import Claude SDK only when needed (may not be installed for Codex-only users)
+try:
+    from claude_agent_sdk import query, ClaudeAgentOptions
+    from claude_agent_sdk.types import AssistantMessage
+    CLAUDE_SDK_AVAILABLE = True
+except ImportError:
+    CLAUDE_SDK_AVAILABLE = False
 
 # Minimum content length (in chars) for a line to be considered for trimming
 SMART_TRIM_THRESHOLD = 500
@@ -270,6 +275,136 @@ async def _analyze_chunk(
         return []
 
 
+def _analyze_chunk_codex(
+    chunk_data: List[tuple],
+    chunk_index: int,
+    total_chunks: int,
+    chunk_start: int,
+    chunk_end: int,
+    verbose: bool = False,
+    trim_threshold: int = SMART_TRIM_THRESHOLD,
+):
+    """
+    Analyze a single chunk of session lines using Codex CLI.
+
+    Fallback for when Claude SDK is not available.
+
+    Args:
+        chunk_data: List of (line_idx, preview, content_len) tuples for this chunk
+        chunk_index: Index of this chunk (0-based)
+        total_chunks: Total number of chunks
+        chunk_start: Starting line number in original session
+        chunk_end: Ending line number in original session
+        verbose: If True, return list of (line_idx, rationale, description) tuples
+        trim_threshold: Minimum content length for trimming consideration
+
+    Returns:
+        If verbose=False: List of line indices to trim
+        If verbose=True: List of (line_idx, rationale, description) tuples
+    """
+    # Format chunk content with explicit line numbers and lengths
+    session_content = "\n".join(
+        f"LINE {idx} [len={content_len}]: {preview}"
+        for idx, preview, content_len in chunk_data
+    )
+
+    # Build prompt (same as Claude but without sub-agent references)
+    response_format = RESPONSE_FORMAT_VERBOSE if verbose else RESPONSE_FORMAT_NORMAL
+    prompt = ANALYSIS_PROMPT.format(
+        chunk_index=chunk_index + 1,
+        total_chunks=total_chunks,
+        chunk_start=chunk_start,
+        chunk_end=chunk_end,
+        session_content=session_content,
+        response_format=response_format,
+        trim_threshold=trim_threshold,
+    )
+
+    # Prepend system context to the prompt for Codex
+    full_prompt = (
+        "You are an expert at analyzing coding sessions and identifying "
+        "redundant content.\n\n" + prompt
+    )
+
+    try:
+        # Run codex exec --json
+        cmd = ["codex", "exec", "--json", full_prompt]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=300  # 5 minute timeout per chunk
+        )
+
+        # Parse JSON stream to extract assistant's text response
+        response_text = ""
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+                # Codex outputs response_item events with message payloads
+                if event.get("type") == "response_item":
+                    payload = event.get("payload", {})
+                    if payload.get("type") == "message":
+                        content = payload.get("content", [])
+                        for block in content:
+                            if isinstance(block, dict) and "text" in block:
+                                response_text += block.get("text", "")
+            except json.JSONDecodeError:
+                continue
+
+        # Parse response to get line numbers
+        start = response_text.find('[')
+        end = response_text.rfind(']') + 1
+        if start >= 0 and end > start:
+            parsed_result = json.loads(response_text[start:end])
+            if verbose:
+                # Should be list of [line_num, rationale, description] tuples
+                parsed = []
+                for item in parsed_result:
+                    if isinstance(item, list) and len(item) >= 2:
+                        line_num = int(item[0])
+                        rationale = str(item[1])
+                        description = str(item[2]) if len(item) >= 3 else ""
+                        parsed.append((line_num, rationale, description))
+                return parsed
+            else:
+                # Should be list of integers
+                if all(isinstance(item, int) for item in parsed_result):
+                    return parsed_result
+        return []
+
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+            json.JSONDecodeError, ValueError, TypeError):
+        return []
+
+
+async def _analyze_chunk_codex_async(
+    chunk_data: List[tuple],
+    chunk_index: int,
+    total_chunks: int,
+    chunk_start: int,
+    chunk_end: int,
+    verbose: bool = False,
+    trim_threshold: int = SMART_TRIM_THRESHOLD,
+):
+    """Async wrapper for _analyze_chunk_codex to allow parallel execution."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        _analyze_chunk_codex,
+        chunk_data,
+        chunk_index,
+        total_chunks,
+        chunk_start,
+        chunk_end,
+        verbose,
+        trim_threshold,
+    )
+
+
 async def _analyze_session_async(
     session_lines: List[str],
     exclude_types: List[str],
@@ -428,13 +563,24 @@ async def _analyze_session_async(
     total_chunks = len(chunks)
 
     # Launch parallel agents for each chunk
-    tasks = [
-        _analyze_chunk(
-            chunk, chunk_idx, total_chunks, chunk_start, chunk_end,
-            verbose, trim_threshold=SMART_TRIM_THRESHOLD
-        )
-        for chunk, chunk_idx, chunk_start, chunk_end in chunks
-    ]
+    # Use Claude SDK if available (has parallel sub-agents), otherwise fall back to Codex
+    if CLAUDE_SDK_AVAILABLE:
+        tasks = [
+            _analyze_chunk(
+                chunk, chunk_idx, total_chunks, chunk_start, chunk_end,
+                verbose, trim_threshold=SMART_TRIM_THRESHOLD
+            )
+            for chunk, chunk_idx, chunk_start, chunk_end in chunks
+        ]
+    else:
+        # Fall back to Codex CLI
+        tasks = [
+            _analyze_chunk_codex_async(
+                chunk, chunk_idx, total_chunks, chunk_start, chunk_end,
+                verbose, trim_threshold=SMART_TRIM_THRESHOLD
+            )
+            for chunk, chunk_idx, chunk_start, chunk_end in chunks
+        ]
 
     # Gather results from all agents
     results = await asyncio.gather(*tasks, return_exceptions=True)
