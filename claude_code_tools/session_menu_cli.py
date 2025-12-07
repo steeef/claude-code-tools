@@ -215,6 +215,14 @@ def execute_action(
             preset_prompt=preset_prompt,
         )
 
+    elif action == "delete":
+        # Delete the session file
+        try:
+            session_file.unlink()
+            print(f"\n✅ Session deleted: {session_id}")
+        except Exception as e:
+            print(f"\n❌ Error deleting session: {e}", file=sys.stderr)
+
 
 def main():
     """Main entry point for session-menu CLI."""

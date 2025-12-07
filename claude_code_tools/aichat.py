@@ -1623,6 +1623,17 @@ def search(
                 # If we get here, something failed - restore directory and pop back
                 if original_dir:
                     os.chdir(original_dir)
+            elif action == "delete":
+                # Delete: already confirmed in Rust UI, just execute
+                action_handler(session, action, {})
+                # Remove deleted session from search index
+                try:
+                    from claude_code_tools.search_index import SessionIndex
+                    idx = SessionIndex(Path("~/.cctools/search-index").expanduser())
+                    idx.prune_deleted()
+                except Exception:
+                    pass  # Index errors shouldn't block the UI
+                # Loop back to Rust TUI (session list will refresh)
             else:
                 print(f"Unknown action: {action}")
                 # Continue loop

@@ -381,6 +381,8 @@ struct App {
 
     // Exit confirmation
     confirming_exit: bool,
+    // Delete confirmation
+    confirming_delete: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -475,6 +477,7 @@ enum ActionMenuItem {
     Trim,       // (t) Trim + resume
     SmartTrim,  // (s) Smart trim + resume
     Continue,   // (o) Rollover - internally "continue", displayed as "rollover" to user
+    Delete,     // (d) Delete session file (with confirmation)
 }
 
 impl ActionMenuItem {
@@ -490,6 +493,7 @@ impl ActionMenuItem {
             ActionMenuItem::Trim,
             ActionMenuItem::SmartTrim,
             ActionMenuItem::Continue,
+            ActionMenuItem::Delete,
         ]
     }
 
@@ -505,6 +509,7 @@ impl ActionMenuItem {
             ActionMenuItem::Trim => "(t) Trim + resume",
             ActionMenuItem::SmartTrim => "(s) Smart trim + resume",
             ActionMenuItem::Continue => "(o) Rollover: handoff work to fresh session",
+            ActionMenuItem::Delete => "(d) Delete session",
         }
     }
 
@@ -520,6 +525,7 @@ impl ActionMenuItem {
             ActionMenuItem::Trim => 't',
             ActionMenuItem::SmartTrim => 's',
             ActionMenuItem::Continue => 'o',
+            ActionMenuItem::Delete => 'd',
         }
     }
 
@@ -537,6 +543,7 @@ impl ActionMenuItem {
             ActionMenuItem::Trim => "suppress_resume",
             ActionMenuItem::SmartTrim => "smart_trim_resume",
             ActionMenuItem::Continue => "continue",  // "rollover" in UI
+            ActionMenuItem::Delete => "delete",
         }
     }
 
@@ -624,6 +631,8 @@ impl App {
             sort_by_time: false,
             // Exit confirmation
             confirming_exit: false,
+            // Delete confirmation
+            confirming_delete: false,
         };
         app.filter();
         app
@@ -725,6 +734,8 @@ impl App {
             sort_by_time: cli.sort_by_time,
             // Exit confirmation
             confirming_exit: false,
+            // Delete confirmation
+            confirming_delete: false,
         };
         app.filter();
 
@@ -1269,6 +1280,11 @@ fn render(frame: &mut Frame, app: &mut App) {
     if app.confirming_exit {
         render_exit_confirmation_modal(frame, &t, area);
     }
+
+    // Delete confirmation modal overlay
+    if app.confirming_delete {
+        render_delete_confirmation_modal(frame, app, &t, area);
+    }
 }
 
 fn render_width_warning(frame: &mut Frame, area: Rect, min_width: u16, status_height: u16) {
@@ -1339,12 +1355,88 @@ fn render_exit_confirmation_modal(frame: &mut Frame, t: &Theme, area: Rect) {
     frame.render_widget(paragraph, inner);
 }
 
+fn render_delete_confirmation_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
+    use ratatui::widgets::{Block, Borders, Clear};
+
+    // Get session info for display
+    let session_idx = app.filtered[app.selected];
+    let session = &app.sessions[session_idx];
+    let session_id = &session.session_id;
+    let project = &session.project;
+    let branch = &session.branch;
+    let line_count = session.lines;
+
+    // Center the modal
+    let modal_width = 60u16;
+    let modal_height = 10u16;
+    let x = (area.width.saturating_sub(modal_width)) / 2;
+    let y = (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    // Clear the area behind the modal
+    frame.render_widget(Clear, modal_area);
+
+    // Modal border
+    let block = Block::default()
+        .title(" Delete Session? ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(t.search_bg));
+    frame.render_widget(block, modal_area);
+
+    // Inner content area
+    let inner = Rect::new(x + 2, y + 1, modal_width - 4, modal_height - 2);
+
+    let keycap = Style::default().bg(t.keycap_bg);
+    let label = Style::default();
+    let dim = Style::default().fg(t.dim_fg);
+    let warn = Style::default().fg(Color::Red);
+
+    // Build branch display (show branch if non-empty)
+    let branch_span = if branch.is_empty() {
+        Span::styled("—", dim)
+    } else {
+        Span::styled(branch.as_str(), label)
+    };
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("Session: ", dim),
+            Span::styled(&session_id[..12.min(session_id.len())], label),
+            Span::styled("...  ", dim),
+            Span::styled("Lines: ", dim),
+            Span::styled(format!("{}", line_count), label),
+        ]),
+        Line::from(vec![
+            Span::styled("Project: ", dim),
+            Span::styled(project.as_str(), label),
+            Span::styled("  Branch: ", dim),
+            branch_span,
+        ]),
+        Line::from(vec![]),
+        Line::from(vec![
+            Span::styled("This action cannot be undone!", warn),
+        ]),
+        Line::from(vec![]),
+        Line::from(vec![
+            Span::styled(" Enter ", keycap),
+            Span::styled(" confirm delete", label),
+        ]),
+        Line::from(vec![
+            Span::styled("  Esc  ", keycap),
+            Span::styled(" cancel", label),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
+}
+
 fn render_action_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
     use ratatui::widgets::{Block, Borders, Clear};
 
-    // Center the modal - sized for 10 action items + Esc hint
+    // Center the modal - sized for 11 action items + Esc hint
     let modal_width = 50u16;
-    let modal_height = 14u16; // 10 items + 1 hint + 2 border + 1 padding
+    let modal_height = 15u16; // 11 items + 1 hint + 2 border + 1 padding
     let x = (area.width.saturating_sub(modal_width)) / 2;
     let y = (area.height.saturating_sub(modal_height)) / 2;
     let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -3268,6 +3360,12 @@ fn execute_action_item(app: &mut App, item: ActionMenuItem) {
             app.action_mode = None;
             app.action_modal_selected = 0;
         }
+        ActionMenuItem::Delete => {
+            // Delete: show confirmation modal before executing
+            app.confirming_delete = true;
+            app.action_mode = None;
+            app.action_modal_selected = 0;
+        }
         _ => {
             // All other actions: hand off to Python/Node
             if let Some(session) = app.selected_session() {
@@ -3715,6 +3813,26 @@ fn main() -> Result<()> {
                             }
                             KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
                                 app.confirming_exit = false;
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
+                    // Handle delete confirmation dialog
+                    if app.confirming_delete {
+                        match key.code {
+                            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                // Execute delete action
+                                if let Some(session) = app.selected_session() {
+                                    app.should_select = Some(session.clone());
+                                    app.selected_action = Some("delete".to_string());
+                                    app.should_quit = true;
+                                }
+                                app.confirming_delete = false;
+                            }
+                            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                                app.confirming_delete = false;
                             }
                             _ => {}
                         }
