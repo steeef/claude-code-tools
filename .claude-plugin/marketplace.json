@@ -1,0 +1,29 @@
+{
+  "name": "cctools-plugins",
+  "version": "0.1.0",
+  "owner": {
+    "name": "Prasad Chalasani"
+  },
+  "plugins": [
+    {
+      "name": "safety-hooks",
+      "source": "./plugins/safety-hooks",
+      "description": "Safety hooks to block or require user approval for dangerous commands (rm, git operations, .env access, file size limits)"
+    },
+    {
+      "name": "session-search",
+      "source": "./plugins/session-search",
+      "description": "Provides session-search skill to search past sessions using the `aichat search` command"
+    },
+    {
+      "name": "tmux-cli",
+      "source": "./plugins/tmux-cli",
+      "description": "Provides tmux-cli skill to interact with CLI scripts or other code-agents in tmux panes, using the `tmux-cli` command"
+    },
+    {
+      "name": "workflow",
+      "source": "./plugins/workflow",
+      "description": "Workflow skills and agents: code-walk-thru, log-work, make-issue-spec skills; ui-tester agent for browser-based UI validation"
+    }
+  ]
+}
