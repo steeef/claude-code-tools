@@ -7,7 +7,7 @@
 //! - Keyboard shortcuts for navigation and actions
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
@@ -189,17 +189,19 @@ impl Session {
 
     /// Date display as range: "11/27 - 11/29 15:23" or "11/29 15:23" if same day
     fn date_display(&self) -> String {
-        let parse_date = |s: &str| {
+        // Parse timestamp and convert to local time for display
+        let parse_date_local = |s: &str| -> Option<DateTime<Local>> {
             DateTime::parse_from_rfc3339(s)
                 .or_else(|_| {
                     chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
                         .map(|ndt| Utc.from_utc_datetime(&ndt).fixed_offset())
                 })
                 .ok()
+                .map(|dt| dt.with_timezone(&Local))
         };
 
-        let modified_dt = parse_date(&self.modified);
-        let created_dt = parse_date(&self.created);
+        let modified_dt = parse_date_local(&self.modified);
+        let created_dt = parse_date_local(&self.created);
 
         match (created_dt, modified_dt) {
             (Some(created), Some(modified)) => {
@@ -210,7 +212,7 @@ impl Session {
                     (modified, created)
                 };
 
-                // Check if same day
+                // Check if same day (in local time)
                 if earlier.format("%m/%d").to_string() == later.format("%m/%d").to_string() {
                     // Same day: just show "11/29 15:23" (use the later/modified timestamp)
                     later.format("%m/%d %H:%M").to_string()
@@ -231,17 +233,19 @@ impl Session {
 
     /// Medium date display: "11/27 - 11/29" or "11/29" (no time)
     fn date_medium(&self) -> String {
-        let parse_date = |s: &str| {
+        // Parse timestamp and convert to local time for display
+        let parse_date_local = |s: &str| -> Option<DateTime<Local>> {
             DateTime::parse_from_rfc3339(s)
                 .or_else(|_| {
                     chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
                         .map(|ndt| Utc.from_utc_datetime(&ndt).fixed_offset())
                 })
                 .ok()
+                .map(|dt| dt.with_timezone(&Local))
         };
 
-        let modified_dt = parse_date(&self.modified);
-        let created_dt = parse_date(&self.created);
+        let modified_dt = parse_date_local(&self.modified);
+        let created_dt = parse_date_local(&self.created);
 
         match (created_dt, modified_dt) {
             (Some(created), Some(modified)) => {

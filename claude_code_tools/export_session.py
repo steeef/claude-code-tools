@@ -36,6 +36,45 @@ def _truncate_text(text: str, max_length: int = 200) -> str:
     return text[: max_length - 3] + "..."
 
 
+def _get_last_line_timestamp(file_path: Path) -> Optional[str]:
+    """
+    Efficiently read the last line of a JSONL file and extract its timestamp.
+
+    Reads a chunk from the end of file (O(1) seek + single read).
+
+    Args:
+        file_path: Path to the JSONL file
+
+    Returns:
+        ISO timestamp string if found, None otherwise
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            # Seek to end to get file size
+            f.seek(0, 2)
+            file_size = f.tell()
+            if file_size == 0:
+                return None
+
+            # Read last 16KB (should be plenty for a JSONL line)
+            chunk_size = min(16384, file_size)
+            f.seek(-chunk_size, 2)
+            chunk = f.read().decode('utf-8')
+
+            # Split by newlines and get last non-empty line
+            lines = chunk.strip().split('\n')
+            last_line = lines[-1] if lines else None
+            if not last_line:
+                return None
+
+            # Parse JSON and extract timestamp
+            data = json.loads(last_line)
+            return data.get("timestamp")
+
+    except (OSError, IOError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
 def _extract_claude_message_text(data: dict) -> Optional[str]:
     """
     Extract text content from a Claude session message.
@@ -282,12 +321,19 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
     except (OSError, IOError):
         pass
 
-    # Get file stats for modified time
-    try:
-        stat = session_file.stat()
-        metadata["modified"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
-    except OSError:
-        pass
+    # Get modified time from last JSONL entry's timestamp (reflects actual session
+    # activity, portable across machines). Fall back to file mtime if not found.
+    last_timestamp = _get_last_line_timestamp(session_file)
+    if last_timestamp:
+        metadata["modified"] = last_timestamp
+    else:
+        try:
+            stat = session_file.stat()
+            metadata["modified"] = datetime.fromtimestamp(
+                stat.st_mtime
+            ).astimezone().isoformat()
+        except OSError:
+            pass
 
     # Use session start timestamp from JSON metadata if available,
     # otherwise fall back to file birthtime (macOS) or mtime
@@ -301,9 +347,11 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
             if hasattr(stat, "st_birthtime"):
                 metadata["created"] = datetime.fromtimestamp(
                     stat.st_birthtime
-                ).isoformat()
+                ).astimezone().isoformat()
             else:
-                metadata["created"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                metadata["created"] = datetime.fromtimestamp(
+                    stat.st_mtime
+                ).astimezone().isoformat()
         except OSError:
             pass
 
