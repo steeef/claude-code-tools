@@ -652,13 +652,9 @@ def extract_cwd_from_session(session_file: Path) -> Optional[str]:
     """
     Extract the working directory (cwd) from a session file.
 
-    Supports both Claude and Codex session formats:
-    - Claude: top-level "cwd" field
-    - Codex: "payload.cwd" field
-
-    Real Claude sessions often have file-history-snapshot lines with null cwd values
-    at the start, followed by actual messages with valid cwd. We check first 10 lines
-    and skip null values.
+    Delegates to extract_session_metadata() from export_session.py which properly
+    scans the entire file until it finds a valid cwd (handles compacted sessions
+    where cwd may not appear until line 20+).
 
     Args:
         session_file: Path to the session JSONL file
@@ -667,69 +663,50 @@ def extract_cwd_from_session(session_file: Path) -> Optional[str]:
         The cwd string if found, None otherwise
     """
     try:
-        with open(session_file, 'r', encoding='utf-8') as f:
-            # Check first 10 lines for non-null cwd field
-            for i, line in enumerate(f):
-                if i >= 10:  # Check first 10 lines (increased from 5)
-                    break
-                try:
-                    data = json.loads(line.strip())
-                    # Claude format: top-level cwd
-                    if "cwd" in data and data["cwd"] is not None:
-                        return data["cwd"]
-                    # Codex format: payload.cwd
-                    if "payload" in data and isinstance(data["payload"], dict):
-                        payload_cwd = data["payload"].get("cwd")
-                        if payload_cwd is not None:
-                            return payload_cwd
-                except (json.JSONDecodeError, KeyError):
-                    continue
-    except (OSError, IOError):
-        pass
+        from claude_code_tools.export_session import extract_session_metadata
 
-    return None
+        # Detect agent from path
+        path_str = str(session_file)
+        agent = "codex" if ".codex" in path_str else "claude"
+
+        metadata = extract_session_metadata(session_file, agent)
+        return metadata.get("cwd")
+    except Exception:
+        return None
 
 
 def extract_git_branch_claude(session_file: Path) -> Optional[str]:
-    """Extract git branch from Claude session file."""
+    """
+    Extract git branch from Claude session file.
+
+    Delegates to extract_session_metadata() which properly scans the entire file.
+    """
     try:
-        with open(session_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if entry.get("type") == "file-history-snapshot":
-                        git_info = entry.get("metadata", {}).get("git", {})
-                        return git_info.get("branch")
-                except json.JSONDecodeError:
-                    continue
-    except (OSError, IOError):
-        pass
-    return None
+        from claude_code_tools.export_session import extract_session_metadata
+
+        metadata = extract_session_metadata(session_file, "claude")
+        return metadata.get("branch")
+    except Exception:
+        return None
 
 
 def extract_session_metadata_codex(session_file: Path) -> Optional[dict]:
-    """Extract metadata from Codex session file."""
+    """
+    Extract metadata from Codex session file.
+
+    Delegates to extract_session_metadata() for consistency.
+    Returns dict with 'cwd' and 'branch' keys for backwards compatibility.
+    """
     try:
-        with open(session_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if entry.get("type") == "session_meta":
-                        payload = entry.get("payload", {})
-                        git_info = payload.get("git", {})
-                        return {
-                            "cwd": payload.get("cwd"),
-                            "branch": git_info.get("branch"),
-                        }
-                except json.JSONDecodeError:
-                    continue
-    except (OSError, IOError):
-        pass
-    return None
+        from claude_code_tools.export_session import extract_session_metadata
+
+        metadata = extract_session_metadata(session_file, "codex")
+        return {
+            "cwd": metadata.get("cwd"),
+            "branch": metadata.get("branch"),
+        }
+    except Exception:
+        return None
 
 
 def find_session_file(
