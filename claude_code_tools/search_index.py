@@ -1001,6 +1001,8 @@ class SessionIndex:
         """
         Get the most recent session matching the given criteria.
 
+        Uses direct Tantivy queries with filters for efficiency.
+
         Args:
             cwd: Filter to sessions from this working directory
             branch: Filter to sessions on this git branch
@@ -1010,32 +1012,79 @@ class SessionIndex:
         Returns:
             Dict with session info, or None if no matching session found
         """
-        # Get recent sessions and filter
-        results = self.get_recent(limit=1000)
+        searcher = self.index.searcher()
 
-        for r in results:
-            # Filter by agent
-            if agent and r.get("agent") != agent:
-                continue
+        # Build query string for filtering
+        # Use parse_query with field:value syntax for exact matches
+        query_terms = []
 
-            # Filter by cwd
-            if cwd and r.get("cwd") != cwd:
-                continue
+        if agent:
+            query_terms.append(f'agent:"{agent}"')
 
-            # Filter by branch
-            if branch and r.get("branch") != branch:
+        if cwd:
+            # Escape special chars in cwd path
+            escaped_cwd = cwd.replace('"', '\\"')
+            query_terms.append(f'cwd:"{escaped_cwd}"')
+
+        if branch:
+            query_terms.append(f'branch:"{branch}"')
+
+        # Combine with AND, or use match-all if no filters
+        if query_terms:
+            query_str = " AND ".join(query_terms)
+            query = self.index.parse_query(query_str, ["content"])
+        else:
+            query = tantivy.Query.all_query()
+
+        # Fetch enough results to find valid ones after filtering
+        top_docs = searcher.search(query, 100)
+
+        results = []
+        for _, doc_address in top_docs.hits:
+            doc = searcher.doc(doc_address)
+            export_path = doc.get_first("export_path")
+
+            # Skip if session file no longer exists
+            if export_path and not Path(export_path).exists():
                 continue
 
             # Filter out sub-agents unless requested
             if not include_sub_agents:
-                export_path = r.get("export_path", "")
-                if "/agent-" in export_path or export_path.startswith("agent-"):
+                if export_path and (
+                    "/agent-" in export_path or
+                    export_path.split("/")[-1].startswith("agent-")
+                ):
                     continue
 
-            # Found a match
-            return r
+            modified = doc.get_first("modified")
+            content = doc.get_first("content")
 
-        return None
+            results.append({
+                "session_id": doc.get_first("session_id"),
+                "agent": doc.get_first("agent"),
+                "project": doc.get_first("project"),
+                "branch": doc.get_first("branch"),
+                "cwd": doc.get_first("cwd"),
+                "created": doc.get_first("created"),
+                "modified": modified,
+                "lines": doc.get_first("lines"),
+                "export_path": export_path,
+                "snippet": self._generate_snippet(content, "") if content else "",
+                "score": 0.0,
+                "first_msg_role": doc.get_first("first_msg_role") or "",
+                "first_msg_content": doc.get_first("first_msg_content") or "",
+                "last_msg_role": doc.get_first("last_msg_role") or "",
+                "last_msg_content": doc.get_first("last_msg_content") or "",
+                "derivation_type": doc.get_first("derivation_type") or "",
+                "is_sidechain": doc.get_first("is_sidechain") or "false",
+            })
+
+        if not results:
+            return None
+
+        # Sort by modified timestamp and return most recent
+        results.sort(key=lambda x: x["modified"] or "", reverse=True)
+        return results[0]
 
 
 def get_latest_session_from_index(

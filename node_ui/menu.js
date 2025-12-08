@@ -358,6 +358,13 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, 
     }
   }, [resetting]);
 
+  // Helper to notify parent after state updates (deferred to avoid React warnings)
+  const notifyParent = React.useCallback((idx) => {
+    if (onChangeIndex) {
+      setTimeout(() => onChangeIndex(idx), 0);
+    }
+  }, [onChangeIndex]);
+
   useInput((input, key) => {
     if (key.escape) {
       // If typing a number, clear the buffer instead of quitting
@@ -379,12 +386,12 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, 
           if (target >= prev + maxItems) return target - maxItems + 1;
           return prev;
         });
-        if (onChangeIndex) onChangeIndex(target);
+        notifyParent(target);
         setNumBuffer('');
         return;
       }
       clearScreen();
-      if (onChangeIndex) onChangeIndex(index);
+      notifyParent(index);
       return onSelect(index);
     }
     if (key.upArrow || input === 'k') {
@@ -392,7 +399,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, 
         const next = Math.max(0, i - 1);
         setScroll((prev) => (next < prev ? next : prev));
         setNumBuffer('');
-        if (onChangeIndex) onChangeIndex(next);
+        notifyParent(next);
         return next;
       });
     }
@@ -401,7 +408,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, 
         const next = Math.min(sessions.length - 1, i + 1);
         setScroll((prev) => (next >= prev + maxItems ? prev + 1 : prev));
         setNumBuffer('');
-        if (onChangeIndex) onChangeIndex(next);
+        notifyParent(next);
         return next;
       });
     }
@@ -412,7 +419,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, 
         // Adjust scroll: if new index is above viewport, scroll to show it
         setScroll((prev) => (next < prev ? next : prev));
         setNumBuffer('');
-        if (onChangeIndex) onChangeIndex(next);
+        notifyParent(next);
         return next;
       });
       return;
@@ -429,7 +436,7 @@ function ResultsView({onSelect, onQuit, clearScreen = () => {}, focusIndex = 0, 
           return prev;
         });
         setNumBuffer('');
-        if (onChangeIndex) onChangeIndex(next);
+        notifyParent(next);
         return next;
       });
       return;

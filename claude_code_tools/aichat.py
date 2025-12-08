@@ -146,21 +146,15 @@ def _find_and_run_session_ui(
         direct_action: If set, execute this action directly instead of showing UI
         action_kwargs: Optional kwargs to pass to action
     """
+    import os
     import subprocess
     import sys
     from pathlib import Path
 
-    from claude_code_tools.find_claude_session import (
-        find_sessions as find_claude_sessions,
-        get_claude_project_dir,
-    )
-    from claude_code_tools.find_codex_session import (
-        find_sessions as find_codex_sessions,
-        get_codex_home,
-    )
     from claude_code_tools.node_menu_ui import run_node_menu_ui
+    from claude_code_tools.search_index import SessionIndex
     from claude_code_tools.session_menu_cli import execute_action
-    from claude_code_tools.session_utils import default_export_path, is_valid_session
+    from claude_code_tools.session_utils import default_export_path
 
     if session_id:
         # Route to session_menu_cli with appropriate start screen
@@ -174,6 +168,7 @@ def _find_and_run_session_ui(
         return
 
     # No session provided - find latest sessions for current project and branch
+    current_cwd = os.getcwd()
     current_branch = None
     try:
         result = subprocess.run(
@@ -184,93 +179,126 @@ def _find_and_run_session_ui(
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
+    # Use the Tantivy index for fast session lookup
+    index_path = Path.home() / ".cctools" / "search-index"
+    if not index_path.exists():
+        print(
+            "Session index not found. Run 'aichat search' first to build the index.",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+    try:
+        idx = SessionIndex(index_path)
+    except Exception as e:
+        print(f"Failed to open session index: {e}", file=sys.stderr)
+        sys.exit(1)
+
     candidates = []
+    used_fallback = False  # Track if any agent fell back to any-branch
+
+    def _get_latest_session(agent: str) -> tuple[dict | None, bool]:
+        """Get latest session for agent, with fallback to any branch.
+
+        Returns (session_dict, used_fallback).
+        """
+        # First try with branch filter
+        if current_branch:
+            session = idx.get_latest_session(
+                cwd=current_cwd, branch=current_branch, agent=agent
+            )
+            if session:
+                return session, False
+
+        # Fallback: try without branch filter
+        session = idx.get_latest_session(cwd=current_cwd, agent=agent)
+        return session, bool(session)  # used_fallback=True only if we found one
+
+    def _session_to_candidate(s: dict) -> dict:
+        """Convert index session dict to UI candidate format."""
+        export_path = s.get("export_path", "")
+        session_file = Path(export_path) if export_path else None
+        agent = s.get("agent", "claude")
+
+        # Parse timestamps - index stores as ISO strings
+        mod_time = 0
+        create_time = 0
+        if s.get("modified"):
+            try:
+                from datetime import datetime
+                mod_time = datetime.fromisoformat(
+                    s["modified"].replace("Z", "+00:00")
+                ).timestamp()
+            except (ValueError, TypeError):
+                pass
+        if s.get("created"):
+            try:
+                from datetime import datetime
+                create_time = datetime.fromisoformat(
+                    s["created"].replace("Z", "+00:00")
+                ).timestamp()
+            except (ValueError, TypeError):
+                pass
+
+        # Build preview from last message content (convention: show most recent)
+        preview = ""
+        if s.get("last_msg_content"):
+            role = s.get("last_msg_role", "assistant")
+            preview = f"[{role}] {s['last_msg_content'][:200]}"
+
+        return {
+            "agent": agent,
+            "agent_display": "Claude" if agent == "claude" else "Codex",
+            "session_id": s.get("session_id", ""),
+            "mod_time": mod_time,
+            "create_time": create_time,
+            "lines": s.get("lines", 0),
+            "project": s.get("project", ""),
+            "preview": preview,
+            "cwd": s.get("cwd", ""),
+            "branch": s.get("branch", ""),
+            "file_path": export_path,
+            "default_export_path": str(
+                default_export_path(session_file, agent)
+            ) if session_file and session_file.exists() else "",
+            "is_trimmed": s.get("derivation_type") in ("trimmed", "continued"),
+            "derivation_type": s.get("derivation_type"),
+            "is_sidechain": s.get("is_sidechain") == "true",
+        }
 
     # Find Claude sessions if applicable
     if agent_constraint in ('claude', 'both'):
-        claude_sessions = find_claude_sessions([], global_search=False)
-        if current_branch and claude_sessions:
-            claude_sessions = [s for s in claude_sessions if s[7] == current_branch]
-
-        # Filter to only resumable sessions (excludes sub-agents, file snapshots, etc.)
-        claude_dir = get_claude_project_dir()
-        if claude_sessions:
-            claude_sessions = [
-                s for s in claude_sessions
-                if is_valid_session(claude_dir / f"{s[0]}.jsonl")
-                and not (s[9] if len(s) > 9 else False)  # Exclude sub-agents
-            ]
-
-        if claude_sessions:
-            s = claude_sessions[0]  # Most recent valid session
-            session_file = claude_dir / f"{s[0]}.jsonl"
-
-            candidates.append({
-                "agent": "claude",
-                "agent_display": "Claude",
-                "session_id": s[0],
-                "mod_time": s[1],
-                "create_time": s[2],
-                "lines": s[3],
-                "project": s[4],
-                "preview": s[5],
-                "cwd": s[6],
-                "branch": s[7] or "",
-                "file_path": str(session_file),
-                "default_export_path": str(default_export_path(session_file, "claude")),
-                "is_trimmed": s[8] if len(s) > 8 else False,
-                "derivation_type": None,
-                "is_sidechain": s[9] if len(s) > 9 else False,
-            })
+        session, fallback = _get_latest_session("claude")
+        if session:
+            candidates.append(_session_to_candidate(session))
+            if fallback:
+                used_fallback = True
 
     # Find Codex sessions if applicable
     if agent_constraint in ('codex', 'both'):
-        codex_home = get_codex_home()
-        if codex_home.exists():
-            codex_sessions = find_codex_sessions(codex_home, [], global_search=False)
-            if current_branch and codex_sessions:
-                codex_sessions = [
-                    s for s in codex_sessions if s.get("branch") == current_branch
-                ]
+        session, fallback = _get_latest_session("codex")
+        if session:
+            candidates.append(_session_to_candidate(session))
+            if fallback:
+                used_fallback = True
 
-            # Filter to only resumable sessions
-            if codex_sessions:
-                codex_sessions = [
-                    s for s in codex_sessions
-                    if is_valid_session(Path(s.get("file_path", "")))
-                ]
-
-            if codex_sessions:
-                s = codex_sessions[0]  # Most recent valid session
-                codex_file = Path(s.get("file_path", ""))
-                candidates.append({
-                    "agent": "codex",
-                    "agent_display": "Codex",
-                    "session_id": s["session_id"],
-                    "mod_time": s.get("mod_time", 0),
-                    "create_time": s.get("create_time", s.get("mod_time", 0)),
-                    "lines": s.get("lines", 0),
-                    "project": s.get("project", ""),
-                    "preview": s.get("preview", ""),
-                    "cwd": s.get("cwd", ""),
-                    "branch": s.get("branch", ""),
-                    "file_path": s.get("file_path", ""),
-                    "default_export_path": str(
-                        default_export_path(codex_file, "codex")
-                    ) if codex_file.exists() else "",
-                    "is_trimmed": s.get("is_trimmed", False),
-                    "derivation_type": None,
-                    "is_sidechain": False,
-                })
+    # Build the unified scope message
+    project_name = Path(current_cwd).name
+    agent_desc = {
+        'claude': 'Claude',
+        'codex': 'Codex',
+        'both': 'Claude/Codex',
+    }.get(agent_constraint, 'Claude/Codex')
+    branch_part = f" on branch '{current_branch}'" if current_branch else ""
+    fallback_note = " (fallback to any branch if none found)" if current_branch else ""
+    scope_text = (
+        f"Latest {agent_desc} sessions for '{project_name}'{branch_part}{fallback_note}"
+    )
 
     if not candidates:
-        agent_desc = {
-            'claude': 'Claude',
-            'codex': 'Codex',
-            'both': 'Claude/Codex',
-        }.get(agent_constraint, 'any')
         print(
-            f"No {agent_desc} sessions found for current project/branch.",
+            f"No {agent_desc} sessions found for '{project_name}'"
+            f"{branch_part} (even with fallback to any branch).",
             file=sys.stderr
         )
         sys.exit(1)
@@ -311,20 +339,12 @@ def _find_and_run_session_ui(
             [],
             selection_handler,
             start_screen=start_screen,
+            scope_line=scope_text,
             rpc_path=rpc_path,
             direct_action=direct_action,
         )
     else:
         # Multiple sessions - show selection first
-        branch_info = f" on branch '{current_branch}'" if current_branch else ""
-        agent_desc = {
-            'claude': 'Claude',
-            'codex': 'Codex',
-            'both': 'Claude/Codex',
-        }.get(agent_constraint, 'Claude/Codex')
-        scope_text = (
-            f"Most recent sessions from {agent_desc} in this project{branch_info}"
-        )
         run_node_menu_ui(
             candidates,
             [],
