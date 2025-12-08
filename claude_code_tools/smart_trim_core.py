@@ -32,26 +32,25 @@ Your task: Identify line numbers that can be trimmed without affecting the abili
 
 This is chunk {chunk_index} of {total_chunks} (lines {chunk_start}-{chunk_end} of the session).
 
-IMPORTANT - What you're seeing:
+WHAT YOU'RE SEEING:
 - For assistant messages: ONLY the text content (thinking blocks are filtered out)
 - For tool results: The output/result content
 - System messages (file-history-snapshot, summary, etc.) are filtered out
 - Reasoning/thinking tokens are filtered out (they don't count in context)
-- Each line shows its length in characters: LINE N [len=X]:
+- Each line is labeled: LINE N [len=X]: where N is the line number and X is content length
 
-IMPORTANT - Length threshold:
+LENGTH THRESHOLD:
 - ONLY consider lines with length >= {trim_threshold} characters for trimming
 - Lines shorter than {trim_threshold} chars should NEVER be included in your output
-- The [len=X] annotation shows the content length for each line
 
-Consider for trimming (if length >= {trim_threshold}):
+CONSIDER FOR TRIMMING (if length >= {trim_threshold}):
 - Verbose tool results that were one-time analysis only
 - Lengthy assistant explanations no longer relevant
 - Intermediate debugging output
 - Large file reads that served their purpose
 - Repetitive explanations or acknowledgments
 
-DO NOT trim:
+DO NOT TRIM:
 - Lines with length < {trim_threshold} characters
 - User messages (already protected)
 - Recent messages (already protected)
@@ -59,12 +58,13 @@ DO NOT trim:
 - Error messages or warnings
 - Information that might be referenced in later parts of the session
 
-Session content chunk:
+{response_format}
+
+============ SESSION CONTENT START ============
+
 {session_content}
 
-Each line is labeled "LINE N [len=X]:" where N is the line number and X is the content length.
-
-{response_format}
+============ SESSION CONTENT END ============
 """
 
 RESPONSE_FORMAT_NORMAL = """Respond with ONLY a JSON array of the line numbers to trim, e.g.: [0, 5, 12, 23]
@@ -229,8 +229,9 @@ async def _analyze_chunk(
         If verbose=True: List of (line_idx, rationale, description) tuples
     """
     # Format chunk content with explicit line numbers and lengths
-    session_content = "\n".join(
-        f"LINE {idx} [len={content_len}]: {preview}"
+    # Use double newlines to clearly separate each LINE entry
+    session_content = "\n\n".join(
+        f"LINE {idx} [len={content_len}]:\n{preview}"
         for idx, preview, content_len in chunk_data
     )
 
@@ -332,8 +333,9 @@ def _analyze_chunk_codex(
         If verbose=True: List of (line_idx, rationale, description) tuples
     """
     # Format chunk content with explicit line numbers and lengths
-    session_content = "\n".join(
-        f"LINE {idx} [len={content_len}]: {preview}"
+    # Use double newlines to clearly separate each LINE entry
+    session_content = "\n\n".join(
+        f"LINE {idx} [len={content_len}]:\n{preview}"
         for idx, preview, content_len in chunk_data
     )
 
@@ -653,7 +655,7 @@ def identify_trimmable_lines(
     exclude_types: Optional[List[str]] = None,
     preserve_recent: int = 10,
     max_lines_per_agent: int = 100,
-    verbose: bool = False,
+    verbose: bool = True,
     content_threshold: int = 200,
     preserve_head: int = 0,
     preserve_tail: Optional[int] = None,
@@ -668,7 +670,7 @@ def identify_trimmable_lines(
             deprecated - use preserve_tail instead)
         max_lines_per_agent: Max lines per agent chunk (default: 100)
         verbose: If True, return (line_idx, rationale, description) tuples
-            (default: False)
+            (default: True)
         content_threshold: Min chars to extract from JSON (default: 200)
         preserve_head: Always preserve first N messages (default: 0)
         preserve_tail: Always preserve last N messages (default: None, uses

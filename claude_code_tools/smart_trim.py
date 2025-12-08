@@ -54,16 +54,20 @@ def trim_lines(
             return content  # Don't truncate short content
 
         desc = descriptions.get(idx, "")
-        desc_part = f" {desc}" if desc else ""
-
-        # Keep first SMART_TRIM_THRESHOLD chars + add notice
         truncated = content[:SMART_TRIM_THRESHOLD]
-        notice = (
-            f"\n\n[...{content_type} truncated by smart-trim - "
-            f"original was {len(content):,} chars.{desc_part} "
-            f"See line {line_num} of {parent_file} for full content]"
+
+        # Build structured truncation notice
+        lines = []
+        if desc:
+            lines.append(f"Summary of truncated content: {desc}")
+        lines.append(
+            f"First {SMART_TRIM_THRESHOLD} chars: {truncated}... [truncated]"
         )
-        result = truncated + notice
+        lines.append(
+            f"See line {line_num} of {parent_file} for full content "
+            f"(original was {len(content):,} chars)."
+        )
+        result = "\n".join(lines)
 
         # Only return truncated version if it actually saves space
         if len(result) >= len(content):
@@ -251,11 +255,6 @@ def main():
         help="Show what would be trimmed without doing it"
     )
     parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show rationale for each trimmed line"
-    )
-    parser.add_argument(
         "--content-threshold",
         type=int,
         default=200,
@@ -320,7 +319,6 @@ def main():
             exclude_types=exclude_types,
             preserve_recent=args.preserve_recent,
             max_lines_per_agent=args.max_lines_per_agent,
-            verbose=args.verbose,
             content_threshold=args.content_threshold,
             preserve_head=args.preserve_head,
             preserve_tail=args.preserve_tail
@@ -335,33 +333,25 @@ def main():
 
     print(f"📊 Identified {len(trimmable)} lines for trimming:")
 
-    # Build descriptions dict for verbose mode
+    # Build descriptions dict - trimmable is list of (line_idx, rationale, description) tuples
     descriptions = {}
-    if args.verbose:
-        # trimmable is list of (line_idx, rationale, description) tuples
-        print(f"\n   All {len(trimmable)} lines with rationales:")
-        for item in trimmable:
-            line_idx = item[0]
-            rationale = item[1]
-            description = item[2] if len(item) > 2 else ""
-            print(f"   Line {line_idx}: {rationale}")
-            if description:
-                print(f"      → {description}")
-                descriptions[line_idx] = description
-    else:
-        # trimmable is list of integers
-        print(f"   Line indices: {trimmable[:10]}{'...' if len(trimmable) > 10 else ''}")
+    print(f"\n   All {len(trimmable)} lines with rationales:")
+    for item in trimmable:
+        line_idx = item[0]
+        rationale = item[1]
+        description = item[2] if len(item) > 2 else ""
+        print(f"   Line {line_idx}: {rationale}")
+        if description:
+            print(f"      → {description}")
+            descriptions[line_idx] = description
     print()
 
     if args.dry_run:
         print("🏃 Dry run mode - no changes made")
         return
 
-    # Extract line indices (in case of verbose mode with rationales/descriptions)
-    if args.verbose:
-        line_indices = [item[0] for item in trimmable]
-    else:
-        line_indices = trimmable
+    # Extract line indices from tuples
+    line_indices = [item[0] for item in trimmable]
 
     # Determine output file
     output_dir = args.output_dir or session_file.parent
@@ -379,7 +369,7 @@ def main():
         new_uuid = str(uuid.uuid4())
         output_file = output_dir / f"rollout-{timestamp}-{new_uuid}.jsonl"
 
-    # Perform trimming (pass descriptions from verbose mode)
+    # Perform trimming (pass descriptions for truncation summaries)
     stats = trim_lines(session_file, line_indices, output_file, descriptions=descriptions)
 
     # Add trim metadata to first line of output file

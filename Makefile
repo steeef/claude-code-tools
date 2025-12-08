@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish fix-session-metadata fix-session-metadata-apply
+.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish fix-session-metadata fix-session-metadata-apply delete-helper-sessions delete-helper-sessions-apply
 
 help:
 	@echo "Available commands:"
@@ -21,6 +21,8 @@ help:
 	@echo "  make aichat-search-publish - Publish aichat-search to crates.io"
 	@echo "  make fix-session-metadata       - Scan for sessionId mismatches (dry-run)"
 	@echo "  make fix-session-metadata-apply - Actually fix sessionId mismatches"
+	@echo "  make delete-helper-sessions       - Find helper sessions to delete (dry-run)"
+	@echo "  make delete-helper-sessions-apply - Actually delete helper sessions"
 
 install:
 	uv tool install --force -e .
@@ -176,3 +178,13 @@ fix-session-metadata:
 fix-session-metadata-apply:
 	@echo "Fixing sessionId mismatches..."
 	@python3 scripts/fix_session_metadata.py -v
+
+delete-helper-sessions:
+	@echo "Scanning for helper sessions (dry-run)..."
+	@python3 scripts/delete_helper_sessions.py --dry-run -v
+	@echo ""
+	@echo "To delete: make delete-helper-sessions-apply"
+
+delete-helper-sessions-apply:
+	@echo "Deleting helper sessions..."
+	@python3 scripts/delete_helper_sessions.py -v
