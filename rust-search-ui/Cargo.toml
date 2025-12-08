@@ -24,6 +24,7 @@ tantivy = "0.25"
 
 # Utilities
 anyhow = "1"
+arboard = "3"  # Clipboard support
 chrono = "0.4"
 dirs = "5"
 serde = { version = "1", features = ["derive"] }

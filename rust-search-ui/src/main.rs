@@ -387,6 +387,9 @@ struct App {
     confirming_exit: bool,
     // Delete confirmation
     confirming_delete: bool,
+
+    // Temporary status message (e.g., "Copied to clipboard")
+    status_message: Option<String>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -474,6 +477,7 @@ enum ActionMenuItem {
     View,       // (v) View full session - handled in Rust
     Path,       // (p) Show session file path
     Copy,       // (c) Copy session file
+    CopyId,     // (i) Copy session ID to clipboard - handled in Rust
     Export,     // (e) Export to text file (.txt)
     Query,      // (q) Query the session
     Resume,     // (r) Resume as-is
@@ -490,6 +494,7 @@ impl ActionMenuItem {
             ActionMenuItem::View,
             ActionMenuItem::Path,
             ActionMenuItem::Copy,
+            ActionMenuItem::CopyId,
             ActionMenuItem::Export,
             ActionMenuItem::Query,
             ActionMenuItem::Resume,
@@ -506,6 +511,7 @@ impl ActionMenuItem {
             ActionMenuItem::View => "(v) View full session",
             ActionMenuItem::Path => "(p) Show session file path",
             ActionMenuItem::Copy => "(c) Copy session file",
+            ActionMenuItem::CopyId => "(i) Copy session ID to clipboard",
             ActionMenuItem::Export => "(e) Export to text file (.txt)",
             ActionMenuItem::Query => "(q) Query the session",
             ActionMenuItem::Resume => "(r) Resume as-is",
@@ -522,6 +528,7 @@ impl ActionMenuItem {
             ActionMenuItem::View => 'v',
             ActionMenuItem::Path => 'p',
             ActionMenuItem::Copy => 'c',
+            ActionMenuItem::CopyId => 'i',
             ActionMenuItem::Export => 'e',
             ActionMenuItem::Query => 'q',
             ActionMenuItem::Resume => 'r',
@@ -540,6 +547,7 @@ impl ActionMenuItem {
             ActionMenuItem::View => "view",
             ActionMenuItem::Path => "path",
             ActionMenuItem::Copy => "copy",
+            ActionMenuItem::CopyId => "copy_id",  // Handled in Rust
             ActionMenuItem::Export => "export",
             ActionMenuItem::Query => "query",
             ActionMenuItem::Resume => "resume",
@@ -637,6 +645,8 @@ impl App {
             confirming_exit: false,
             // Delete confirmation
             confirming_delete: false,
+            // Status message
+            status_message: None,
         };
         app.filter();
         app
@@ -740,6 +750,8 @@ impl App {
             confirming_exit: false,
             // Delete confirmation
             confirming_delete: false,
+            // Status message
+            status_message: None,
         };
         app.filter();
 
@@ -2014,6 +2026,16 @@ fn render_preview(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) {
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_legend: bool) {
+    // Show status message if present (e.g., "Copied to clipboard")
+    if let Some(ref msg) = app.status_message {
+        let status_line = Line::from(vec![
+            Span::styled(format!(" ✓ {} ", msg), Style::default().fg(Color::Green)),
+            Span::styled(" (press any key to dismiss)", Style::default().fg(t.dim_fg)),
+        ]);
+        frame.render_widget(Paragraph::new(status_line), area);
+        return;
+    }
+
     // Check if we have any active filters (need third row for legend or filters)
     let has_filters = !app.include_original
         || app.include_sub
@@ -3364,6 +3386,26 @@ fn execute_action_item(app: &mut App, item: ActionMenuItem) {
             app.action_mode = None;
             app.action_modal_selected = 0;
         }
+        ActionMenuItem::CopyId => {
+            // Copy session ID to clipboard (handled in Rust)
+            if let Some(session) = app.selected_session() {
+                match arboard::Clipboard::new() {
+                    Ok(mut clipboard) => {
+                        if clipboard.set_text(&session.session_id).is_ok() {
+                            app.status_message =
+                                Some(format!("Copied: {}", session.session_id));
+                        } else {
+                            app.status_message = Some("Failed to copy to clipboard".to_string());
+                        }
+                    }
+                    Err(_) => {
+                        app.status_message = Some("Clipboard not available".to_string());
+                    }
+                }
+            }
+            app.action_mode = None;
+            app.action_modal_selected = 0;
+        }
         ActionMenuItem::Delete => {
             // Delete: show confirmation modal before executing
             app.confirming_delete = true;
@@ -3809,6 +3851,9 @@ fn main() -> Result<()> {
         while event::poll(Duration::from_millis(0))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
+                    // Clear status message on any keypress
+                    app.status_message = None;
+
                     // Handle exit confirmation dialog
                     if app.confirming_exit {
                         match key.code {
