@@ -5,7 +5,12 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional, Any, Dict
 
-from claude_code_tools.session_utils import get_codex_home
+from claude_code_tools.session_utils import (
+    get_codex_home,
+    get_claude_home,
+    encode_claude_project_path,
+    mark_session_as_helper,
+)
 
 # Minimum content length (in chars) for a line to be considered for trimming
 SMART_TRIM_THRESHOLD = 500
@@ -244,6 +249,7 @@ def analyze_session_with_cli(
         print(f"   Raw CLI output saved to: {raw_debug_file}")
 
         # Parse response based on CLI type
+        helper_session_id = None  # Track helper session for cleanup
         if cli_type == "codex":
             # Codex outputs JSONL stream - extract text from response_item events
             text = ""
@@ -252,7 +258,10 @@ def analyze_session_with_cli(
                     continue
                 try:
                     event = json.loads(line)
-                    if event.get("type") == "response_item":
+                    # Capture thread_id for cleanup
+                    if event.get("type") == "thread.started":
+                        helper_session_id = event.get("thread_id")
+                    elif event.get("type") == "response_item":
                         payload = event.get("payload", {})
                         if payload.get("type") == "message":
                             content = payload.get("content", [])
@@ -266,6 +275,8 @@ def analyze_session_with_cli(
             response = json.loads(result.stdout)
             if isinstance(response, dict):
                 text = response.get("result", "")
+                # Capture session_id for cleanup
+                helper_session_id = response.get("session_id")
             else:
                 text = str(response)
 
@@ -346,6 +357,9 @@ def analyze_session_with_cli(
                 if line >= 0:
                     results.append((line, rationale, summary))
 
+        # Clean up helper session
+        _delete_helper_session(helper_session_id, cli_type)
+
         return results
 
     except subprocess.TimeoutExpired:
@@ -357,6 +371,47 @@ def analyze_session_with_cli(
     except Exception as e:
         print(f"   CLI error: {e}")
         return []
+
+
+def _delete_helper_session(session_id: Optional[str], cli_type: str) -> None:
+    """
+    Delete a helper session created during smart-trim analysis.
+
+    Marks the session as a helper first (in case deletion fails or indexing
+    happens before deletion), then deletes the file.
+
+    Args:
+        session_id: The session ID (Claude) or thread_id (Codex) to delete
+        cli_type: "claude" or "codex"
+    """
+    if not session_id:
+        return
+
+    try:
+        if cli_type == "codex":
+            # Codex session files are in ~/.codex/sessions/YYYY/MM/DD/
+            # with format rollout-timestamp-thread_id.jsonl
+            codex_home = get_codex_home()
+            sessions_dir = codex_home / "sessions"
+            if sessions_dir.exists():
+                # Search for session file containing thread_id
+                for session_file in sessions_dir.rglob(f"*{session_id}*.jsonl"):
+                    # Mark as helper first (belt and suspenders)
+                    mark_session_as_helper(session_file)
+                    session_file.unlink(missing_ok=True)
+                    break  # Only delete the first match
+        else:
+            # Claude session files are in ~/.claude/projects/<encoded-cwd>/
+            # The session was created in the current working directory context
+            cwd = str(Path.cwd())
+            claude_home = get_claude_home()
+            encoded_path = encode_claude_project_path(cwd)
+            session_file = claude_home / "projects" / encoded_path / f"{session_id}.jsonl"
+            # Mark as helper first (belt and suspenders)
+            mark_session_as_helper(session_file)
+            session_file.unlink(missing_ok=True)
+    except Exception:
+        pass  # Don't fail smart-trim if cleanup fails
 
 
 def extract_large_content(

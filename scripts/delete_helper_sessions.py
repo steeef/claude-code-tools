@@ -3,17 +3,19 @@
 Delete helper sessions created by smart-trim and query operations.
 
 Helper sessions are identified by:
-1. Having few user messages (lines <= 5 in the index)
-   - Claude helpers: lines=1
-   - Codex helpers: lines=3 (due to system messages counted as user)
-2. Containing one of the known helper patterns in the content
+1. Having few user messages (lines <= 30 in the index)
+   - Helper sessions can have many tool_result messages counted as "user"
+2. Containing one of the known helper patterns IN A USER MESSAGE
+   - Must be in the user message content (string), not just anywhere in the file
+   - This prevents false matches when discussing the prompt in conversations
 
 Patterns:
-- Smart-trim: "You are analyzing a coding agent session"
+- Smart-trim: "I need help identifying which lines can be trimmed"
 - Query: "There is a log of a past conversation with an AI agent in this file:"
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -22,16 +24,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from claude_code_tools.search_index import SessionIndex
 
-# Patterns that identify helper sessions
+# Patterns that identify helper sessions (must appear in user message content)
 HELPER_PATTERNS = [
-    "You are analyzing a coding agent session",
+    "I need help identifying which lines can be trimmed",
     "There is a log of a past conversation with an AI agent in this file:",
 ]
 
 
 def check_helper_pattern(session_file: Path) -> str | None:
     """
-    Check if session file contains a helper pattern.
+    Check if session file contains a helper pattern in a user message.
+
+    Only matches patterns that appear in the actual user message content
+    (as a string), not in tool_result arrays or other message types.
+    This prevents false matches when discussing the prompt in conversations.
 
     Args:
         session_file: Path to session JSONL file
@@ -41,11 +47,31 @@ def check_helper_pattern(session_file: Path) -> str | None:
     """
     try:
         with open(session_file, "r", encoding="utf-8") as f:
-            # Read first few KB to check for patterns (they appear early)
-            content = f.read(50000)
-            for pattern in HELPER_PATTERNS:
-                if pattern in content:
-                    return pattern
+            # Check first 100 lines - helper patterns appear in early user messages
+            for i, line in enumerate(f):
+                if i > 100:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    # Only check user messages
+                    if data.get("type") != "user":
+                        continue
+                    # Get message content
+                    message = data.get("message", {})
+                    content = message.get("content")
+                    # Only check string content (actual user prompts)
+                    # Skip array content (tool_result messages)
+                    if not isinstance(content, str):
+                        continue
+                    # Check for helper patterns
+                    for pattern in HELPER_PATTERNS:
+                        if pattern in content:
+                            return pattern
+                except json.JSONDecodeError:
+                    continue
     except (OSError, IOError):
         pass
     return None
@@ -84,13 +110,13 @@ def main():
     index = SessionIndex(index_path)
 
     # Get all sessions - use a high limit to get everything
-    print("Querying for sessions with lines <= 5...")
+    print("Querying for sessions with lines <= 30...")
     all_results = index.search("", limit=10000)
 
     # Filter to sessions with few user messages (likely helpers)
-    # Claude helpers have lines=1, Codex helpers have lines=3 (due to system messages)
-    candidate_sessions = [r for r in all_results if r.get("lines", 0) <= 5]
-    print(f"Found {len(candidate_sessions)} sessions with lines <= 5")
+    # Helper sessions can have many tool_result messages counted as "user"
+    candidate_sessions = [r for r in all_results if r.get("lines", 0) <= 30]
+    print(f"Found {len(candidate_sessions)} sessions with lines <= 30")
 
     # Check each for helper patterns
     helper_sessions = []
@@ -125,7 +151,7 @@ def main():
 
     # Group by pattern for summary
     smart_trim_count = sum(
-        1 for s in helper_sessions if "analyzing a coding agent" in s["pattern"]
+        1 for s in helper_sessions if "lines can be trimmed" in s["pattern"]
     )
     query_count = sum(
         1 for s in helper_sessions if "log of a past conversation" in s["pattern"]
@@ -138,7 +164,7 @@ def main():
         for session in helper_sessions:
             pattern_short = (
                 "smart-trim"
-                if "analyzing a coding agent" in session["pattern"]
+                if "lines can be trimmed" in session["pattern"]
                 else "query"
             )
             print(f"  [{pattern_short}] {session['session_file']}")
