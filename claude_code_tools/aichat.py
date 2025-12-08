@@ -261,7 +261,7 @@ def _find_and_run_session_ui(
             "default_export_path": str(
                 default_export_path(session_file, agent)
             ) if session_file and session_file.exists() else "",
-            "is_trimmed": s.get("derivation_type") in ("trimmed", "continued"),
+            "is_trimmed": s.get("derivation_type") == "trimmed",
             "derivation_type": s.get("derivation_type"),
             "is_sidechain": s.get("is_sidechain") == "true",
         }
