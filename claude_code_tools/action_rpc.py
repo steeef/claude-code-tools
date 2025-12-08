@@ -305,15 +305,16 @@ Provide a clear and concise answer."""
                     except json.JSONDecodeError:
                         continue
 
-                # Mark the helper session if we got a session_id
+                # Delete the helper session since it's no longer needed
                 if session_id and cwd:
                     try:
                         claude_home = get_claude_home()
                         encoded_path = encode_claude_project_path(cwd)
                         session_file = claude_home / "projects" / encoded_path / f"{session_id}.jsonl"
-                        mark_session_as_helper(session_file)
+                        # mark_session_as_helper(session_file)  # Keep for reference
+                        session_file.unlink(missing_ok=True)
                     except Exception:
-                        pass  # Don't fail query if marking fails
+                        pass  # Don't fail query if deletion fails
 
                 if not response_text:
                     # Fallback to raw output if parsing failed
@@ -371,7 +372,7 @@ Provide a clear and concise answer."""
                     except json.JSONDecodeError:
                         continue
 
-                # Mark the helper session if we got a thread_id
+                # Delete the helper session since it's no longer needed
                 if thread_id:
                     try:
                         # Codex session files are in ~/.codex/sessions/YYYY/MM/DD/
@@ -381,10 +382,11 @@ Provide a clear and concise answer."""
                         if sessions_dir.exists():
                             # Search for session file containing thread_id
                             for session_file in sessions_dir.rglob(f"*{thread_id}*.jsonl"):
-                                mark_session_as_helper(session_file)
-                                break  # Only mark the first match
+                                # mark_session_as_helper(session_file)  # Keep for reference
+                                session_file.unlink(missing_ok=True)
+                                break  # Only delete the first match
                     except Exception:
-                        pass  # Don't fail query if marking fails
+                        pass  # Don't fail query if deletion fails
 
                 if not response_text:
                     response_text = result.stdout.strip() or "No response received"

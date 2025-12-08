@@ -264,7 +264,7 @@ async def _analyze_chunk(
             # Capture session_id from ResultMessage
             session_id = getattr(message, 'session_id', None)
 
-    # Mark the helper session if we got a session_id
+    # Delete the helper session since it's no longer needed
     # Note: SDK creates sessions in os.getcwd(), not the cwd of the session being analyzed
     if session_id:
         try:
@@ -274,9 +274,10 @@ async def _analyze_chunk(
             session_file = (
                 claude_home / "projects" / encoded_path / f"{session_id}.jsonl"
             )
-            mark_session_as_helper(session_file)
+            # mark_session_as_helper(session_file)  # Keep for reference
+            session_file.unlink(missing_ok=True)
         except Exception:
-            pass  # Don't fail analysis if marking fails
+            pass  # Don't fail analysis if deletion fails
 
     # Parse response to get line numbers (and rationales/descriptions if verbose)
     try:
