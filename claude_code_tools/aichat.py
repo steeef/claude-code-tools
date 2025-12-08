@@ -1481,7 +1481,23 @@ def search(
             if num_results:
                 rust_args.extend(["--num-results", str(num_results)])
 
+        # Convert ISO date strings from Rust to Unix timestamps
+        def iso_to_timestamp(iso_str: str) -> float:
+            """Convert ISO date string to Unix timestamp."""
+            if not iso_str:
+                return 0.0
+            try:
+                from datetime import datetime
+                # Handle both formats: with and without 'Z' suffix
+                iso_str = iso_str.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(iso_str)
+                return dt.timestamp()
+            except (ValueError, TypeError):
+                return 0.0
+
         # Convert to session format expected by handlers
+        # Rust sends 'created'/'modified' as ISO strings, Node UI expects
+        # 'create_time'/'mod_time' as Unix timestamps
         session = {
             "session_id": selected.get("session_id", ""),
             "agent": selected.get("agent", "claude"),
@@ -1492,8 +1508,8 @@ def search(
             "file_path": selected.get("file_path", ""),
             "cwd": selected.get("cwd", ""),
             "is_sidechain": selected.get("is_sidechain", False),
-            "create_time": selected.get("create_time", 0),
-            "mod_time": selected.get("mod_time", 0),
+            "create_time": iso_to_timestamp(selected.get("created", "")),
+            "mod_time": iso_to_timestamp(selected.get("modified", "")),
         }
 
         # Extract cwd from file_path metadata if needed (for older export format)

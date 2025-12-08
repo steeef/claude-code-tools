@@ -52,14 +52,17 @@ const DATE_FMT = new Intl.DateTimeFormat('en', {
   minute: '2-digit',
 });
 
+// MM/DD format for date display (matches Rust UI)
 const DATE_DAY_FMT = new Intl.DateTimeFormat('en', {
-  month: 'short',
-  day: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
 });
 
+// 24-hour time format HH:MM (matches Rust UI)
 const TIME_FMT = new Intl.DateTimeFormat('en', {
   hour: '2-digit',
   minute: '2-digit',
+  hour12: false,
 });
 
 // Generate annotation string for session display
@@ -73,16 +76,36 @@ const toAnno = (s) => {
 };
 
 const formatLines = (lines) => (Number.isFinite(lines) ? `${lines} user msgs` : '');
+
+// Minimum valid timestamp (year 2000) - timestamps below this are treated as invalid
+// This prevents Unix epoch (0) from showing as "12/31 19:00" in US timezones
+const MIN_VALID_TS = 946684800;
+
+// Check if timestamp is valid (finite and reasonable)
+const isValidTs = (ts) => Number.isFinite(ts) && ts >= MIN_VALID_TS;
+
+// Format date range to match Rust UI: "MM/DD HH:MM" or "MM/DD - MM/DD HH:MM"
 const formatDateRange = (start, end) => {
-  if (Number.isFinite(start) && Number.isFinite(end)) {
+  const validStart = isValidTs(start);
+  const validEnd = isValidTs(end);
+
+  if (validStart && validEnd) {
     const sDay = DATE_DAY_FMT.format(new Date(start * 1000));
     const eDay = DATE_DAY_FMT.format(new Date(end * 1000));
     const eTime = TIME_FMT.format(new Date(end * 1000));
-    if (sDay === eDay) return `${eDay}, ${eTime}`;
-    return `${sDay} - ${eDay}, ${eTime}`;
+    if (sDay === eDay) return `${eDay} ${eTime}`;
+    return `${sDay} - ${eDay} ${eTime}`;
   }
-  if (Number.isFinite(end)) return DATE_FMT.format(new Date(end * 1000));
-  if (Number.isFinite(start)) return DATE_FMT.format(new Date(start * 1000));
+  if (validEnd) {
+    const eDay = DATE_DAY_FMT.format(new Date(end * 1000));
+    const eTime = TIME_FMT.format(new Date(end * 1000));
+    return `${eDay} ${eTime}`;
+  }
+  if (validStart) {
+    const sDay = DATE_DAY_FMT.format(new Date(start * 1000));
+    const sTime = TIME_FMT.format(new Date(start * 1000));
+    return `${sDay} ${sTime}`;
+  }
   return '';
 };
 
