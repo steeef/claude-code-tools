@@ -4419,8 +4419,10 @@ fn main() -> Result<()> {
                                             } else {
                                                 app.filter_branch = Some(branch);
                                             }
+                                        } else {
+                                            // No colon in input = clear branch filter
+                                            app.filter_branch = None;
                                         }
-                                        // If no colon, don't change branch filter
 
                                         app.filter();
                                     }
