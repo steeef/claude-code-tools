@@ -58,7 +58,10 @@ from claude_code_tools.trim_session import (
     is_trimmed_session,
     get_session_derivation_type,
 )
-from claude_code_tools.smart_trim_core import identify_trimmable_lines
+from claude_code_tools.smart_trim_core import (
+    identify_trimmable_lines_cli,
+    is_claude_cli_available,
+)
 from claude_code_tools.smart_trim import trim_lines
 from claude_code_tools.session_utils import (
     get_codex_home,
@@ -622,9 +625,15 @@ def handle_suppress_resume_codex(
 def handle_smart_trim_resume_codex(
     match: dict,
     codex_home: Path,
+    custom_instructions: Optional[str] = None,
 ) -> str | None:
     """
     Smart trim session using parallel agents and resume Codex session.
+
+    Args:
+        match: Match dict with session info
+        codex_home: Codex home directory
+        custom_instructions: Optional custom instructions for the trim agents
 
     Returns:
         'back' if user wants to go back to menu, None otherwise.
@@ -634,15 +643,26 @@ def handle_smart_trim_resume_codex(
 
     session_file = Path(match["file_path"])
 
-    print(f"\n🤖 Smart trimming session using parallel Claude SDK agents...")
-    print(f"   This may take a minute as agents analyze the session...")
+    # Determine which CLI to use: prefer Claude if available, else Codex
+    if is_claude_cli_available():
+        cli_type = "claude"
+        print(f"\n🤖 Smart trimming session using Claude CLI...")
+    else:
+        cli_type = "codex"
+        print(f"\n🤖 Smart trimming session using Codex CLI...")
+
+    if custom_instructions:
+        print(f"   Instructions: {custom_instructions[:60]}...")
+    print(f"   This may take a minute as the agent analyzes the session...")
 
     try:
-        # Identify trimmable lines using parallel agents
-        trimmable = identify_trimmable_lines(
+        # Identify trimmable lines using CLI
+        trimmable = identify_trimmable_lines_cli(
             session_file,
-            exclude_types=["user"],
+            exclude_types=[],
             preserve_recent=10,
+            custom_instructions=custom_instructions,
+            cli_type=cli_type,
         )
 
         if not trimmable:
@@ -661,16 +681,40 @@ def handle_smart_trim_resume_codex(
 
         print(f"   Found {len(trimmable)} lines to trim")
 
-        # Generate new session ID with Codex timestamp format
+        # Extract line indices and descriptions from verbose tuples
+        # trimmable is list of (line_idx, rationale, description) tuples
+        line_indices = [item[0] for item in trimmable]
+        descriptions = {
+            item[0]: item[2] for item in trimmable if len(item) > 2 and item[2]
+        }
+
+        # Generate new session ID (UUID only) and filename with Codex format
         timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-        new_uuid = str(uuid.uuid4())
-        new_session_id = f"rollout-{timestamp}-{new_uuid}"
+        new_session_id = str(uuid.uuid4())
 
         # Create output path in same directory as original
-        output_file = session_file.parent / f"{new_session_id}.jsonl"
+        output_file = session_file.parent / f"rollout-{timestamp}-{new_session_id}.jsonl"
 
         # Perform trimming
-        stats = trim_lines(session_file, trimmable, output_file)
+        stats = trim_lines(
+            session_file, line_indices, output_file, descriptions=descriptions
+        )
+
+        # Check if savings are worth it (minimum 300 tokens)
+        MIN_TOKEN_SAVINGS = 300
+        if stats['tokens_saved'] < MIN_TOKEN_SAVINGS:
+            # Not worth trimming - delete output and show nothing to trim
+            output_file.unlink(missing_ok=True)
+            print(f"   Savings too small ({stats['tokens_saved']} tokens < {MIN_TOKEN_SAVINGS})")
+            from claude_code_tools.node_menu_ui import run_trim_confirm_ui
+            action = run_trim_confirm_ui(
+                nothing_to_trim=True,
+                original_session_id=match["session_id"],
+            )
+            if action == 'resume':
+                resume_session(match["session_id"], match["cwd"])
+                return None
+            return 'back'
 
         # Show confirmation UI
         from claude_code_tools.node_menu_ui import run_trim_confirm_ui

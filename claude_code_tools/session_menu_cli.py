@@ -182,12 +182,15 @@ def execute_action(
             return result
 
     elif action == "smart_trim_resume":
+        # Get custom instructions from kwargs (from Node UI form)
+        custom_instructions = action_kwargs.get("prompt") if action_kwargs else None
         if agent == "claude":
             from claude_code_tools.find_claude_session import (
                 handle_smart_trim_resume_claude,
             )
             result = handle_smart_trim_resume_claude(
-                session_id, project_path, claude_home
+                session_id, project_path, claude_home,
+                custom_instructions=custom_instructions,
             )
             return result
         else:
@@ -198,6 +201,7 @@ def execute_action(
                 {"file_path": str(session_file), "cwd": project_path,
                  "session_id": session_id},
                 Path(codex_home) if codex_home else Path.home() / ".codex",
+                custom_instructions=custom_instructions,
             )
             return result
 
@@ -334,6 +338,9 @@ Examples:
             sys.exit(1)
 
         agent, session_file, project_path, git_branch = result
+
+        # Update session_id to the actual full UUID from the found file
+        session_id = session_file.stem
 
         # Override agent if specified
         if args.agent and args.agent != agent:

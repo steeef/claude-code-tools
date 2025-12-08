@@ -1579,19 +1579,25 @@ def search(
                 if original_dir:
                     os.chdir(original_dir)
             elif action == "smart_trim_resume":
-                # Smart trim: check directory first, then execute
+                # Smart trim: check directory first, then show options form
                 proceed, original_dir = check_directory_and_confirm(session)
                 if not proceed:
                     continue  # User cancelled - pop back to Rust search
                 original_dir_for_interrupt = original_dir
-                result = action_handler(session, action, {})
-                if result == "back":
-                    # User cancelled in confirmation UI - restore directory and pop back
-                    if original_dir:
-                        os.chdir(original_dir)
-                else:
-                    # User resumed - exit (new session is running)
-                    return
+                run_node_menu_ui(
+                    sessions=[session],
+                    keywords=[],
+                    action_handler=action_handler,
+                    start_action=False,
+                    focus_session_id=session["session_id"],
+                    rpc_path=rpc_path,
+                    start_screen="smart_trim_form",
+                    direct_action="smart_trim_resume",
+                    exit_on_back=True,  # Pop back to Rust search on cancel
+                )
+                # If we return here, user cancelled - restore directory and pop back
+                if original_dir:
+                    os.chdir(original_dir)
             elif action == "continue":
                 # Continue with context: check directory first, then show options form
                 proceed, original_dir = check_directory_and_confirm(session)

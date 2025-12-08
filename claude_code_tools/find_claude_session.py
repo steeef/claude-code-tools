@@ -98,7 +98,7 @@ try:
     TUI_AVAILABLE = True
 except ImportError:
     TUI_AVAILABLE = False
-from claude_code_tools.smart_trim_core import identify_trimmable_lines
+from claude_code_tools.smart_trim_core import identify_trimmable_lines_cli
 from claude_code_tools.smart_trim import trim_lines
 from claude_code_tools.session_utils import (
     get_claude_home,
@@ -868,9 +868,16 @@ def handle_smart_trim_resume_claude(
     session_id: str,
     project_path: str,
     claude_home: Optional[str] = None,
+    custom_instructions: Optional[str] = None,
 ) -> str | None:
     """
     Smart trim session using parallel agents and resume Claude Code session.
+
+    Args:
+        session_id: Session ID to trim
+        project_path: Project path
+        claude_home: Optional custom Claude home directory
+        custom_instructions: Optional custom instructions for the trim agents
 
     Returns:
         'back' if user wants to go back to menu, None otherwise.
@@ -879,15 +886,18 @@ def handle_smart_trim_resume_claude(
 
     session_file = Path(get_session_file_path(session_id, project_path, claude_home))
 
-    print(f"\n🤖 Smart trimming session using parallel Claude SDK agents...")
-    print(f"   This may take a minute as agents analyze the session...")
+    print(f"\n🤖 Smart trimming session using Claude CLI...")
+    if custom_instructions:
+        print(f"   Instructions: {custom_instructions[:60]}...")
+    print(f"   This may take a minute as Claude analyzes the session...")
 
     try:
-        # Identify trimmable lines using parallel agents
-        trimmable = identify_trimmable_lines(
+        # Identify trimmable lines using CLI with parallel sub-agents
+        trimmable = identify_trimmable_lines_cli(
             session_file,
-            exclude_types=["user"],
+            exclude_types=[],
             preserve_recent=10,
+            custom_instructions=custom_instructions,
         )
 
         if not trimmable:
@@ -906,6 +916,13 @@ def handle_smart_trim_resume_claude(
 
         print(f"   Found {len(trimmable)} lines to trim")
 
+        # Extract line indices and descriptions from verbose tuples
+        # trimmable is list of (line_idx, rationale, description) tuples
+        line_indices = [item[0] for item in trimmable]
+        descriptions = {
+            item[0]: item[2] for item in trimmable if len(item) > 2 and item[2]
+        }
+
         # Generate new session ID
         new_session_id = str(uuid.uuid4())
 
@@ -913,7 +930,26 @@ def handle_smart_trim_resume_claude(
         output_file = session_file.parent / f"{new_session_id}.jsonl"
 
         # Perform trimming
-        stats = trim_lines(session_file, trimmable, output_file)
+        stats = trim_lines(
+            session_file, line_indices, output_file, descriptions=descriptions
+        )
+
+        # Check if savings are worth it (minimum 300 tokens)
+        MIN_TOKEN_SAVINGS = 300
+        if stats['tokens_saved'] < MIN_TOKEN_SAVINGS:
+            # Not worth trimming - delete output and show nothing to trim
+            output_file.unlink(missing_ok=True)
+            print(f"   Savings too small ({stats['tokens_saved']} tokens < {MIN_TOKEN_SAVINGS})")
+            print(f"   (Diagnostic file: .claude/trim-result-{session_id}.jsonl)")
+            from claude_code_tools.node_menu_ui import run_trim_confirm_ui
+            action = run_trim_confirm_ui(
+                nothing_to_trim=True,
+                original_session_id=session_id,
+            )
+            if action == 'resume':
+                resume_session(session_id, project_path, claude_home=claude_home)
+                return None
+            return 'back'
 
         # Show confirmation UI
         from claude_code_tools.node_menu_ui import run_trim_confirm_ui

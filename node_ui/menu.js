@@ -1387,6 +1387,93 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
   );
 }
 
+// Smart Trim form - instructions for what to trim
+function SmartTrimForm({onSubmit, onBack, clearScreen, session}) {
+  const defaultPrompt = 'trim messages that are not relevant to the last task being worked on in this session';
+  const [prompt, setPrompt] = useState('');
+  const [hasTyped, setHasTyped] = useState(false);
+
+  useInput((input, key) => {
+    if (key.escape) {
+      clearScreen();
+      return onBack();
+    }
+    if (key.return) {
+      // Submit custom prompt if typed, otherwise use default
+      onSubmit({prompt: hasTyped ? prompt : defaultPrompt});
+      return;
+    }
+    if (key.backspace || key.delete) {
+      if (hasTyped) {
+        setPrompt((t) => t.slice(0, -1));
+      }
+      return;
+    }
+    if (input) {
+      if (!hasTyped) {
+        // First character typed - start fresh, don't append to default
+        setHasTyped(true);
+        setPrompt(input);
+      } else {
+        setPrompt((t) => t + input);
+      }
+    }
+  });
+
+  const id = (session.session_id || '').slice(0, 8);
+  const anno = toAnno(session);
+  const date = formatDateRange(session.create_time, session.mod_time);
+  const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
+
+  // Display: show user's input in yellow, or default in dim gray
+  const displayPrompt = hasTyped
+    ? (prompt || chalk.dim('(none)'))
+    : chalk.gray(defaultPrompt);
+
+  return h(
+    Box,
+    {flexDirection: 'column'},
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(Text, null,
+        chalk.bgMagenta.black(' Smart Trim '), ' ',
+        colorize.project(session.project || ''), ' ',
+        colorize.branch(branchDisplay)
+      ),
+      h(
+        Text,
+        null,
+        colorize.agent(`[${session.agent_display || 'CLAUDE'}]`), ' ',
+        chalk.white(id), anno ? ` ${chalk.dim(anno)}` : '', ' | ',
+        colorize.lines(formatLines(session.lines)), ' | ',
+        colorize.date(date)
+      ),
+      renderPreview(session.preview)
+    ),
+    h(Box, {marginBottom: 1}),
+    h(Text, {dimColor: true}, 'Enter: submit | Esc: back'),
+    h(Box, {marginBottom: 1}),
+    h(
+      Box,
+      {flexDirection: 'column'},
+      h(
+        Text,
+        null,
+        chalk.cyan(figures.pointer),
+        ' Trim instructions'
+      ),
+      h(Text, {dimColor: true}, '    Tell the agent what to look for when trimming'),
+      h(
+        Text,
+        null,
+        '  > ',
+        hasTyped ? h(Text, {color: 'yellow'}, displayPrompt) : h(Text, null, displayPrompt)
+      )
+    )
+  );
+}
+
 // Find options form - interactive menu for find command options
 function FindOptionsForm({onSubmit, onCancel, initialOptions, variant}) {
   // variant: 'find' | 'find-claude' | 'find-codex'
@@ -2123,6 +2210,15 @@ function App() {
     view = h(ContinueForm, {
       onBack: continueBack,
       onSubmit: (opts) => finish('continue', opts),
+      session,
+      clearScreen,
+    });
+  } else if (screen === 'smart_trim_form') {
+    // If directAction is set, back exits to Rust search; otherwise quit
+    const smartTrimBack = directAction ? quit : quit;
+    view = h(SmartTrimForm, {
+      onBack: smartTrimBack,
+      onSubmit: (opts) => finish('smart_trim_resume', opts),
       session,
       clearScreen,
     });

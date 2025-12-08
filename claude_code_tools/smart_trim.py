@@ -69,7 +69,8 @@ def trim_lines(
         )
         result = "\n".join(lines)
 
-        # Only return truncated version if it actually saves space
+        # Accept any truncation that saves space
+        # (overall 300 token threshold is checked after all truncations)
         if len(result) >= len(content):
             return content
 
