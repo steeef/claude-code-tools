@@ -1196,8 +1196,10 @@ def index_stats(index, cwd, claude_home, codex_home):
 )
 @click.option('-g', '--global', 'global_search', is_flag=True,
               help='Search across all projects (not just current)')
-@click.option('--dir', 'filter_dir', type=click.Path(exists=True, file_okay=False),
-              help='Filter to specific directory (overrides -g)')
+@click.option('--dir', 'filter_dir',
+              help='Filter to directory[:branch] (overrides -g)')
+@click.option('--branch', 'filter_branch',
+              help='Filter to specific git branch (only effective when not global)')
 @click.option('-n', '--num-results', type=int, default=None,
               help='Limit number of results displayed')
 @click.option('--original', is_flag=True, help='Include original sessions')
@@ -1221,8 +1223,8 @@ def index_stats(index, cwd, claude_home, codex_home):
               help='Sort results by last-modified time (default: sort by relevance)')
 @click.argument('query', required=False)
 def search(
-    claude_home_arg, codex_home_arg, global_search, filter_dir, num_results,
-    original, sub_agent, trimmed, rollover, min_lines,
+    claude_home_arg, codex_home_arg, global_search, filter_dir, filter_branch,
+    num_results, original, sub_agent, trimmed, rollover, min_lines,
     after, before, agent, json_output, by_time, query
 ):
     """Launch interactive TUI for full-text session search.
@@ -1293,9 +1295,26 @@ def search(
     # Filter options
     if filter_dir:
         # --dir overrides -g
-        rust_args.extend(["--dir", str(Path(filter_dir).resolve())])
+        # Support dir:branch format - extract branch if present before resolving path
+        if ':' in filter_dir and not filter_dir.startswith('/') or (
+            ':' in filter_dir and filter_dir.count(':') == 1 and
+            '/' not in filter_dir.split(':')[-1]
+        ):
+            # Has branch suffix (dir:branch format)
+            parts = filter_dir.rsplit(':', 1)
+            dir_part = parts[0]
+            branch_part = parts[1] if len(parts) > 1 else None
+            resolved_dir = str(Path(dir_part).resolve())
+            if branch_part:
+                rust_args.extend(["--dir", f"{resolved_dir}:{branch_part}"])
+            else:
+                rust_args.extend(["--dir", resolved_dir])
+        else:
+            rust_args.extend(["--dir", str(Path(filter_dir).resolve())])
     elif global_search:
         rust_args.append("--global")
+    if filter_branch:
+        rust_args.extend(["--branch", filter_branch])
     if num_results:
         rust_args.extend(["--num-results", str(num_results)])
     if original:
@@ -1466,6 +1485,10 @@ def search(
                 rust_args.extend(["--dir", filter_state["filter_dir"]])
             elif filter_state.get("scope_global"):
                 rust_args.append("--global")
+
+            # Branch filter
+            if filter_state.get("filter_branch"):
+                rust_args.extend(["--branch", filter_state["filter_branch"]])
 
             # Session type filters (only add if true)
             if filter_state.get("include_original"):

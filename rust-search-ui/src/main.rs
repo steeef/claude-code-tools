@@ -377,6 +377,10 @@ struct App {
     scope_modal_selected: usize,
     filter_dir: Option<String>, // Custom directory filter (overrides scope_global)
 
+    // Branch filter (Ctrl+B) - only effective when not in global mode
+    filter_branch: Option<String>,
+    launch_branch: String, // Current git branch at launch (for default value)
+
     // Result limit
     max_results: Option<usize>, // Limit number of displayed results (--num-results / -n)
 
@@ -400,6 +404,7 @@ enum InputMode {
     AfterDate,  // :> - waiting for date
     BeforeDate, // :< - waiting for date
     ScopeDir,   // Custom directory for scope filter
+    Branch,     // C-b - waiting for branch name
 }
 
 #[derive(Clone, PartialEq)]
@@ -572,12 +577,31 @@ impl ActionMenuItem {
     }
 }
 
+/// Get the current git branch name, or empty string if not in a git repo
+fn get_current_git_branch() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                String::from_utf8(output.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
+}
+
 impl App {
     fn new(sessions: Vec<Session>, index_path: String, filter_claude_home: Option<String>, filter_codex_home: Option<String>) -> Self {
         let total = sessions.len();
         let launch_cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
+        let launch_branch = get_current_git_branch();
 
         let mut app = Self {
             sessions,
@@ -637,6 +661,9 @@ impl App {
             scope_modal_open: false,
             scope_modal_selected: 0,
             filter_dir: None,
+            // Branch filter
+            filter_branch: None,
+            launch_branch,
             // Result limit
             max_results: None,
             // Sort mode
@@ -657,6 +684,7 @@ impl App {
         let launch_cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
+        let launch_branch = get_current_git_branch();
 
         // Parse date filters if provided
         let (after_date, after_display) = cli.after_date.as_ref()
@@ -742,6 +770,9 @@ impl App {
             scope_modal_open: false,
             scope_modal_selected: 0,
             filter_dir: cli.filter_dir.clone(),
+            // Branch filter
+            filter_branch: cli.filter_branch.clone(),
+            launch_branch,
             // Result limit
             max_results: cli.num_results,
             // Sort mode (--by-time sorts by last-modified, default is relevance)
@@ -837,6 +868,15 @@ impl App {
                 if let Some(ref agent) = self.filter_agent {
                     if s.agent != *agent {
                         return false;
+                    }
+                }
+
+                // Branch filter (only effective when not in global scope)
+                if !self.scope_global {
+                    if let Some(ref branch) = self.filter_branch {
+                        if s.branch != *branch {
+                            return false;
+                        }
                     }
                 }
 
@@ -952,6 +992,7 @@ impl App {
             || self.filter_after_date.is_some()
             || self.filter_before_date.is_some()
             || self.filter_agent.is_some()
+            || self.filter_branch.is_some()
             || !self.include_original
             || self.include_sub
             || !self.include_trimmed
@@ -1607,12 +1648,17 @@ fn render_scope_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
             path
         }
     };
-    let current_dir_label = format!("Current directory ({})", cwd_display);
+    // Build current directory label with optional branch
+    let current_dir_label = if let Some(ref branch) = app.filter_branch {
+        format!("Current directory ({}) [⎇ {}]", cwd_display, branch)
+    } else {
+        format!("Current directory ({})", cwd_display)
+    };
 
     let items: Vec<(String, bool)> = vec![
         ("Global (everywhere)".to_string(), app.scope_global && app.filter_dir.is_none()),
         (current_dir_label, !app.scope_global && app.filter_dir.is_none()),
-        ("Custom directory...".to_string(), app.filter_dir.is_some()),
+        ("Custom directory/branch...".to_string(), app.filter_dir.is_some()),
     ];
 
     let mut lines: Vec<Line> = Vec::new();
@@ -1629,21 +1675,30 @@ fn render_scope_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
         let prefix = if is_selected { "▶ " } else { "  " };
         let state = if *is_active { " ●" } else { " ○" };
 
-        // For custom directory, show the path if set
+        // For custom directory, show the path and branch if set
         let suffix = if i == 2 {
             if let Some(ref dir) = app.filter_dir {
                 let home = std::env::var("HOME").unwrap_or_default();
-                let display = if !home.is_empty() && dir.starts_with(&home) {
-                    format!(" [~{}]", &dir[home.len()..])
+                let dir_display = if !home.is_empty() && dir.starts_with(&home) {
+                    format!("~{}", &dir[home.len()..])
                 } else {
-                    format!(" [{}]", dir)
+                    dir.clone()
+                };
+                // Add branch if set
+                let full_display = if let Some(ref branch) = app.filter_branch {
+                    format!(" [{}:{}]", dir_display, branch)
+                } else {
+                    format!(" [{}]", dir_display)
                 };
                 // Truncate if too long
-                if display.len() > 30 {
-                    format!(" [{}...]", &display[2..28])
+                if full_display.len() > 40 {
+                    format!("{}...]", &full_display[..37])
                 } else {
-                    display
+                    full_display
                 }
+            } else if let Some(ref branch) = app.filter_branch {
+                // Only branch set, no custom dir
+                format!(" [:{}]", branch)
             } else {
                 String::new()
             }
@@ -2044,7 +2099,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         || app.filter_agent.is_some()
         || app.filter_min_lines.is_some()
         || app.filter_after_date.is_some()
-        || app.filter_before_date.is_some();
+        || app.filter_before_date.is_some()
+        || (!app.scope_global && app.filter_branch.is_some());
 
     let needs_legend_row = show_legend || has_filters;
 
@@ -2079,7 +2135,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
             InputMode::JumpToLine => format!(" Go to row: {}█ ", app.input_buffer),
             InputMode::AfterDate => format!(" After date: {}█ (any format) ", app.input_buffer),
             InputMode::BeforeDate => format!(" Before date: {}█ (any format) ", app.input_buffer),
-            InputMode::ScopeDir => format!(" Directory: {}█ (Enter=apply, empty=global) ", app.input_buffer),
+            InputMode::ScopeDir => format!(" Scope: {}█ (dir:branch | :branch | empty=global) ", app.input_buffer),
+            InputMode::Branch => format!(" Branch: {}█ (Enter=apply, empty=clear) ", app.input_buffer),
         };
         nav_spans.push(Span::styled(prompt, Style::default().bg(t.accent).fg(Color::Black)));
     } else if app.command_mode {
@@ -2107,7 +2164,10 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         nav_spans.extend([
             Span::styled("│ ", dim),
             Span::styled(" / ", keycap),
-            Span::styled(" dir ", label),
+            Span::styled(" dir[:branch] ", label),
+        ]);
+
+        nav_spans.extend([
             Span::styled("│ ", dim),
             Span::styled(" C-f ", keycap),
             Span::styled(" filter ", label),
@@ -2165,6 +2225,12 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         }
         if let Some(ref date) = app.filter_before_date_display {
             row3_spans.push(Span::styled(format!(" [<{}]", date), filter_active));
+        }
+        // Branch filter - only show when not in global scope
+        if !app.scope_global {
+            if let Some(ref branch) = app.filter_branch {
+                row3_spans.push(Span::styled(format!(" [⎇ {}]", branch), filter_active));
+            }
         }
 
         let legend_row = Paragraph::new(Line::from(row3_spans));
@@ -3657,6 +3723,7 @@ struct CliOptions {
     query: Option<String>,
     json_output: bool,
     sort_by_time: bool,  // --by-time: sort by last-modified time instead of relevance
+    filter_branch: Option<String>, // --branch: filter to specific git branch
     // Scroll/selection state restoration
     selected: Option<usize>,    // --selected: restore selected row index
     list_scroll: Option<usize>, // --scroll: restore scroll offset
@@ -3709,21 +3776,41 @@ fn parse_cli_args() -> CliOptions {
     let global_search = has_flag("--global") || has_flag("-g");
 
     // --dir overrides -g: filter to specific directory
-    let filter_dir = get_arg_value("--dir").map(|dir| {
+    // Format: --dir path or --dir path:branch
+    let dir_arg = get_arg_value("--dir");
+    let (filter_dir, branch_from_dir) = if let Some(ref dir) = dir_arg {
+        // Parse dir:branch format (use rfind to handle paths with colons)
+        let (dir_part, branch_part) = if let Some(colon_idx) = dir.rfind(':') {
+            // Only treat as branch separator if what follows looks like a branch name
+            // (no slashes) and what precedes is a valid path
+            let before = &dir[..colon_idx];
+            let after = &dir[colon_idx + 1..];
+            if !after.contains('/') && !before.is_empty() {
+                (before.to_string(), Some(after.to_string()))
+            } else {
+                (dir.clone(), None)
+            }
+        } else {
+            (dir.clone(), None)
+        };
+
         // Expand ~ to home directory
-        if dir.starts_with('~') {
+        let expanded_dir = if dir_part.starts_with('~') {
             let home = std::env::var("HOME").unwrap_or_default();
-            format!("{}{}", home, &dir[1..])
-        } else if dir.starts_with('/') {
-            dir
+            format!("{}{}", home, &dir_part[1..])
+        } else if dir_part.starts_with('/') {
+            dir_part
         } else {
             // Relative path - make absolute from cwd
             let cwd = std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            format!("{}/{}", cwd, dir)
-        }
-    });
+            format!("{}/{}", cwd, dir_part)
+        };
+        (Some(expanded_dir), branch_part)
+    } else {
+        (None, None)
+    };
 
     let num_results = get_arg_value("--num-results")
         .or_else(|| get_arg_value("-n"))
@@ -3749,6 +3836,9 @@ fn parse_cli_args() -> CliOptions {
     let json_output = has_flag("--json");
     let sort_by_time = has_flag("--by-time");
 
+    // --branch can be specified separately or as part of --dir (dir:branch)
+    let filter_branch = get_arg_value("--branch").or(branch_from_dir);
+
     // Scroll/selection state restoration
     let selected = get_arg_value("--selected")
         .and_then(|s| s.parse().ok());
@@ -3773,6 +3863,7 @@ fn parse_cli_args() -> CliOptions {
         query,
         json_output,
         sort_by_time,
+        filter_branch,
         selected,
         list_scroll,
     }
@@ -4080,9 +4171,14 @@ fn main() -> Result<()> {
                                         // Custom directory - enter input mode
                                         app.scope_modal_open = false;
                                         app.input_mode = Some(InputMode::ScopeDir);
-                                        // Pre-fill with current filter_dir or launch_cwd
-                                        app.input_buffer = app.filter_dir.clone()
+                                        // Pre-fill with current dir:branch format
+                                        let dir = app.filter_dir.clone()
                                             .unwrap_or_else(|| app.launch_cwd.clone());
+                                        app.input_buffer = if let Some(ref branch) = app.filter_branch {
+                                            format!("{}:{}", dir, branch)
+                                        } else {
+                                            dir
+                                        };
                                     }
                                     _ => {}
                                 }
@@ -4103,8 +4199,14 @@ fn main() -> Result<()> {
                                 // Custom directory - enter input mode
                                 app.scope_modal_open = false;
                                 app.input_mode = Some(InputMode::ScopeDir);
-                                app.input_buffer = app.filter_dir.clone()
+                                // Pre-fill with current dir:branch format
+                                let dir = app.filter_dir.clone()
                                     .unwrap_or_else(|| app.launch_cwd.clone());
+                                app.input_buffer = if let Some(ref branch) = app.filter_branch {
+                                    format!("{}:{}", dir, branch)
+                                } else {
+                                    dir
+                                };
                             }
                             _ => {}
                         }
@@ -4274,23 +4376,60 @@ fn main() -> Result<()> {
                                         app.filter();
                                     }
                                     InputMode::ScopeDir => {
-                                        if app.input_buffer.is_empty() {
-                                            // Empty = global
-                                            app.scope_global = true;
-                                            app.filter_dir = None;
+                                        // Parse format: [directory][:branch]
+                                        // Examples: "", "/path", ":branch", "/path:branch"
+                                        let (dir_part, branch_part) = if let Some(colon_idx) = app.input_buffer.rfind(':') {
+                                            // Check if colon is part of a path (e.g., not preceded by ~/ or /)
+                                            // Use rfind to get the last colon (branch separator)
+                                            let before = &app.input_buffer[..colon_idx];
+                                            let after = &app.input_buffer[colon_idx + 1..];
+                                            (before.to_string(), Some(after.to_string()))
+                                        } else {
+                                            (app.input_buffer.clone(), None)
+                                        };
+
+                                        // Handle directory part
+                                        if dir_part.is_empty() {
+                                            // No dir specified = stay in current mode
+                                            // If branch_part is None, go global; otherwise keep current dir scope
+                                            if branch_part.is_none() {
+                                                app.scope_global = true;
+                                                app.filter_dir = None;
+                                            }
+                                            // If only ":branch", keep current directory scope
                                         } else {
                                             // Expand ~ to home directory
-                                            let path = if app.input_buffer.starts_with('~') {
+                                            let path = if dir_part.starts_with('~') {
                                                 let home = std::env::var("HOME").unwrap_or_default();
-                                                format!("{}{}", home, &app.input_buffer[1..])
-                                            } else if app.input_buffer.starts_with('/') {
-                                                app.input_buffer.clone()
+                                                format!("{}{}", home, &dir_part[1..])
+                                            } else if dir_part.starts_with('/') {
+                                                dir_part
                                             } else {
                                                 // Relative path - make absolute from launch_cwd
-                                                format!("{}/{}", app.launch_cwd, app.input_buffer)
+                                                format!("{}/{}", app.launch_cwd, dir_part)
                                             };
                                             app.filter_dir = Some(path);
                                             app.scope_global = false;
+                                        }
+
+                                        // Handle branch part
+                                        if let Some(branch) = branch_part {
+                                            if branch.is_empty() {
+                                                app.filter_branch = None; // ":empty" clears branch
+                                            } else {
+                                                app.filter_branch = Some(branch);
+                                            }
+                                        }
+                                        // If no colon, don't change branch filter
+
+                                        app.filter();
+                                    }
+                                    InputMode::Branch => {
+                                        // Legacy - kept for compatibility
+                                        if app.input_buffer.is_empty() {
+                                            app.filter_branch = None;
+                                        } else {
+                                            app.filter_branch = Some(app.input_buffer.clone());
                                         }
                                         app.filter();
                                     }
@@ -4319,11 +4458,11 @@ fn main() -> Result<()> {
                             KeyCode::Char(c) if c.is_ascii_digit() && (mode == InputMode::MinLines || mode == InputMode::JumpToLine) => {
                                 app.input_buffer.push(c);
                             }
-                            KeyCode::Char(c) if mode == InputMode::AfterDate || mode == InputMode::BeforeDate || mode == InputMode::ScopeDir => {
+                            KeyCode::Char(c) if mode == InputMode::AfterDate || mode == InputMode::BeforeDate || mode == InputMode::ScopeDir || mode == InputMode::Branch => {
                                 // Accept any character for flexible input
                                 app.input_buffer.push(c);
                             }
-                            KeyCode::Backspace if mode == InputMode::MinLines || mode == InputMode::JumpToLine || mode == InputMode::AfterDate || mode == InputMode::BeforeDate || mode == InputMode::ScopeDir => {
+                            KeyCode::Backspace if mode == InputMode::MinLines || mode == InputMode::JumpToLine || mode == InputMode::AfterDate || mode == InputMode::BeforeDate || mode == InputMode::ScopeDir || mode == InputMode::Branch => {
                                 app.input_buffer.pop();
                             }
                             _ => {}
@@ -4494,6 +4633,7 @@ fn main() -> Result<()> {
                 "filter_min_lines": app.filter_min_lines,
                 "filter_after_date": app.filter_after_date,
                 "filter_before_date": app.filter_before_date,
+                "filter_branch": app.filter_branch,
                 "sort_by_time": app.sort_by_time,
                 "selected": app.selected,
                 "list_scroll": app.list_scroll,
