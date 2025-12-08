@@ -148,7 +148,7 @@ impl Session {
         format_time_ago(&self.modified)
     }
 
-    /// Session ID display with annotations: abc123.. (t) (c) (s)
+    /// Session ID display with annotations: abc12345 (t) (r) (s)
     /// For Codex, extracts UUID (last 36 chars) from session_id
     fn session_id_display(&self) -> String {
         // UUIDs are always 36 characters (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
@@ -164,7 +164,7 @@ impl Session {
         } else {
             clean_id
         };
-        let mut display = format!("{}..", id_prefix);
+        let mut display = id_prefix.to_string();
 
         if self.derivation_type == "trimmed" {
             display.push_str(" (t)");
@@ -1093,7 +1093,7 @@ impl App {
             max_lines_len = max_lines_len.max(format!("{}L", s.lines).len());
         }
         // Apply same min/max constraints as render_session_list
-        max_session_id_len = max_session_id_len.max(10).min(20);
+        max_session_id_len = max_session_id_len.max(8).min(18);
         max_project_len = max_project_len.max(10).min(40);
         max_branch_len = max_branch_len.max(8).min(35);
         max_lines_len = max_lines_len.max(4);
@@ -1751,7 +1751,7 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
         max_lines_len = max_lines_len.max(format!("{}L", s.lines).len());
     }
     // Ensure minimums and reasonable maximums
-    max_session_id_len = max_session_id_len.max(10).min(20);
+    max_session_id_len = max_session_id_len.max(8).min(18);
     max_project_len = max_project_len.max(10).min(40);
     max_branch_len = max_branch_len.max(8).min(35);
     max_lines_len = max_lines_len.max(4);
