@@ -33,6 +33,8 @@ from claude_code_tools.session_utils import (
     find_session_file,
     is_malformed_session,
     default_export_path,
+    get_session_uuid,
+    count_user_messages,
 )
 from claude_code_tools.find_session import extract_first_user_message
 from claude_code_tools.find_claude_session import get_session_start_timestamp
@@ -379,12 +381,8 @@ Examples:
             )
     else:
         # Default: Node interactive UI
-        line_count = 0
-        try:
-            with open(session_file, "r", encoding="utf-8") as f:
-                line_count = sum(1 for _ in f)
-        except Exception:
-            pass
+        # Count user messages (not total JSONL lines)
+        line_count = count_user_messages(session_file, agent)
 
         # Extract preview (last user message), clean for single-line display
         preview = ""
@@ -401,10 +399,13 @@ Examples:
         if create_time is None:
             create_time = getattr(stat, 'st_birthtime', stat.st_ctime)
 
+        # Get display session ID (UUID only, handles both Claude and Codex)
+        display_session_id = get_session_uuid(session_id)
+
         session_dict = {
             "agent": agent,
             "agent_display": agent.title(),
-            "session_id": session_id,
+            "session_id": display_session_id,
             "mod_time": stat.st_mtime,
             "create_time": create_time,
             "lines": line_count,

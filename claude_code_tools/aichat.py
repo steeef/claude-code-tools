@@ -1492,6 +1492,8 @@ def search(
             "file_path": selected.get("file_path", ""),
             "cwd": selected.get("cwd", ""),
             "is_sidechain": selected.get("is_sidechain", False),
+            "create_time": selected.get("create_time", 0),
+            "mod_time": selected.get("mod_time", 0),
         }
 
         # Extract cwd from file_path metadata if needed (for older export format)

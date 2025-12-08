@@ -72,7 +72,7 @@ const toAnno = (s) => {
   return annos.length ? `(${annos.join(',')})` : '';
 };
 
-const formatLines = (lines) => (Number.isFinite(lines) ? `${lines} lines` : '');
+const formatLines = (lines) => (Number.isFinite(lines) ? `${lines} user msgs` : '');
 const formatDateRange = (start, end) => {
   if (Number.isFinite(start) && Number.isFinite(end)) {
     const sDay = DATE_DAY_FMT.format(new Date(start * 1000));

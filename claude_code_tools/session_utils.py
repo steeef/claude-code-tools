@@ -905,3 +905,95 @@ def default_export_path(
     filename = session_file.stem + ".txt"
 
     return base_dir / "exported-sessions" / agent_dir / filename
+
+
+def get_session_uuid(filename_or_stem: str) -> str:
+    """
+    Extract the UUID portion from a session filename or stem.
+
+    Works for both Claude and Codex session filenames:
+    - Claude: "abc123de-f456-7890-abcd-ef1234567890.jsonl" -> UUID is the stem
+    - Codex: "rollout-2025-01-01T12-00-00-abc123de-f456-7890-abcd-ef1234567890.jsonl"
+             -> UUID is the last 36 characters
+
+    Args:
+        filename_or_stem: Session filename or stem (with or without .jsonl)
+
+    Returns:
+        The UUID portion (36 characters for standard UUIDs, or full stem if shorter)
+    """
+    # Remove .jsonl extension if present
+    stem = filename_or_stem
+    if stem.endswith(".jsonl"):
+        stem = stem[:-6]
+
+    # UUID is always last 36 chars (format: 8-4-4-4-12 = 36 with dashes)
+    # This handles both Claude (stem IS the UUID) and Codex (rollout-timestamp-UUID)
+    if len(stem) >= 36:
+        return stem[-36:]
+    return stem
+
+
+def count_user_messages(session_file: Path, agent: str) -> int:
+    """
+    Count user messages in a session file.
+
+    Only counts actual user messages, not tool results or system messages.
+    This is the "lines" metric shown in the UI (e.g., "43L" in search results).
+
+    Args:
+        session_file: Path to session JSONL file
+        agent: Agent type ('claude' or 'codex')
+
+    Returns:
+        Number of user messages in the session
+    """
+    user_count = 0
+
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if agent == "claude":
+                    # Claude format: type is "user" or "assistant"
+                    msg_type = data.get("type")
+                    if msg_type != "user":
+                        continue
+
+                    # Exclude tool results - they have content as list with
+                    # {"type": "tool_result"}
+                    message = data.get("message", {})
+                    content = message.get("content")
+                    is_tool_result = (
+                        isinstance(content, list)
+                        and len(content) > 0
+                        and isinstance(content[0], dict)
+                        and content[0].get("type") == "tool_result"
+                    )
+                    if not is_tool_result:
+                        user_count += 1
+
+                elif agent == "codex":
+                    # Codex format: type is "response_item" with payload
+                    if data.get("type") != "response_item":
+                        continue
+
+                    payload = data.get("payload", {})
+                    if payload.get("type") != "message":
+                        continue
+
+                    if payload.get("role") == "user":
+                        user_count += 1
+
+    except (OSError, IOError):
+        pass
+
+    return user_count
