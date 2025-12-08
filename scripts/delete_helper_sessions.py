@@ -3,7 +3,9 @@
 Delete helper sessions created by smart-trim and query operations.
 
 Helper sessions are identified by:
-1. Having exactly 1 user message (lines=1 in the index)
+1. Having few user messages (lines <= 5 in the index)
+   - Claude helpers: lines=1
+   - Codex helpers: lines=3 (due to system messages counted as user)
 2. Containing one of the known helper patterns in the content
 
 Patterns:
@@ -12,7 +14,6 @@ Patterns:
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -20,44 +21,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from claude_code_tools.search_index import SessionIndex
-from claude_code_tools.session_utils import (
-    encode_claude_project_path,
-    get_claude_home,
-)
 
 # Patterns that identify helper sessions
 HELPER_PATTERNS = [
     "You are analyzing a coding agent session",
     "There is a log of a past conversation with an AI agent in this file:",
 ]
-
-
-def get_session_file_path(session_id: str, agent: str, cwd: str) -> Path | None:
-    """
-    Reconstruct the session file path from index metadata.
-
-    Args:
-        session_id: Session ID from index
-        agent: Agent type ('claude' or 'codex')
-        cwd: Working directory from index
-
-    Returns:
-        Path to session JSONL file, or None if not found
-    """
-    if agent == "claude":
-        claude_home = get_claude_home()
-        encoded_path = encode_claude_project_path(cwd)
-        session_file = claude_home / "projects" / encoded_path / f"{session_id}.jsonl"
-        if session_file.exists():
-            return session_file
-    elif agent == "codex":
-        # Codex sessions are in ~/.codex/sessions/YYYY/MM/DD/
-        codex_home = Path.home() / ".codex" / "sessions"
-        if codex_home.exists():
-            # Search for the session file (filename contains session_id)
-            for jsonl_file in codex_home.rglob(f"*{session_id}*.jsonl"):
-                return jsonl_file
-    return None
 
 
 def check_helper_pattern(session_file: Path) -> str | None:
@@ -115,27 +84,28 @@ def main():
     index = SessionIndex(index_path)
 
     # Get all sessions - use a high limit to get everything
-    print("Querying for sessions with lines=1...")
+    print("Querying for sessions with lines <= 5...")
     all_results = index.search("", limit=10000)
 
-    # Filter to sessions with exactly 1 user message
-    single_line_sessions = [r for r in all_results if r.get("lines") == 1]
-    print(f"Found {len(single_line_sessions)} sessions with lines=1")
+    # Filter to sessions with few user messages (likely helpers)
+    # Claude helpers have lines=1, Codex helpers have lines=3 (due to system messages)
+    candidate_sessions = [r for r in all_results if r.get("lines", 0) <= 5]
+    print(f"Found {len(candidate_sessions)} sessions with lines <= 5")
 
     # Check each for helper patterns
     helper_sessions = []
-    for result in single_line_sessions:
+    for result in candidate_sessions:
         session_id = result.get("session_id")
         agent = result.get("agent")
-        cwd = result.get("cwd")
+        export_path = result.get("export_path")
 
-        if not session_id or not agent or not cwd:
+        if not session_id or not export_path:
             continue
 
-        session_file = get_session_file_path(session_id, agent, cwd)
-        if not session_file:
+        session_file = Path(export_path)
+        if not session_file.exists():
             if args.verbose:
-                print(f"  Could not find session file for {session_id}")
+                print(f"  Session file not found: {export_path}")
             continue
 
         pattern = check_helper_pattern(session_file)
