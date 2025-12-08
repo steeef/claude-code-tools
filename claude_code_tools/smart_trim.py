@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from claude_code_tools.smart_trim_core import identify_trimmable_lines, SMART_TRIM_THRESHOLD
+from claude_code_tools.smart_trim_core import identify_trimmable_lines_cli, SMART_TRIM_THRESHOLD
 from claude_code_tools.trim_session import detect_agent, inject_lineage_into_first_user_message
 from claude_code_tools.session_utils import get_claude_home, resolve_session_path
 
@@ -225,25 +225,7 @@ def main():
         "--preserve-recent",
         type=int,
         default=10,
-        help="Always preserve last N messages (default: 10, deprecated - use --preserve-tail)"
-    )
-    parser.add_argument(
-        "--preserve-head",
-        type=int,
-        default=0,
-        help="Always preserve first N messages (default: 0)"
-    )
-    parser.add_argument(
-        "--preserve-tail",
-        type=int,
-        default=None,
-        help="Always preserve last N messages (default: None, uses --preserve-recent)"
-    )
-    parser.add_argument(
-        "--max-lines-per-agent",
-        type=int,
-        default=100,
-        help="Maximum lines per agent chunk for parallel processing (default: 100)"
+        help="Always preserve last N messages (default: 10)"
     )
     parser.add_argument(
         "--output-dir",
@@ -302,27 +284,24 @@ def main():
     # Parse exclude types
     exclude_types = [t.strip() for t in args.exclude_types.split(",")]
 
+    # Detect agent type for CLI
+    agent = detect_agent(session_file)
+    cli_type = "codex" if agent == "codex" else "claude"
+
     print(f"🔍 Analyzing session: {session_file.name}")
     print(f"   Excluding types: {', '.join(exclude_types)}")
-    if args.preserve_head > 0:
-        print(f"   Preserving head: {args.preserve_head} messages")
-    if args.preserve_tail is not None:
-        print(f"   Preserving tail: {args.preserve_tail} messages")
-    else:
-        print(f"   Preserving recent: {args.preserve_recent} messages")
-    print(f"   Max lines per agent: {args.max_lines_per_agent}")
+    print(f"   Preserving recent: {args.preserve_recent} messages")
+    print(f"   Using CLI: {cli_type}")
     print()
 
-    # Identify trimmable lines
+    # Identify trimmable lines using CLI
     try:
-        trimmable = identify_trimmable_lines(
+        trimmable = identify_trimmable_lines_cli(
             session_file,
             exclude_types=exclude_types,
             preserve_recent=args.preserve_recent,
-            max_lines_per_agent=args.max_lines_per_agent,
             content_threshold=args.content_threshold,
-            preserve_head=args.preserve_head,
-            preserve_tail=args.preserve_tail
+            cli_type=cli_type,
         )
     except Exception as e:
         print(f"❌ Error analyzing session: {e}", file=sys.stderr)
@@ -358,8 +337,7 @@ def main():
     output_dir = args.output_dir or session_file.parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Detect agent type from filename
-    agent = detect_agent(session_file)
+    # Use agent type already detected earlier
     if agent == "claude":
         # Generate new UUID for trimmed session
         new_uuid = str(uuid.uuid4())
@@ -382,15 +360,9 @@ def main():
         "method": "smart-trim",
         "exclude_types": exclude_types,
         "content_threshold": args.content_threshold,
+        "preserve_recent": args.preserve_recent,
+        "cli_type": cli_type,
     }
-
-    # Add preserve parameters that were used
-    if args.preserve_head > 0:
-        trim_params["preserve_head"] = args.preserve_head
-    if args.preserve_tail is not None:
-        trim_params["preserve_tail"] = args.preserve_tail
-    else:
-        trim_params["preserve_recent"] = args.preserve_recent
 
     metadata_fields = {
         "trim_metadata": {

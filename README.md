@@ -120,8 +120,11 @@ in another tmux pane, and say something like this to the first agent:
 
 > There's another coding agent "Codex" running in tmux Pane 3. Feel free to use Codex 
 to help you with your task or review your work. You can communicate with Codex using
-the tmux-cli command; you can do tmu-cli --help to see how to use it.
+the tmux-cli command; you can do tmux-cli --help to see how to use it.
 
+## Tmux-cli skill
+
+To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
 
 For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
@@ -138,31 +141,29 @@ see the dreaded warning about the context window getting full. What do you do?
 
 **Compaction is lossy.** The built-in compaction summarizes your conversation to
 free up space, but it **loses detailed information permanently**—code snippets,
-debugging steps, design decisions—gone with no way to recover them. 
+debugging steps, design decisions—gone with no way to recover them
+(You could *fork* the session and *then* compact, but this new session still has no link
+to the original session).
 
-### The Solution: Transfer Context with Lineage
+### The Solution: Manage Context with Lineage
 
-Instead of compacting, **transfer your context to a fresh session**. Running
-`aichat resume` finds the latest Claude and Codex sessions for your current
-project and lets you choose which one to roll over:
+`aichat` gives you three strategies for managing context—**trim**, **smart
+trim**, and **rollover**—all of which preserve a **lineage chain** linking back
+to parent sessions. Unlike compaction, nothing is lost:
+
+- **Full parent session preserved** — complete history remains accessible, since 
+parent session file paths are added at the end of the first user message in the session.
+- **Lineage chain** — file paths of all ancestor sessions
+- **On-demand retrieval** — the agent can look up any past session to recover
+  specific details when needed
 
 ```bash
-aichat resume  # select session and choose "Rollover: handoff work to fresh session"
+aichat resume          # Find latest session and choose a strategy
+aichat search "topic"  # Or search first, then pick resume action
 ```
 
-This gives you:
-
-- **Full parent session preserved** — nothing is lost
-- **Lineage chain** — the new session's first message contains the JSONL
-  file-paths of the entire lineage, all the way back to the original session
-- **On-demand retrieval** — the agent can look up any past session to recover
-  specific details, either on its own initiative or when you prompt it to
-  retrieve context from historical sessions (using sub-agents if available)
-
-You can chain sessions indefinitely, building a linked history that's always
-accessible.
-
-See [Resume Options](#resume-options--managing-context) below for full details.
+See [Resume Options](#resume-options--managing-context) for details on each
+strategy.
 
 ---
 
@@ -201,10 +202,11 @@ aichat search --json -g "error"    # JSONL output for AI agents
   export or build steps needed.
 - **Self-explanatory TUI:** Filter by session type, agent, date range, and more.
   All options are visible in the UI.
-- **CLI options:** Same filters available as command-line arguments. Run
+- **CLI options:** All search options are available as command-line arguments. Run
   `aichat search --help` for details.
 - **JSON mode:** Use `--json` for JSONL output that AI agents can process with
-  `jq` or other tools.
+  `jq` or other tools. Add `--by-time` to sort by last-modified time instead of
+  relevance.
 
 **Session type filters:**
 
@@ -257,82 +259,77 @@ After selecting a session, the action menu offers:
 
 ## Resume Options — Managing Context
 
-When you're running out of context in a Claude or Codex session, you have
-several options. Here's exactly what to do:
+### Finding Your Session
 
-**Option A:** Copy the session ID from within your chat:
-
-```bash
-# In your Claude/Codex session, run:
-/status                        # Shows session ID - copy it
-
-# Then in a separate terminal:
-aichat resume <session-id>     # Resume that specific session
-```
-
-**Option B:** Just quit and let the system find your session:
+Three ways to get to the resume menu:
 
 ```bash
-# Simply exit your Claude/Codex session, then run:
-aichat resume                  # Auto-finds latest sessions for this project
+# 1. You know the session ID (from /status in your chat)
+aichat resume abc123-def456
+
+# 2. You don't know the ID - auto-find latest for this project
+aichat resume
+
+# 3. You need to search - find by keywords, then pick resume action
+aichat search "langroid agent"
 ```
 
-The system will show you the latest Claude and Codex sessions for your current
-project/branch and let you choose which one to resume.
+### Running Out of Context
 
-### Resume Strategies
+When context fills up, you have three strategies. All preserve **session
+lineage** - a chain of links back to the original session that the agent can
+reference at any time.
 
-Once you select a session, you'll see several resume options:
+**1. Trim + Resume**
 
-- **Resume as-is** — Continue the session directly (if context allows)
-- **Trim + resume** — Remove large tool outputs and assistant messages, then
-  resume
-- **Smart trim** — AI-powered trimming (EXPERIMENTAL)
-- **Continue with fresh context** — Transfer context to a new session
-  (recommended)
+Truncates large tool call results and assistant messages to free up space.
+Quick and deterministic - you control what gets cut.
 
-### Continue with Fresh Context (Recommended)
+**2. Smart Trim + Resume**
 
-This is the recommended approach when running out of context. You'll be asked:
+Uses an AI agent to analyze the session and strategically identify what can
+be safely truncated. More intelligent but adds processing time.
 
-1. **Which agent to use** — Continue with the same agent (Claude/Codex) or
-   switch to a different one
-2. **Custom instructions** — Optionally specify what context to extract from
-   the parent session
+**3. Rollover**
 
-A new session starts with a summary of your current task and a **link to the
-parent session**. This link is the key difference from compacting.
+Hands off work to a fresh session with a summary of the current task. The new
+session starts with maximum context available while maintaining full access
+to the parent session's details.
 
-**Why this beats compacting:**
+### Why Lineage Matters
 
-Compacting (built into Claude/Codex) summarizes your conversation to free up
-context, but it **loses detailed information** with no way to recover it.
+Unlike built-in compaction (which permanently loses information), all three
+strategies preserve the complete parent session. The new/resumed session
+receives:
 
-Rollover to fresh session also summarizes for the new session, but critically:
-
-- **Preserves the full parent session** — nothing is lost
-- **Agent receives the lineage chain** — at the start of the new session, the
-  agent sees the full chain of past rollover sessions back to the original
-- **On-demand context retrieval** — the agent can look up any past session in
-  the chain to recover specific details
-
-**Recursive chaining:**
-
-You can roll over multiple times, building a chain of linked sessions:
+- **Lineage chain** — file paths of all ancestor sessions back to the original
+- **On-demand retrieval** — the agent can look up any past session to recover
+  specific details when needed
 
 ```
 Original Session (abc123)
- └─► Rollover Session 1 (def456)
-      └─► Rollover Session 2 (ghi789)
-           └─► Rollover Session 3 (jkl012)
-                └─► ... and so on
+ └─► Trimmed/Rollover 1 (def456)
+      └─► Trimmed/Rollover 2 (ghi789)
+           └─► ... chain continues
 ```
 
-Each session in the chain:
+### Agent Access to History
 
-- Knows its parent (traceable via `aichat find-original`)
-- Has access to the full lineage for context retrieval
-- Starts fresh with maximum context available
+Your agent can search across all historical sessions using the JSON output
+mode:
+
+```bash
+aichat search --json -g "error handling"  # Returns JSONL for programmatic use
+aichat search --json --by-time            # Sort by last-modified time
+```
+<!--CLAUDE - mention that there is a plugin `session-search` that provides a skill
+called `session-search` that shows Claude Code how to use `aichat search`
+to search past sessions.
+-->
+
+This enables agents to find and retrieve context from any past session in the
+lineage, either on their own initiative or when you prompt them to look up
+historical context.
 
 ---
 
