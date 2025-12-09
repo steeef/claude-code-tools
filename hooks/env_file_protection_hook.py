@@ -12,7 +12,7 @@ def check_env_file_access(command):
     """
     # Normalize the command
     normalized_cmd = ' '.join(command.strip().split())
-    
+
     # Patterns that indicate reading, writing, or editing .env files
     env_patterns = [
         # Direct file reading
@@ -21,7 +21,7 @@ def check_env_file_access(command):
         r'\bmore\s+.*\.env\b',
         r'\bhead\s+.*\.env\b',
         r'\btail\s+.*\.env\b',
-        
+
         # Editors - both reading and writing
         r'\bnano\s+.*\.env\b',
         r'\bvi\s+.*\.env\b',
@@ -31,7 +31,7 @@ def check_env_file_access(command):
         r'\bsubl\s+.*\.env\b',
         r'\batom\s+.*\.env\b',
         r'\bgedit\s+.*\.env\b',
-        
+
         # Writing/modifying .env files
         r'>\s*\.env\b',  # Redirect to .env
         r'>>\s*\.env\b',  # Append to .env
@@ -45,7 +45,7 @@ def check_env_file_access(command):
         r'\bcp\s+.*\.env\b',  # Copying to .env
         r'\bmv\s+.*\.env\b',  # Moving to .env
         r'\btouch\s+.*\.env\b',  # Creating .env
-        
+
         # Searching/grepping .env files
         r'\bgrep\s+.*\.env\b',
         r'\bgrep\s+.*\s+\.env\b',
@@ -54,11 +54,11 @@ def check_env_file_access(command):
         r'\bag\s+.*\.env\b',
         r'\back\s+.*\.env\b',
         r'\bfind\s+.*-name\s+["\']?\.env',
-        
+
         # Other ways to expose .env contents
         r'\becho\s+.*\$\(.*cat\s+.*\.env.*\)',
         r'\bprintf\s+.*\$\(.*cat\s+.*\.env.*\)',
-        
+
         # Also check for patterns without the dot (like "env" file)
         r'\bcat\s+["\']?env["\']?\s*$',
         r'\bcat\s+["\']?env["\']?\s*[;&|]',
@@ -67,7 +67,7 @@ def check_env_file_access(command):
         r'>\s*["\']?env["\']?\s*$',
         r'>>\s*["\']?env["\']?\s*$',
     ]
-    
+
     # Check if any pattern matches
     for pattern in env_patterns:
         if re.search(pattern, normalized_cmd, re.IGNORECASE):
@@ -85,7 +85,7 @@ def check_env_file_access(command):
                 "To modify .env files, please edit them manually outside of Claude Code."
             )
             return True, reason_text
-    
+
     return False, None
 
 
@@ -93,26 +93,29 @@ def check_env_file_access(command):
 if __name__ == "__main__":
     import json
     import sys
-    
+
     data = json.load(sys.stdin)
-    
+
     # Check if this is a Bash tool call
     tool_name = data.get("tool_name")
     if tool_name != "Bash":
         print(json.dumps({"decision": "approve"}))
         sys.exit(0)
-    
+
     # Get the command being executed
     command = data.get("tool_input", {}).get("command", "")
-    
+
     should_block, reason = check_env_file_access(command)
-    
+
     if should_block:
         print(json.dumps({
-            "decision": "block",
-            "reason": reason
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason
+            }
         }, ensure_ascii=False))
     else:
         print(json.dumps({"decision": "approve"}))
-    
+
     sys.exit(0)

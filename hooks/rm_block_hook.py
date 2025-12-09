@@ -8,11 +8,11 @@ def check_rm_command(command):
     """
     # Normalize the command
     normalized_cmd = ' '.join(command.strip().split())
-    
+
     # Check if it's an rm command
     # This catches: rm, /bin/rm, /usr/bin/rm, etc.
     # Also simpler check: if the command starts with rm or contains rm after common separators
-    if (normalized_cmd.startswith("rm ") or normalized_cmd == "rm" or 
+    if (normalized_cmd.startswith("rm ") or normalized_cmd == "rm" or
         re.search(r'(^|[;&|]\s*)(/\S*/)?rm\b', normalized_cmd)):
         reason_text = (
             "Instead of using 'rm':\n "
@@ -25,7 +25,7 @@ def check_rm_command(command):
             "```"
         )
         return True, reason_text
-    
+
     return False, None
 
 
@@ -33,26 +33,29 @@ def check_rm_command(command):
 if __name__ == "__main__":
     import json
     import sys
-    
+
     data = json.load(sys.stdin)
-    
+
     # Check if this is a Bash tool call
     tool_name = data.get("tool_name")
     if tool_name != "Bash":
         print(json.dumps({"decision": "approve"}))
         sys.exit(0)
-    
+
     # Get the command being executed
     command = data.get("tool_input", {}).get("command", "")
-    
+
     should_block, reason = check_rm_command(command)
-    
+
     if should_block:
         print(json.dumps({
-            "decision": "block",
-            "reason": reason
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason
+            }
         }, ensure_ascii=False))
     else:
         print(json.dumps({"decision": "approve"}))
-    
+
     sys.exit(0)
