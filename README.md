@@ -7,7 +7,7 @@ and other CLI coding agents.
 ## 🚀 Quick Start
 
 ```bash
-uv tool install claude-code-tools   # Python package
+uv tool install claude-code-tools   # Python package (includes Node.js UI)
 cargo install aichat-search         # Rust search TUI (requires Rust)
 ```
 
@@ -15,6 +15,9 @@ cargo install aichat-search         # Rust search TUI (requires Rust)
 
 - **Node.js 16+** — Required for `aichat` action menus (resume, export, etc.)
 - **Rust/Cargo** — Required for `aichat search` (install via `cargo install`)
+
+That's it! The Python package includes pre-installed Node.js dependencies, so no
+`npm install` is needed.
 
 Without `aichat-search`, the search command won't be available, but other
 `aichat` commands still work.
@@ -609,8 +612,16 @@ make all-major   # Bump major, push, GitHub release, build
 uv publish       # Publish to PyPI (after any of the above)
 ```
 
-These commands: bump version → push to GitHub → create GitHub release → build
-package. Then run `uv publish` to upload to PyPI.
+These commands automatically:
+
+1. Run `make prep-node` to ensure `node_ui/node_modules/` is up-to-date
+2. Bump version → push to GitHub → create GitHub release
+3. Build package (includes `node_modules/` so users don't need `npm install`)
+
+Then run `uv publish` to upload to PyPI.
+
+**Note:** Users need Node.js 16+ installed to run `aichat` action menus, but
+they do NOT need npm — the package includes pre-installed dependencies.
 
 ### Publishing (Rust Binaries)
 
@@ -637,7 +648,8 @@ Run `make help` for full list. Key commands:
 |---------|-------------|
 | `make install` | Install Python in editable mode |
 | `make aichat-search-install` | Build and install Rust binary |
-| `make all-patch/minor/major` | Version bump + push + build (for PyPI) |
+| `make prep-node` | Install node_modules (auto-runs before publish) |
+| `make all-patch/minor/major` | Bump + push + build (for PyPI) |
 | `make aichat-search-publish` | Publish Rust binary to crates.io |
 
 <a id="license"></a>

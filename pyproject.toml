@@ -35,12 +35,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
+# Don't respect .gitignore - we want to include node_modules
+ignore-vcs = true
 include = [
     "claude_code_tools/**/*.py",
     "docs/*.md",
     "node_ui/menu.js",
     "node_ui/action_config.js",
     "node_ui/package.json",
+    "node_ui/node_modules/**/*",
     "claude_code_tools/action_rpc.py",
 ]
 exclude = [
@@ -52,6 +55,15 @@ exclude = [
     "claude-code-router/",
     "reference/",
     "ghostty",
+    # Exclude git/venv/cache dirs that would otherwise be included
+    ".git/",
+    ".venv/",
+    "__pycache__/",
+    "*.pyc",
+    ".pytest_cache/",
+    "*.egg-info/",
+    "dist/",
+    "build/",
 ]
 
 [tool.pytest.ini_options]

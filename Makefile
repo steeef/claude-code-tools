@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish fix-session-metadata fix-session-metadata-apply delete-helper-sessions delete-helper-sessions-apply
+.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish fix-session-metadata fix-session-metadata-apply delete-helper-sessions delete-helper-sessions-apply prep-node
 
 help:
 	@echo "Available commands:"
@@ -23,6 +23,7 @@ help:
 	@echo "  make fix-session-metadata-apply - Actually fix sessionId mismatches"
 	@echo "  make delete-helper-sessions       - Find helper sessions to delete (dry-run)"
 	@echo "  make delete-helper-sessions-apply - Actually delete helper sessions"
+	@echo "  make prep-node    - Install node_modules (required before publishing)"
 
 install:
 	uv tool install --force -e .
@@ -70,7 +71,7 @@ clean:
 	rm -rf dist/*
 	@echo "Clean complete!"
 
-all-patch:
+all-patch: prep-node
 	@echo "Bumping patch version..."
 	uv run cz bump --increment PATCH --yes
 	@echo "Pushing to GitHub..."
@@ -84,7 +85,7 @@ all-patch:
 	uv build
 	@echo "Build complete! Ready for: uv publish --token YOUR_TOKEN"
 
-all-minor:
+all-minor: prep-node
 	@echo "Bumping minor version..."
 	uv run cz bump --increment MINOR --yes
 	@echo "Pushing to GitHub..."
@@ -98,7 +99,7 @@ all-minor:
 	uv build
 	@echo "Build complete! Ready for: uv publish --token YOUR_TOKEN"
 
-all-major:
+all-major: prep-node
 	@echo "Bumping major version..."
 	uv run cz bump --increment MAJOR --yes
 	@echo "Pushing to GitHub..."
@@ -188,3 +189,12 @@ delete-helper-sessions:
 delete-helper-sessions-apply:
 	@echo "Deleting helper sessions..."
 	@python3 scripts/delete_helper_sessions.py -v
+
+prep-node:
+	@echo "Installing Node.js dependencies for packaging..."
+	@if ! command -v npm >/dev/null 2>&1; then \
+		echo "Error: Node.js/npm not found. Install Node.js first."; \
+		exit 1; \
+	fi
+	@cd node_ui && npm install
+	@echo "node_ui/node_modules ready for packaging."
