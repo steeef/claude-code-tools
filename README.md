@@ -81,9 +81,9 @@ to parent sessions. Unlike compaction, nothing is lost:
 
 - **Full parent session preserved** — complete history remains accessible, since 
 parent session file paths are added at the end of the first user message in the session.
-- **Lineage chain** — file paths of all ancestor sessions
-- **On-demand retrieval** — the agent can look up any past session to recover
-  specific details when needed
+- **Lineage chain** — file paths of all ancestor sessions (jsonl files).
+- **On-demand retrieval** — the agent can look up any past session in the lineage chain 
+to recover  specific details when needed, or when prompted by the user, e.g. "in the linked prior chats, look up how we figured out the node-ui to Python communication".
 
 ```bash
 aichat resume          # Find latest session and choose a strategy

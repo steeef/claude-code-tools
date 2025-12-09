@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-publish fix-session-metadata fix-session-metadata-apply delete-helper-sessions delete-helper-sessions-apply prep-node
+.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-release aichat-search-publish fix-session-metadata fix-session-metadata-apply delete-helper-sessions delete-helper-sessions-apply prep-node
 
 help:
 	@echo "Available commands:"
@@ -18,7 +18,8 @@ help:
 	@echo "  make lmsh-publish - Publish lmsh to crates.io"
 	@echo "  make aichat-search         - Build aichat-search binary (requires Rust)"
 	@echo "  make aichat-search-install - Build and install aichat-search to ~/.cargo/bin"
-	@echo "  make aichat-search-publish - Publish aichat-search to crates.io"
+	@echo "  make aichat-search-release - Bump version, tag, trigger GitHub Actions build"
+	@echo "  make aichat-search-publish - Release + publish to crates.io"
 	@echo "  make fix-session-metadata       - Scan for sessionId mismatches (dry-run)"
 	@echo "  make fix-session-metadata-apply - Actually fix sessionId mismatches"
 	@echo "  make delete-helper-sessions       - Find helper sessions to delete (dry-run)"
@@ -72,6 +73,8 @@ clean:
 	@echo "Clean complete!"
 
 all-patch: prep-node
+	@echo "Ensuring dev dependencies (commitizen)..."
+	@uv sync --extra dev --quiet
 	@echo "Bumping patch version..."
 	uv run cz bump --increment PATCH --yes
 	@echo "Pushing to GitHub..."
@@ -86,6 +89,8 @@ all-patch: prep-node
 	@echo "Build complete! Ready for: uv publish --token YOUR_TOKEN"
 
 all-minor: prep-node
+	@echo "Ensuring dev dependencies (commitizen)..."
+	@uv sync --extra dev --quiet
 	@echo "Bumping minor version..."
 	uv run cz bump --increment MINOR --yes
 	@echo "Pushing to GitHub..."
@@ -100,6 +105,8 @@ all-minor: prep-node
 	@echo "Build complete! Ready for: uv publish --token YOUR_TOKEN"
 
 all-major: prep-node
+	@echo "Ensuring dev dependencies (commitizen)..."
+	@uv sync --extra dev --quiet
 	@echo "Bumping major version..."
 	uv run cz bump --increment MAJOR --yes
 	@echo "Pushing to GitHub..."
@@ -158,13 +165,23 @@ aichat-search-install: aichat-search
 		echo "⚠️  Add ~/.cargo/bin to your PATH if not already there"; \
 	fi
 
-aichat-search-publish:
+aichat-search-release:
 	@if ! command -v cargo-bump >/dev/null 2>&1; then \
 		echo "Installing cargo-bump..."; \
 		cargo install cargo-bump; \
 	fi
 	@echo "Bumping aichat-search version..."
 	@cd rust-search-ui && cargo bump patch
+	@VERSION=$$(grep "^version" rust-search-ui/Cargo.toml | head -1 | cut -d'"' -f2); \
+	echo "Creating tag rust-v$$VERSION..."; \
+	git add rust-search-ui/Cargo.toml; \
+	git commit -m "bump: aichat-search v$$VERSION"; \
+	git tag "rust-v$$VERSION"; \
+	git push && git push --tags
+	@echo "Tag pushed! GitHub Actions will build and release binaries."
+	@echo "Check progress at: https://github.com/pchalasani/claude-code-tools/actions"
+
+aichat-search-publish: aichat-search-release
 	@echo "Publishing aichat-search to crates.io..."
 	@cd rust-search-ui && cargo publish --allow-dirty
 	@echo "Published! Users can now install with: cargo install aichat-search"
