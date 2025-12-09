@@ -1,7 +1,5 @@
 # claude-code-tools
 
-> ⚠️ **README Under Construction** — This documentation is being actively revised. Some sections may be incomplete or outdated.
-
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
@@ -14,7 +12,7 @@ uv tool install claude-code-tools   # Python package (includes Node.js UI)
 
 **Install the search TUI** (one of these):
 
-- **Pre-built binary**: Download from [Releases](https://github.com/pchalasani/claude-code-tools/releases)
+- **Pre-built binary**: Download from [Releases](https://github.com/pchalasani/claude-code-tools/releases) (look for `rust-v*` releases)
 - **Cargo**: `cargo install aichat-search` (compiles from source, takes ~5-6 min)
 
 **Prerequisites:**
