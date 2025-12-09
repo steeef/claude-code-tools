@@ -1,12 +1,13 @@
 [project]
 name = "claude-code-tools"
-version = "0.2.7"
+version = "1.0.0"
 description = "Collection of tools for working with Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "claude-agent-sdk>=0.1.6",
     "click>=8.0.0",
+    "commitizen>=4.8.3",
     "fire>=0.5.0",
     "mcp>=1.13.0",
     "pytest>=9.0.1",
@@ -73,7 +74,7 @@ markers = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.2.7"
+version = "1.0.0"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",
