@@ -64,6 +64,37 @@
       "message": "🎯 SKILL AVAILABLE: Consider using the 'github-actions' skill (detects GitHub repos, checks CI status, analyzes workflow logs)",
       "cooldown_minutes": 30
     },
+    "loki-debug": {
+      "description": "Debug Kubernetes pod failures by querying Loki logs",
+      "priority": 8,
+      "activation": {
+        "promptKeywords": [
+          "loki",
+          "kubernetes logs",
+          "k8s logs",
+          "pod logs",
+          "pod failure",
+          "pod crash",
+          "container logs",
+          "debug pod",
+          "grafana loki"
+        ],
+        "promptPatterns": [
+          "loki.*log",
+          "pod.*fail",
+          "pod.*crash",
+          "kubernetes.*log",
+          "k8s.*log",
+          "debug.*pod",
+          "container.*crash",
+          "investigate.*pod"
+        ],
+        "cwdPatterns": [],
+        "minScore": 10
+      },
+      "message": "🎯 SKILL AVAILABLE: Consider using the 'loki-debug' skill (debug Kubernetes pod failures by querying Loki logs)",
+      "cooldown_minutes": 30
+    },
     "tatari-turbolift": {
       "description": "Bulk repository changes using turbolift campaign management",
       "priority": 7,
