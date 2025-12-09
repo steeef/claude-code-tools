@@ -99,3 +99,99 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
           generate_release_notes: true
+
+  update-homebrew:
+    name: Update Homebrew Formula
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/rust-v}" >> $GITHUB_OUTPUT
+
+      - name: Compute sha256 checksums
+        id: sha
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          BASE_URL="https://github.com/pchalasani/claude-code-tools/releases/download/rust-v${VERSION}"
+
+          SHA_ARM64=$(curl -sL "${BASE_URL}/aichat-search-macos-arm64.tar.gz" | shasum -a 256 | cut -d' ' -f1)
+          SHA_INTEL=$(curl -sL "${BASE_URL}/aichat-search-macos-intel.tar.gz" | shasum -a 256 | cut -d' ' -f1)
+          SHA_LINUX_X86=$(curl -sL "${BASE_URL}/aichat-search-linux-x86_64.tar.gz" | shasum -a 256 | cut -d' ' -f1)
+          SHA_LINUX_ARM=$(curl -sL "${BASE_URL}/aichat-search-linux-arm64.tar.gz" | shasum -a 256 | cut -d' ' -f1)
+
+          echo "SHA_ARM64=${SHA_ARM64}" >> $GITHUB_OUTPUT
+          echo "SHA_INTEL=${SHA_INTEL}" >> $GITHUB_OUTPUT
+          echo "SHA_LINUX_X86=${SHA_LINUX_X86}" >> $GITHUB_OUTPUT
+          echo "SHA_LINUX_ARM=${SHA_LINUX_ARM}" >> $GITHUB_OUTPUT
+
+      - name: Update Homebrew formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          SHA_ARM64=${{ steps.sha.outputs.SHA_ARM64 }}
+          SHA_INTEL=${{ steps.sha.outputs.SHA_INTEL }}
+          SHA_LINUX_X86=${{ steps.sha.outputs.SHA_LINUX_X86 }}
+          SHA_LINUX_ARM=${{ steps.sha.outputs.SHA_LINUX_ARM }}
+
+          # Clone homebrew-tap
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/pchalasani/homebrew-tap.git
+          cd homebrew-tap
+
+          # Create Formula directory if needed
+          mkdir -p Formula
+
+          # Generate formula
+          cat > Formula/aichat-search.rb << 'FORMULA_EOF'
+class AichatSearch < Formula
+  desc "Fast TUI for searching Claude Code and Codex sessions"
+  homepage "https://github.com/pchalasani/claude-code-tools"
+  version "VERSION_PLACEHOLDER"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vVERSION_PLACEHOLDER/aichat-search-macos-arm64.tar.gz"
+      sha256 "SHA_ARM64_PLACEHOLDER"
+    end
+    on_intel do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vVERSION_PLACEHOLDER/aichat-search-macos-intel.tar.gz"
+      sha256 "SHA_INTEL_PLACEHOLDER"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vVERSION_PLACEHOLDER/aichat-search-linux-arm64.tar.gz"
+      sha256 "SHA_LINUX_ARM_PLACEHOLDER"
+    end
+    on_intel do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vVERSION_PLACEHOLDER/aichat-search-linux-x86_64.tar.gz"
+      sha256 "SHA_LINUX_X86_PLACEHOLDER"
+    end
+  end
+
+  def install
+    bin.install "aichat-search"
+  end
+
+  test do
+    assert_match "aichat-search", shell_output("#{bin}/aichat-search --version")
+  end
+end
+FORMULA_EOF
+
+          # Replace placeholders
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" Formula/aichat-search.rb
+          sed -i "s/SHA_ARM64_PLACEHOLDER/${SHA_ARM64}/g" Formula/aichat-search.rb
+          sed -i "s/SHA_INTEL_PLACEHOLDER/${SHA_INTEL}/g" Formula/aichat-search.rb
+          sed -i "s/SHA_LINUX_ARM_PLACEHOLDER/${SHA_LINUX_ARM}/g" Formula/aichat-search.rb
+          sed -i "s/SHA_LINUX_X86_PLACEHOLDER/${SHA_LINUX_X86}/g" Formula/aichat-search.rb
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/aichat-search.rb
+          git commit -m "Update aichat-search to ${VERSION}"
+          git push

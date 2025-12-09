@@ -1,4 +1,4 @@
-.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-release aichat-search-publish fix-session-metadata fix-session-metadata-apply delete-helper-sessions delete-helper-sessions-apply prep-node
+.PHONY: install release patch minor major dev-install help clean all-patch all-minor all-major release-github lmsh lmsh-install lmsh-publish aichat-search aichat-search-install aichat-search-release aichat-search-publish fix-session-metadata fix-session-metadata-apply delete-helper-sessions delete-helper-sessions-apply prep-node update-homebrew
 
 help:
 	@echo "Available commands:"
@@ -20,6 +20,7 @@ help:
 	@echo "  make aichat-search-install - Build and install aichat-search to ~/.cargo/bin"
 	@echo "  make aichat-search-release - Bump version, tag, trigger GitHub Actions build"
 	@echo "  make aichat-search-publish - Release + publish to crates.io"
+	@echo "  make update-homebrew VERSION=x.y.z - Update Homebrew formula manually"
 	@echo "  make fix-session-metadata       - Scan for sessionId mismatches (dry-run)"
 	@echo "  make fix-session-metadata-apply - Actually fix sessionId mismatches"
 	@echo "  make delete-helper-sessions       - Find helper sessions to delete (dry-run)"
@@ -215,3 +216,10 @@ prep-node:
 	fi
 	@cd node_ui && npm install
 	@echo "node_ui/node_modules ready for packaging."
+
+update-homebrew:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make update-homebrew VERSION=x.y.z"; \
+		exit 1; \
+	fi
+	@./scripts/update-homebrew-formula.sh $(VERSION)
