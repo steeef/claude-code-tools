@@ -10,13 +10,16 @@ and other CLI coding agents.
 
 ```bash
 uv tool install claude-code-tools   # Python package (includes Node.js UI)
-cargo install aichat-search         # Rust search TUI (requires Rust)
 ```
+
+**Install the search TUI** (one of these):
+
+- **Pre-built binary**: Download from [Releases](https://github.com/pchalasani/claude-code-tools/releases)
+- **Cargo**: `cargo install aichat-search` (compiles from source, takes ~5-6 min)
 
 **Prerequisites:**
 
 - **Node.js 16+** — Required for `aichat` action menus (resume, export, etc.)
-- **Rust/Cargo** — Required for `aichat search` (install via `cargo install`)
 
 That's it! The Python package includes pre-installed Node.js dependencies, so no
 `npm install` is needed.
