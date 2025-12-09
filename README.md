@@ -14,7 +14,7 @@ uv tool install claude-code-tools   # Python package (includes Node.js UI)
 
 **Install the search TUI** (one of these):
 
-- **Pre-built binary**: Download from [Releases](https://github.com/pchalasani/claude-code-tools/releases)
+- **Pre-built binary**: Download from [Releases](https://github.com/pchalasani/claude-code-tools/releases) (look for `rust-v*` releases)
 - **Cargo**: `cargo install aichat-search` (compiles from source, takes ~5-6 min)
 
 **Prerequisites:**
