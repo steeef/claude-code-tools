@@ -42,6 +42,28 @@ def _require_deps():
         )
 
 
+def _iso_to_epoch_ms(iso_str: str) -> int:
+    """Convert ISO timestamp string to epoch milliseconds.
+
+    Args:
+        iso_str: ISO format timestamp (e.g., "2025-12-08T18:22:59.582Z")
+
+    Returns:
+        Epoch time in milliseconds, or 0 if parsing fails
+    """
+    if not iso_str:
+        return 0
+    try:
+        # Handle both Z suffix and +00:00 timezone formats
+        if "T" in iso_str:
+            dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(iso_str)
+        return int(dt.timestamp() * 1000)
+    except (ValueError, TypeError):
+        return 0
+
+
 @dataclass
 class SearchResult:
     """A search result with metadata and snippet."""
@@ -134,6 +156,8 @@ class SessionIndex:
         self.schema_builder.add_text_field("cwd", stored=True)
         self.schema_builder.add_text_field("created", stored=True)
         self.schema_builder.add_text_field("modified", stored=True)
+        # Fast field for sorting by modification time (epoch milliseconds)
+        self.schema_builder.add_unsigned_field("modified_ts", stored=True, fast=True)
         self.schema_builder.add_integer_field("lines", stored=True)
         # export_path needs "raw" tokenizer for exact match deletion
         self.schema_builder.add_text_field("export_path", stored=True, tokenizer_name="raw")
@@ -242,7 +266,9 @@ class SessionIndex:
             doc.add_text("branch", metadata.get("branch", "") or "")
             doc.add_text("cwd", metadata.get("cwd", "") or "")
             doc.add_text("created", metadata.get("created", "") or "")
-            doc.add_text("modified", metadata.get("modified", ""))
+            modified_str = metadata.get("modified", "")
+            doc.add_text("modified", modified_str)
+            doc.add_unsigned("modified_ts", _iso_to_epoch_ms(modified_str))
             doc.add_integer("lines", metadata.get("lines", 0))
             doc.add_text("export_path", parsed["export_path"])
 
@@ -321,7 +347,9 @@ class SessionIndex:
             doc.add_text("branch", metadata.get("branch", "") or "")
             doc.add_text("cwd", metadata.get("cwd", "") or "")
             doc.add_text("created", metadata.get("created", "") or "")
-            doc.add_text("modified", metadata.get("modified", ""))
+            modified_str = metadata.get("modified", "")
+            doc.add_text("modified", modified_str)
+            doc.add_unsigned("modified_ts", _iso_to_epoch_ms(modified_str))
             doc.add_integer("lines", metadata.get("lines", 0))
             doc.add_text("export_path", parsed["export_path"])
 
@@ -675,7 +703,9 @@ class SessionIndex:
                 doc.add_text("branch", metadata.get("branch", "") or "")
                 doc.add_text("cwd", metadata.get("cwd", "") or "")
                 doc.add_text("created", metadata.get("created", "") or "")
-                doc.add_text("modified", metadata.get("modified", ""))
+                modified_str = metadata.get("modified", "")
+                doc.add_text("modified", modified_str)
+                doc.add_unsigned("modified_ts", _iso_to_epoch_ms(modified_str))
                 doc.add_integer("lines", parsed.get("lines", 0))
                 doc.add_text("export_path", parsed["file_path"])  # Store JSONL path
 
@@ -1001,7 +1031,7 @@ class SessionIndex:
         """
         Get the most recent session matching the given criteria.
 
-        Uses direct Tantivy queries with filters for efficiency.
+        Uses Tantivy's native sorting by modified_ts fast field for efficiency.
 
         Args:
             cwd: Filter to sessions from this working directory
@@ -1036,10 +1066,16 @@ class SessionIndex:
         else:
             query = tantivy.Query.all_query()
 
-        # Fetch enough results to find valid ones after filtering
-        top_docs = searcher.search(query, 100)
+        # Search with native sorting by modified_ts descending (most recent first)
+        # Fetch enough to find valid ones after filtering deleted files and sub-agents
+        top_docs = searcher.search(
+            query,
+            limit=100,
+            order_by_field="modified_ts",
+            order=tantivy.Order.Desc,
+        )
 
-        results = []
+        # Iterate through results (already sorted by recency) and return first valid
         for _, doc_address in top_docs.hits:
             doc = searcher.doc(doc_address)
             export_path = doc.get_first("export_path")
@@ -1056,10 +1092,11 @@ class SessionIndex:
                 ):
                     continue
 
+            # Found a valid session - return it
             modified = doc.get_first("modified")
             content = doc.get_first("content")
 
-            results.append({
+            return {
                 "session_id": doc.get_first("session_id"),
                 "agent": doc.get_first("agent"),
                 "project": doc.get_first("project"),
@@ -1077,14 +1114,9 @@ class SessionIndex:
                 "last_msg_content": doc.get_first("last_msg_content") or "",
                 "derivation_type": doc.get_first("derivation_type") or "",
                 "is_sidechain": doc.get_first("is_sidechain") or "false",
-            })
+            }
 
-        if not results:
-            return None
-
-        # Sort by modified timestamp and return most recent
-        results.sort(key=lambda x: x["modified"] or "", reverse=True)
-        return results[0]
+        return None
 
 
 def get_latest_session_from_index(

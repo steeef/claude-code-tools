@@ -3315,7 +3315,7 @@ fn search_tantivy(
                     let html = tantivy_snippet.to_html();
                     if html.is_empty() {
                         // Fallback if Tantivy snippet is empty
-                        extract_snippet_with_highlight(content, &keywords, 100)
+                        extract_snippet(content, &keywords, 100)
                     } else {
                         // For phrase queries, check if Tantivy's snippet contains the phrase
                         // If not, use our custom extractor which prioritizes phrase matches
@@ -3326,7 +3326,7 @@ fn search_tantivy(
                                 merge_adjacent_highlights(&html)
                             } else {
                                 // Tantivy missed the phrase, use custom extraction
-                                extract_snippet_with_highlight(content, &keywords, 100)
+                                extract_snippet(content, &keywords, 100)
                             }
                         } else {
                             // Single word query, just use Tantivy's snippet
@@ -3334,7 +3334,7 @@ fn search_tantivy(
                         }
                     }
                 } else {
-                    extract_snippet_with_highlight(content, &keywords, 100)
+                    extract_snippet(content, &keywords, 100)
                 };
                 Some((final_score, session_id, snippet))
             })
