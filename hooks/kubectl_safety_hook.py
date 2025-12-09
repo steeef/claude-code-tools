@@ -11,27 +11,31 @@ READ_ONLY_COMMANDS = {
     'config', 'explain', 'api-resources', 'api-versions', 'diff'
 }
 
-# Destructive kubectl commands that require user approval
+# Destructive kubectl commands that require user approval (blocks)
 DESTRUCTIVE_COMMANDS = {
     'delete', 'apply', 'create', 'replace', 'patch', 'edit',
     'scale', 'rollout', 'annotate', 'label', 'expose', 'run',
-    'exec', 'cp', 'port-forward', 'proxy'
+    'exec', 'cp'
 }
+
+# Commands that ask for permission instead of blocking
+ASK_PERMISSION_COMMANDS = {'port-forward', 'proxy'}
 
 def check_kubectl_command(command):
     """
-    Check if kubectl command should be blocked for user approval.
-    Returns (should_block, reason)
+    Check if kubectl command should be blocked or ask for user approval.
+    Returns (should_prompt, reason, decision_type)
+    - decision_type: "block" for destructive commands, "ask" for permission-based
     """
     # Check if this is a kubectl command
     if not command.strip().startswith('kubectl'):
-        return False, None
+        return False, None, None
 
     try:
         # Parse the command to extract the kubectl subcommand
         parts = shlex.split(command)
         if len(parts) < 2:
-            return False, None
+            return False, None, None
 
         # Skip 'kubectl' and any global flags to find the subcommand
         subcommand = None
@@ -50,11 +54,11 @@ def check_kubectl_command(command):
                 break
 
         if not subcommand:
-            return False, None
+            return False, None, None
 
         # Allow read-only commands
         if subcommand in READ_ONLY_COMMANDS:
-            return False, None
+            return False, None, None
 
         # Block destructive commands with user prompt
         if subcommand in DESTRUCTIVE_COMMANDS:
@@ -65,7 +69,7 @@ def check_kubectl_command(command):
 
             if is_dry_run:
                 # Allow dry-run commands without prompting
-                return False, None
+                return False, None, None
 
             # Extract context if present
             context = "default"
@@ -87,11 +91,29 @@ This command can modify or delete Kubernetes resources.
 
 Type 'yes' to proceed or 'no' to cancel: """
 
-            return True, reason
+            return True, reason, "block"
+
+        # Ask permission for port-forward and similar commands
+        if subcommand in ASK_PERMISSION_COMMANDS:
+            # Extract context if present
+            context = "default"
+            for i, part in enumerate(parts):
+                if part == '--context' and i + 1 < len(parts):
+                    context = parts[i + 1]
+                    break
+
+            reason = f"""kubectl {subcommand.upper()} requested
+
+Command: {command}
+Context: {context}
+
+This will establish a connection to the cluster."""
+
+            return True, reason, "ask"
 
         # Block unknown kubectl commands as potentially dangerous
-        return True, f"Unknown kubectl command '{subcommand}' blocked for safety. Known safe commands: {', '.join(sorted(READ_ONLY_COMMANDS))}"
+        return True, f"Unknown kubectl command '{subcommand}' blocked for safety. Known safe commands: {', '.join(sorted(READ_ONLY_COMMANDS))}", "block"
 
     except Exception as e:
         # If we can't parse the command, be safe and allow it
-        return False, None
+        return False, None, None
