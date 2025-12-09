@@ -3,6 +3,12 @@ use std::process::{Command, Stdio};
 mod shell;
 use shell::Shell;
 
+#[derive(Clone, Copy, PartialEq)]
+enum Agent {
+    Claude,
+    Codex,
+}
+
 fn print_version() {
     println!("lmsh {}", env!("CARGO_PKG_VERSION"));
 }
@@ -12,23 +18,50 @@ fn main() {
     // - Handle trivial flags first to benchmark absolute minimal path
     // - Avoid any I/O before interactive mode (e.g., history, config)
     let args: Vec<String> = env::args().skip(1).collect();
-    
-    // Check for flags first
-    if args.is_empty() {
-        // No args, continue to interactive mode
-    } else if args[0] == "--version" || args[0] == "-V" {
-        print_version();
-        return;
-    } else if args[0] == "-h" || args[0] == "--help" {
-        println!(
-            "Usage: lmsh [OPTIONS] [NATURAL_LANGUAGE_COMMAND]\n\n  [NATURAL_LANGUAGE_COMMAND]  Translate and execute, then enter interactive mode\n  -V, --version  Print version and exit\n  -h, --help     Show this help\n"
-        );
-        return;
+
+    let mut agent = Agent::Claude; // default
+    let mut remaining_args = Vec::new();
+    let mut i = 0;
+
+    // Parse arguments
+    while i < args.len() {
+        match args[i].as_str() {
+            "--version" | "-V" => {
+                print_version();
+                return;
+            }
+            "-h" | "--help" => {
+                println!(
+                    "Usage: lmsh [OPTIONS] [NATURAL_LANGUAGE_COMMAND]\n\n  [NATURAL_LANGUAGE_COMMAND]  Translate and execute, then enter interactive mode\n  --agent <claude|codex>     Agent to use (default: claude)\n  -V, --version              Print version and exit\n  -h, --help                 Show this help\n"
+                );
+                return;
+            }
+            "--agent" => {
+                if i + 1 < args.len() {
+                    match args[i + 1].as_str() {
+                        "claude" => agent = Agent::Claude,
+                        "codex" => agent = Agent::Codex,
+                        other => {
+                            eprintln!("Unknown agent: {}. Use 'claude' or 'codex'.", other);
+                            std::process::exit(1);
+                        }
+                    }
+                    i += 2;
+                } else {
+                    eprintln!("--agent requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            _ => {
+                remaining_args.push(args[i].clone());
+                i += 1;
+            }
+        }
     }
-    
-    // If we get here and have args, treat them as natural language
-    let initial_nl_command = if !args.is_empty() && !args[0].starts_with('-') {
-        Some(args.join(" "))
+
+    // If we have remaining args, treat them as natural language
+    let initial_nl_command = if !remaining_args.is_empty() {
+        Some(remaining_args.join(" "))
     } else {
         None
     };
@@ -57,7 +90,7 @@ fn main() {
     // If initial natural language command provided, process it first
     if let Some(nl_cmd) = initial_nl_command {
         println!("Translating: {} (this may take a few seconds...)", nl_cmd);
-        match generate_command(&nl_cmd, &history) {
+        match generate_command(&nl_cmd, &history, agent) {
             Ok(suggested) => {
                 // Record history pair
                 history.push((nl_cmd.clone(), suggested.clone()));
@@ -90,7 +123,7 @@ fn main() {
                 }
             }
             Err(e) => {
-                eprintln!("Claude error: {}", e);
+                eprintln!("Agent error: {}", e);
             }
         }
         println!(); // Add blank line before interactive prompt
@@ -109,8 +142,8 @@ fn main() {
                     continue;
                 }
 
-                // Natural language -> Claude -> suggested shell command
-                match generate_command(trimmed, &history) {
+                // Natural language -> Agent -> suggested shell command
+                match generate_command(trimmed, &history, agent) {
                     Ok(suggested) => {
                         // Record history pair (user_input, generated_command)
                         history.push((trimmed.to_string(), suggested.clone()));
@@ -126,7 +159,7 @@ fn main() {
                                 let _ = rl.add_history_entry(&cmdline);
                                 match pshell.run(cmd) {
                                     Ok((_code, out)) => {
-                                        if !out.is_empty() { 
+                                        if !out.is_empty() {
                                             print!("{}", out);
                                             // Only add newline if output doesn't already end with one
                                             if !out.ends_with('\n') {
@@ -144,7 +177,7 @@ fn main() {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Claude error: {}", e);
+                        eprintln!("Agent error: {}", e);
                         // Fallback: let user type a raw shell command
                         let fallback = rl.readline("cmd> ");
                         match fallback {
@@ -154,7 +187,7 @@ fn main() {
                                 let _ = rl.add_history_entry(&cmdline);
                                 match pshell.run(cmd) {
                                     Ok((_code, out)) => {
-                                        if !out.is_empty() { 
+                                        if !out.is_empty() {
                                             print!("{}", out);
                                             // Only add newline if output doesn't already end with one
                                             if !out.ends_with('\n') {
@@ -180,29 +213,57 @@ fn main() {
     }
 }
 
-// --- Claude integration ---
-fn generate_command(nl_prompt: &str, history: &[(String, String)]) -> Result<String, String> {
-    // Build a prompt that includes full history and requests <COMMAND> markers
-    let full_prompt = build_prompt_with_history(history, nl_prompt);
+// --- Agent integration ---
+fn generate_command(nl_prompt: &str, history: &[(String, String)], agent: Agent) -> Result<String, String> {
+    // Build the user prompt with history and explicit instructions
+    let user_prompt = build_user_prompt_with_history(history, nl_prompt);
 
-    let output = Command::new("claude")
-        .arg("--model")
-        .arg("sonnet")
-        .arg("-p")
-        .arg(&full_prompt)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("failed to spawn 'claude': {e}"))?;
+    // System prompt with instructions
+    let system_prompt = "DO NOT READ CLAUDE.MD; You are an expert shell command generator. When the user gives you a natural language description of what they want to do, return ONLY the shell command wrapped in <COMMAND></COMMAND> tags. No explanations, no prose, just the command. If multiple steps are needed, join them with '&&'.";
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("claude exited with status {}: {}", output.status, stderr.trim()));
+    match agent {
+        Agent::Claude => {
+            let output = Command::new("claude")
+                .arg("-p")
+                .arg(&user_prompt)
+                .arg("--append-system-prompt")
+                .arg(system_prompt)
+                .arg("--model")
+                .arg("haiku")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+                .map_err(|e| format!("failed to spawn 'claude': {e}"))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("claude exited with status {}: {}", output.status, stderr.trim()));
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            extract_command_from_output(&stdout)
+                .ok_or_else(|| "could not extract a command from Claude output".to_string())
+        }
+        Agent::Codex => {
+            // Codex doesn't have --append-system-prompt, so we build a combined prompt
+            let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
+            let output = Command::new("codex")
+                .arg("exec")
+                .arg(&combined_prompt)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null()) // Ignore stderr as codex streams progress there
+                .output()
+                .map_err(|e| format!("failed to spawn 'codex': {e}"))?;
+
+            if !output.status.success() {
+                return Err(format!("codex exited with status {}", output.status));
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            extract_command_from_output(&stdout)
+                .ok_or_else(|| "could not extract a command from Codex output".to_string())
+        }
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    extract_command_from_output(&stdout)
-        .ok_or_else(|| "could not extract a command from Claude output".to_string())
 }
 
 fn extract_command_from_output(s: &str) -> Option<String> {
@@ -248,26 +309,27 @@ fn extract_command_from_output(s: &str) -> Option<String> {
     None
 }
 
-fn build_prompt_with_history(history: &[(String, String)], nl_prompt: &str) -> String {
+fn build_user_prompt_with_history(history: &[(String, String)], nl_prompt: &str) -> String {
     let mut buf = String::new();
-    buf.push_str(
-        "You are a shell command generator. Return ONLY the shell command wrapped in <COMMAND></COMMAND>. No prose.\nIf multiple steps are needed, join with '&&'.\n\nPrevious conversation:\n",
-    );
 
-    // Limit to the last 10 exchanges to bound prompt size
-    let start = history.len().saturating_sub(10);
-    for (user, cmd) in &history[start..] {
-        buf.push_str("User: ");
-        buf.push_str(user);
-        buf.push('\n');
-        buf.push_str("Command: <COMMAND>");
-        buf.push_str(cmd);
-        buf.push_str("</COMMAND>\n");
+    if !history.is_empty() {
+        buf.push_str("Previous conversation:\n");
+
+        // Limit to the last 10 exchanges to bound prompt size
+        let start = history.len().saturating_sub(10);
+        for (user, cmd) in &history[start..] {
+            buf.push_str("User: ");
+            buf.push_str(user);
+            buf.push('\n');
+            buf.push_str("Command: <COMMAND>");
+            buf.push_str(cmd);
+            buf.push_str("</COMMAND>\n");
+        }
+        buf.push_str("\n");
     }
 
-    buf.push_str("\nUser: ");
+    buf.push_str("Create a shell command for the following request and return ONLY the command wrapped in <COMMAND></COMMAND> tags:\n\n");
     buf.push_str(nl_prompt);
-    buf.push_str("\nGenerate command with <COMMAND></COMMAND> markers.");
 
     buf
 }

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
 kubectl safety hook - allows read-only commands, prompts for destructive ones.
+Supports three decision types: allow, ask (user prompt), block (deny).
 """
-import re
+import json
+import sys
 import shlex
 
 # Read-only kubectl commands that are always safe
@@ -21,21 +23,21 @@ DESTRUCTIVE_COMMANDS = {
 # Commands that ask for permission instead of blocking
 ASK_PERMISSION_COMMANDS = {'port-forward', 'proxy'}
 
+
 def check_kubectl_command(command):
     """
     Check if kubectl command should be blocked or ask for user approval.
-    Returns (should_prompt, reason, decision_type)
-    - decision_type: "block" for destructive commands, "ask" for permission-based
+    Returns (decision, reason) where decision is "allow", "ask", or "block".
     """
     # Check if this is a kubectl command
     if not command.strip().startswith('kubectl'):
-        return False, None, None
+        return ("allow", None)
 
     try:
         # Parse the command to extract the kubectl subcommand
         parts = shlex.split(command)
         if len(parts) < 2:
-            return False, None, None
+            return ("allow", None)
 
         # Skip 'kubectl' and any global flags to find the subcommand
         subcommand = None
@@ -54,11 +56,11 @@ def check_kubectl_command(command):
                 break
 
         if not subcommand:
-            return False, None, None
+            return ("allow", None)
 
         # Allow read-only commands
         if subcommand in READ_ONLY_COMMANDS:
-            return False, None, None
+            return ("allow", None)
 
         # Block destructive commands with user prompt
         if subcommand in DESTRUCTIVE_COMMANDS:
@@ -69,7 +71,7 @@ def check_kubectl_command(command):
 
             if is_dry_run:
                 # Allow dry-run commands without prompting
-                return False, None, None
+                return ("allow", None)
 
             # Extract context if present
             context = "default"
@@ -87,11 +89,9 @@ Action: {subcommand.upper()}
 This command can modify or delete Kubernetes resources.
 
 ⚠️  This could impact running applications and services.
-⚠️  Always verify the correct context and resources.
+⚠️  Always verify the correct context and resources."""
 
-Type 'yes' to proceed or 'no' to cancel: """
-
-            return True, reason, "block"
+            return ("block", reason)
 
         # Ask permission for port-forward and similar commands
         if subcommand in ASK_PERMISSION_COMMANDS:
@@ -109,11 +109,51 @@ Context: {context}
 
 This will establish a connection to the cluster."""
 
-            return True, reason, "ask"
+            return ("ask", reason)
 
         # Block unknown kubectl commands as potentially dangerous
-        return True, f"Unknown kubectl command '{subcommand}' blocked for safety. Known safe commands: {', '.join(sorted(READ_ONLY_COMMANDS))}", "block"
+        return ("block", f"Unknown kubectl command '{subcommand}' blocked for safety. Known safe commands: {', '.join(sorted(READ_ONLY_COMMANDS))}")
 
-    except Exception as e:
+    except Exception:
         # If we can't parse the command, be safe and allow it
-        return False, None, None
+        return ("allow", None)
+
+
+def main():
+    data = json.load(sys.stdin)
+
+    # Check if this is a Bash tool call
+    tool_name = data.get("tool_name")
+    if tool_name != "Bash":
+        print(json.dumps({"decision": "approve"}))
+        sys.exit(0)
+
+    # Get the command being executed
+    command = data.get("tool_input", {}).get("command", "")
+
+    decision, reason = check_kubectl_command(command)
+
+    if decision == "block":
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason
+            }
+        }, ensure_ascii=False))
+    elif decision == "ask":
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": reason
+            }
+        }))
+    else:
+        print(json.dumps({"decision": "approve"}))
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

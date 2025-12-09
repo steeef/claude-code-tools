@@ -11,11 +11,11 @@ import os
 def check_claude_md_write(tool_name, tool_input):
     """
     Check if a tool call attempts to write to CLAUDE.md files.
-    Returns tuple: (should_block: bool, reason: str or None)
+    Returns (decision, reason) where decision is "allow" or "block".
     """
     # Only check file writing tools
     if tool_name not in ["Write", "Edit", "MultiEdit"]:
-        return False, None
+        return ("allow", None)
 
     # Get the file path from tool input
     file_path = None
@@ -27,7 +27,7 @@ def check_claude_md_write(tool_name, tool_input):
         file_path = tool_input.get("file_path")
 
     if not file_path:
-        return False, None
+        return ("allow", None)
 
     # Normalize the file path to check if it's a CLAUDE.md file
     normalized_path = os.path.normpath(file_path).lower()
@@ -44,9 +44,9 @@ def check_claude_md_write(tool_name, tool_input):
             "AGENTS.md should contain general instructions for AI coding agents, "
             "not Claude Code-specific references."
         )
-        return True, reason_text
+        return ("block", reason_text)
 
-    return False, None
+    return ("allow", None)
 
 
 def main():
@@ -57,12 +57,15 @@ def main():
     tool_input = data.get("tool_input", {})
 
     # Check if this tool call should be blocked
-    should_block, reason = check_claude_md_write(tool_name, tool_input)
+    decision, reason = check_claude_md_write(tool_name, tool_input)
 
-    if should_block:
+    if decision == "block":
         print(json.dumps({
-            "decision": "block",
-            "reason": reason
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason
+            }
         }, ensure_ascii=False))
     else:
         print(json.dumps({"decision": "approve"}))

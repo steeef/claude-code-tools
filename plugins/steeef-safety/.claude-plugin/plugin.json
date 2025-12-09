@@ -1,0 +1,8 @@
+{
+  "name": "steeef-safety",
+  "version": "1.0.0",
+  "description": "Additional safety hooks for kubectl, terraform, skill activation, and CLAUDE.md protection",
+  "author": {
+    "name": "Stephen Price"
+  }
+}

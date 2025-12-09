@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
 Terraform safety hook - allows read-only commands, blocks apply operations.
+Supports three decision types: allow, ask (user prompt), block (deny).
 """
-import re
+import json
+import sys
 import shlex
 
 # Read-only terraform commands that are always safe
@@ -16,20 +18,21 @@ DESTRUCTIVE_COMMANDS = {
     'apply', 'destroy', 'import', 'taint', 'untaint', 'refresh'
 }
 
+
 def check_terraform_command(command):
     """
     Check if terraform command should be blocked for user approval.
-    Returns (should_block, reason)
+    Returns (decision, reason) where decision is "allow", "ask", or "block".
     """
     # Check if this is a terraform or tf command
     if not (command.strip().startswith('terraform') or command.strip().startswith('tf ')):
-        return False, None
+        return ("allow", None)
 
     try:
         # Parse the command to extract the terraform subcommand
         parts = shlex.split(command)
         if len(parts) < 2:
-            return False, None
+            return ("allow", None)
 
         # Skip 'terraform'/'tf' and any global flags to find the subcommand
         subcommand = None
@@ -48,11 +51,11 @@ def check_terraform_command(command):
                 break
 
         if not subcommand:
-            return False, None
+            return ("allow", None)
 
         # Allow read-only commands
         if subcommand in READ_ONLY_COMMANDS:
-            return False, None
+            return ("allow", None)
 
         # Block destructive commands
         if subcommand in DESTRUCTIVE_COMMANDS:
@@ -68,25 +71,19 @@ Action: {subcommand.upper()}
 This command can modify or destroy infrastructure resources.
 
 ⚠️  This could impact running services and infrastructure.
-⚠️  Always verify the correct workspace and resources with 'terraform plan' first.
+⚠️  Always verify the correct workspace and resources with 'terraform plan' first."""
 
-Type 'yes' to proceed or 'no' to cancel: """
-
-            return True, reason
+            return ("block", reason)
 
         # Block unknown terraform commands as potentially dangerous
-        return True, f"Unknown terraform command '{subcommand}' blocked for safety. Known safe commands: {', '.join(sorted(READ_ONLY_COMMANDS))}"
+        return ("block", f"Unknown terraform command '{subcommand}' blocked for safety. Known safe commands: {', '.join(sorted(READ_ONLY_COMMANDS))}")
 
-    except Exception as e:
+    except Exception:
         # If we can't parse the command, be safe and allow it
-        return False, None
+        return ("allow", None)
 
 
-# If run as a standalone script
-if __name__ == "__main__":
-    import json
-    import sys
-
+def main():
     data = json.load(sys.stdin)
 
     # Check if this is a Bash tool call
@@ -98,14 +95,29 @@ if __name__ == "__main__":
     # Get the command being executed
     command = data.get("tool_input", {}).get("command", "")
 
-    should_block, reason = check_terraform_command(command)
+    decision, reason = check_terraform_command(command)
 
-    if should_block:
+    if decision == "block":
         print(json.dumps({
-            "decision": "block",
-            "reason": reason
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason
+            }
         }, ensure_ascii=False))
+    elif decision == "ask":
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": reason
+            }
+        }))
     else:
         print(json.dumps({"decision": "approve"}))
 
     sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

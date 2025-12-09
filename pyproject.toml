@@ -1,22 +1,32 @@
 [project]
 name = "claude-code-tools"
-version = "0.2.3"
+version = "1.0.0"
 description = "Collection of tools for working with Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "claude-agent-sdk>=0.1.6",
     "click>=8.0.0",
+    "commitizen>=4.8.3",
     "fire>=0.5.0",
     "mcp>=1.13.0",
+    "pytest>=9.0.1",
+    "pyyaml>=6.0",
     "rich>=13.0.0",
+    "tantivy>=0.22.0",
+    "textual>=0.47.0",
+    "tqdm>=4.67.1",
 ]
 
 [project.optional-dependencies]
 dev = ["commitizen>=3.0.0"]
 
 [project.scripts]
-find-claude-session = "claude_code_tools.find_claude_session:main"
-find-codex-session = "claude_code_tools.find_codex_session:main"
+# Unified session management interface
+# All session commands accessible via: aichat <subcommand>
+aichat = "claude_code_tools.aichat:main"
+
+# Non-session utilities
 vault = "claude_code_tools.dotenv_vault:main"
 tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"
@@ -26,9 +36,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
+# Don't respect .gitignore - we want to include node_modules
+ignore-vcs = true
 include = [
     "claude_code_tools/**/*.py",
     "docs/*.md",
+    "node_ui/menu.js",
+    "node_ui/action_config.js",
+    "node_ui/package.json",
+    "node_ui/node_modules/**/*",
+    "claude_code_tools/action_rpc.py",
 ]
 exclude = [
     "demos/",
@@ -39,11 +56,25 @@ exclude = [
     "claude-code-router/",
     "reference/",
     "ghostty",
+    # Exclude git/venv/cache dirs that would otherwise be included
+    ".git/",
+    ".venv/",
+    "__pycache__/",
+    "*.pyc",
+    ".pytest_cache/",
+    "*.egg-info/",
+    "dist/",
+    "build/",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (require API calls)",
 ]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.2.3"
+version = "1.0.0"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",

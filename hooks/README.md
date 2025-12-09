@@ -23,16 +23,16 @@ Claude Code hooks are scripts that intercept tool operations to:
    - Open or create `~/.claude/settings.json`
    - Copy the entire "hooks" section from `settings.sample.json`
    - Replace all instances of `/path/to/claude-code-tools` with your actual repository path
-
+   
 3. If you already have other settings in `~/.claude/settings.json`, merge the hooks section:
    ```json
    {
-     "hooks": {
+     "hooks": { 
        // ... content from settings.sample.json ...
      },
      // ... your other settings ...
    }
-   ```
+   ``` 
 
 ## Hook Types
 
@@ -53,8 +53,8 @@ Triggered after a tool completes. Used for cleanup and state management.
 
 ### 1. notification_hook.sh
 
-**Type:** Notification
-**Purpose:** Send notifications to ntfy.sh channel
+**Type:** Notification  
+**Purpose:** Send notifications to ntfy.sh channel  
 **Behavior:**
 - Reads JSON input and extracts the 'message' field
 - Sends notification to ntfy.sh/cc-alerts channel
@@ -65,14 +65,12 @@ channel.
 
 ### 2. bash_hook.py
 
-**Type:** PreToolUse (Bash)
-**Purpose:** Unified safety checks for bash commands
+**Type:** PreToolUse (Bash)  
+**Purpose:** Unified safety checks for bash commands  
 **Blocks:**
 - `rm` commands (enforces TRASH directory pattern)
 - Dangerous `git add` patterns (`-A`, `--all`, `.`, `*`)
 - Unsafe `git checkout` operations
-- Destructive kubectl commands
-- Destructive terraform commands
 - Commands that could cause data loss
 
 **Features:**
@@ -82,8 +80,8 @@ channel.
 
 ### 3. file_size_conditional_hook.py
 
-**Type:** PreToolUse (Read)
-**Purpose:** Prevent reading large files that bloat context
+**Type:** PreToolUse (Read)  
+**Purpose:** Prevent reading large files that bloat context  
 **Behavior:**
 - Main agent: Blocks files > 500 lines
 - Sub-agents: Blocks files > 10,000 lines
@@ -97,8 +95,8 @@ channel.
 
 ### 4. pretask_subtask_flag.py & posttask_subtask_flag.py
 
-**Type:** PreToolUse/PostToolUse (Task)
-**Purpose:** Track sub-agent execution state
+**Type:** PreToolUse/PostToolUse (Task)  
+**Purpose:** Track sub-agent execution state  
 **Behavior:**
 - Pre: Creates `.claude_in_subtask.flag` file
 - Post: Removes the flag file
@@ -113,24 +111,38 @@ channel.
 - Suggests using `rg` (ripgrep) instead
 - Ensures better performance and features
 
-### 6. terraform_safety_hook.py
+### 6. file_length_limit_hook.py
 
-**Type:** PreToolUse (Bash)
-**Purpose:** Prevent destructive terraform operations
-**Blocks:**
-- `terraform apply` and `tf apply` commands
-- `terraform destroy` and other destructive operations
-- Commands that could modify infrastructure
+**Type:** PreToolUse (Edit, Write)
+**Purpose:** Prevent creation of overly long source code files
+**Behavior:**
+- Checks Edit and Write operations for source code files
+- Blocks operations that would result in files > 1000 lines (configurable)
+- Uses speed bump pattern (blocks first attempt, allows second)
+- Only applies to source code files (Python, TypeScript, Rust, C, C++, etc.)
 
-**Allows:**
-- Read-only commands: `plan`, `show`, `validate`, `state list`, etc.
-- Planning operations: `terraform plan`
-- Workspace management: `terraform workspace`
+**Speed Bump Pattern:**
+- First attempt: Blocks and prompts user to consider refactoring
+- User can choose to refactor or proceed
+- Second attempt: Allows operation if user approves
+- Uses `.claude_file_length_warning.flag` file to track state
 
-**Features:**
-- Integrated into bash_hook.py for unified safety checks
-- Provides clear warnings about infrastructure impact
-- Suggests running `terraform plan` to preview changes first
+**Supported Languages:**
+- Python (.py)
+- TypeScript/JavaScript (.ts, .tsx, .js, .jsx)
+- Rust (.rs)
+- C/C++ (.c, .cpp, .cc, .cxx, .h, .hpp)
+- Go (.go)
+- Java (.java)
+- Kotlin (.kt)
+- Swift (.swift)
+- Ruby (.rb)
+- PHP (.php)
+- C# (.cs)
+- Scala (.scala)
+- Objective-C (.m, .mm)
+- R (.r)
+- Julia (.jl)
 
 ## Safety Features
 
@@ -177,6 +189,27 @@ The file size hook prevents Claude from reading huge files that would:
 - Consume excessive context
 - Slow down processing
 - Potentially cause errors
+
+### File Length Enforcement
+
+The file length limit hook maintains code quality by:
+
+**Preventing Large Files:**
+- Blocks creation of source code files > 1000 lines (configurable via MAX_FILE_LINES)
+- Encourages modular, maintainable code structure
+- Only applies to source code files (not config, data, or docs)
+
+**Speed Bump Workflow:**
+1. First attempt to create large file is blocked
+2. User is prompted: "Would you like to refactor or proceed?"
+3. If user approves proceeding, retry succeeds
+4. If user wants refactoring, work on breaking code into modules
+
+**Benefits:**
+- Enforces code modularity best practices
+- Prevents monolithic files that are hard to maintain
+- Gives user control over when exceptions are needed
+- Improves code organization and readability
 
 ## Customization
 

@@ -15,9 +15,9 @@ import re
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
-# Configuration file path
+# Configuration file path - look relative to this script
 HOOK_DIR = Path(__file__).parent
 RULES_FILE = HOOK_DIR / "skill-rules.json"
 
@@ -27,10 +27,9 @@ def load_rules() -> Dict:
     try:
         with open(RULES_FILE, 'r') as f:
             return json.load(f)
-    except Exception as e:
+    except Exception:
         # Fail gracefully - don't block prompts if config is missing
-        print(json.dumps({"decision": "approve"}), file=sys.stderr)
-        sys.exit(0)
+        return {}
 
 
 def load_state(state_file: str) -> Dict:
@@ -79,14 +78,14 @@ def score_skill(skill_name: str, skill_config: Dict, prompt: str, cwd: str, scor
     keywords = skill_config['activation'].get('promptKeywords', [])
     for keyword in keywords:
         if keyword.lower() in prompt_lower:
-            score += scoring['keyword_match']
+            score += scoring.get('keyword_match', 10)
 
     # Pattern matching (regex)
     patterns = skill_config['activation'].get('promptPatterns', [])
     for pattern in patterns:
         try:
             if re.search(pattern, prompt, re.IGNORECASE):
-                score += scoring['pattern_match']
+                score += scoring.get('pattern_match', 15)
         except re.error:
             continue  # Skip invalid patterns
 
@@ -97,7 +96,7 @@ def score_skill(skill_name: str, skill_config: Dict, prompt: str, cwd: str, scor
         pattern_regex = pattern.replace('**/', '.*').replace('*', '[^/]*')
         try:
             if re.search(pattern_regex, cwd):
-                score += scoring['cwd_match']
+                score += scoring.get('cwd_match', 8)
         except re.error:
             continue
 
@@ -143,6 +142,11 @@ def main():
 
         # Load configuration
         rules = load_rules()
+        if not rules:
+            # No rules configured, pass through
+            print(json.dumps({}))
+            sys.exit(0)
+
         skills = rules.get('skills', {})
         scoring = rules.get('scoring', {})
         global_config = rules.get('global', {})
@@ -195,7 +199,7 @@ def main():
         print(json.dumps(output))
         sys.exit(0)
 
-    except Exception as e:
+    except Exception:
         # Fail gracefully - never block prompts due to hook errors
         print(json.dumps({}), file=sys.stdout)
         sys.exit(0)

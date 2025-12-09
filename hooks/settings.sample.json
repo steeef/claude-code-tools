@@ -48,14 +48,23 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit",
+        "matcher": "Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/claude-code-tools/hooks/claude_md_block_hook.py"
+            "command": "/path/to/claude-code-tools/hooks/file_length_limit_hook.py"
           }
         ]
-      }      
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/claude-code-tools/hooks/file_length_limit_hook.py"
+          }
+        ]
+      }
     ],
     "PostToolUse": [
       {
