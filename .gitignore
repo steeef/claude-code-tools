@@ -184,3 +184,8 @@ reference/
 # Ignore config.json files at any level
 **/config.json
 *.flag
+
+# Local files
+issues/
+WORKLOG/
+

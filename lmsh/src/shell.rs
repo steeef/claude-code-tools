@@ -37,7 +37,7 @@ impl Shell {
         cmd.arg("-i");
         cmd.env("TERM", env::var("TERM").unwrap_or_else(|_| "xterm-256color".into()));
         cmd.env("LMSHELL", "1");
-        
+
         // Set the working directory to the current directory
         if let Ok(cwd) = env::current_dir() {
             cmd.cwd(cwd);
@@ -60,12 +60,24 @@ impl Shell {
             .take_writer()
             .map_err(|e| format!("take writer failed: {e}"))?;
 
-        Ok(Shell {
+        // Disable ZLE (zsh line editor) to prevent command echo and prompt repainting
+        // Wait a moment for shell to initialize
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Create a shell struct first
+        let mut shell = Shell {
             master: pair.master,
             child,
             reader,
             writer,
-        })
+        };
+
+        // Disable ZLE and TTY echo to prevent command echo and prompt repainting
+        // This keeps aliases/functions from .zshrc but stops prompt repainting and TTY echo
+        // -echonl also suppresses echoing of newlines
+        let _ = shell.run("unsetopt zle; unsetopt prompt_cr; PS1=''; stty -echo -echonl");
+
+        Ok(shell)
     }
 
     // Runs a command in the persistent shell, returning (exit_code, output)
@@ -110,16 +122,64 @@ impl Shell {
         let exit_code = exit_code.ok_or_else(|| "shell terminated before sentinel".to_string())?;
         let sent_start = sent_start.ok_or_else(|| "no sentinel found in output".to_string())?;
 
-        // Output before sentinel is the command output; strip trailing newlines around sentinel boundaries.
+        // Output before sentinel is the command output
         let output_bytes = if buf.len() >= sent_start { &buf[..sent_start] } else { &buf[..] };
         let mut out = String::from_utf8_lossy(output_bytes).to_string();
-        // Trim any trailing carriage returns/newlines caused by the sentinel print.
-        while out.ends_with(['\r', '\n']) {
-            out.pop();
-        }
+
+        // Strip ANSI escape sequences and control characters
+        out = strip_ansi_codes(&out);
+
+        // Trim any trailing/leading whitespace
+        out = out.trim().to_string();
 
         Ok((exit_code, out))
     }
+}
+
+fn strip_ansi_codes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // ESC character - start of ANSI sequence
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                // Skip until we find a letter (the command character)
+                while let Some(&next_c) = chars.peek() {
+                    chars.next();
+                    if next_c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else if chars.peek() == Some(&']') {
+                // OSC sequence (like terminal titles)
+                chars.next(); // consume ']'
+                // Skip until we find ESC \ or BEL
+                while let Some(next_c) = chars.next() {
+                    if next_c == '\x07' { // BEL
+                        break;
+                    }
+                    if next_c == '\x1b' && chars.peek() == Some(&'\\') {
+                        chars.next(); // consume '\'
+                        break;
+                    }
+                }
+            }
+        } else if c == '\r' {
+            // Skip carriage returns unless followed by something other than newline
+            if chars.peek() != Some(&'\n') {
+                // Standalone \r - treat as line clear, skip everything before it on this line
+                // For simplicity, just skip the \r
+                continue;
+            }
+            // \r\n together - keep just the \n (it will be added when we process \n)
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
 
 fn find_sentinel(buf: &[u8]) -> Option<(usize, usize, i32)> {
