@@ -1,0 +1,140 @@
+{
+  "skills": {
+    "codex": {
+      "description": "OpenAI Codex CLI for code analysis, refactoring, and automated editing",
+      "priority": 8,
+      "activation": {
+        "promptKeywords": [
+          "codex",
+          "gpt-5",
+          "gpt-5-codex",
+          "openai codex",
+          "code analysis",
+          "automated editing",
+          "code transformation"
+        ],
+        "promptPatterns": [
+          "use codex",
+          "run codex",
+          "codex exec",
+          "analyze.*code",
+          "review.*code",
+          "refactor.*code",
+          "automated.*refactor"
+        ],
+        "cwdPatterns": [],
+        "minScore": 10
+      },
+      "message": "🎯 SKILL AVAILABLE: Consider using the 'codex' skill (OpenAI Codex CLI for code analysis, refactoring, automated editing)",
+      "cooldown_minutes": 30
+    },
+    "github-actions": {
+      "description": "GitHub Actions CI/CD troubleshooting and workflow analysis",
+      "priority": 9,
+      "activation": {
+        "promptKeywords": [
+          "github actions",
+          "workflow",
+          "ci",
+          "pipeline",
+          "build failure",
+          "ci failure",
+          "workflow run",
+          "actions log",
+          "ci log",
+          "gh actions"
+        ],
+        "promptPatterns": [
+          "github\\s+actions?",
+          "workflow.*fail",
+          "ci.*fail",
+          "pipeline.*fail",
+          "build.*fail",
+          "actions?.*status",
+          "check.*workflow",
+          "debug.*workflow",
+          "troubleshoot.*ci"
+        ],
+        "cwdPatterns": [
+          "**/.github/workflows/**",
+          "**/.github/**"
+        ],
+        "minScore": 10
+      },
+      "message": "🎯 SKILL AVAILABLE: Consider using the 'github-actions' skill (detects GitHub repos, checks CI status, analyzes workflow logs)",
+      "cooldown_minutes": 30
+    },
+    "loki-debug": {
+      "description": "Debug Kubernetes pod failures by querying Loki logs",
+      "priority": 8,
+      "activation": {
+        "promptKeywords": [
+          "loki",
+          "kubernetes logs",
+          "k8s logs",
+          "pod logs",
+          "pod failure",
+          "pod crash",
+          "container logs",
+          "debug pod",
+          "grafana loki"
+        ],
+        "promptPatterns": [
+          "loki.*log",
+          "pod.*fail",
+          "pod.*crash",
+          "kubernetes.*log",
+          "k8s.*log",
+          "debug.*pod",
+          "container.*crash",
+          "investigate.*pod"
+        ],
+        "cwdPatterns": [],
+        "minScore": 10
+      },
+      "message": "🎯 SKILL AVAILABLE: Consider using the 'loki-debug' skill (debug Kubernetes pod failures by querying Loki logs)",
+      "cooldown_minutes": 30
+    },
+    "tatari-turbolift": {
+      "description": "Bulk repository changes using turbolift campaign management",
+      "priority": 7,
+      "activation": {
+        "promptKeywords": [
+          "turbolift",
+          "bulk changes",
+          "multiple repositories",
+          "mass update",
+          "campaign",
+          "bulk refactor",
+          "organization-wide",
+          "across repos",
+          "many repositories",
+          "slam"
+        ],
+        "promptPatterns": [
+          "bulk.*change",
+          "multiple.*repos",
+          "mass.*update",
+          "across.*repositories",
+          "organization[- ]wide",
+          "many.*repos",
+          "fleet.*update",
+          "campaign.*management"
+        ],
+        "cwdPatterns": [],
+        "minScore": 12
+      },
+      "message": "🎯 SKILL AVAILABLE: Consider using the 'tatari-turbolift' skill (automate bulk changes across multiple repositories using turbolift and slam)",
+      "cooldown_minutes": 45
+    }
+  },
+  "scoring": {
+    "keyword_match": 10,
+    "pattern_match": 15,
+    "cwd_match": 8
+  },
+  "global": {
+    "max_suggestions_per_prompt": 2,
+    "state_file": "/tmp/.claude_skill_activation_state.json"
+  }
+}
