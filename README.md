@@ -1,5 +1,7 @@
 # claude-code-tools
 
+> ⚠️ **README Under Construction** — This documentation is being actively revised. Some sections may be incomplete or outdated.
+
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
@@ -45,8 +47,8 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 ## Table of Contents
 
 - [🚀 Quick Start](#quick-start)
-- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [💬 aichat — Session Management](#aichat-session-management)
+- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
 - [🔐 Utilities](#utilities)
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
@@ -56,83 +58,6 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 - [🛠️ Development](#development)
 - [📄 License](#license)
 
-<a id="tmux-cli-terminal-automation"></a>
-# 🎮 tmux-cli — Terminal Automation
-
-> **Note**: While the description below focuses on Claude Code, tmux-cli works with any CLI coding agent.
-
-![tmux-cli demo](demos/tmux-cli-demo-short.gif)
-
-**Think Playwright for terminals** - Terminal automation for AI agents.
-
-tmux-cli enables Claude Code to programmatically control terminal applications:
-test interactive scripts, debug with pdb, launch and interact with other CLI agents.
-
-**Important**: You don't need to learn tmux-cli commands. Claude Code handles
-everything automatically—just describe what you want.
-
-**Works anywhere**: Automatically handles both local tmux panes and remote sessions.
-
-<a id="tmux-cli-deep-dive"></a>
-## 🎮 tmux-cli Deep Dive
-
-### What Claude Code Can Do With tmux-cli
-
-1. **Test Interactive Scripts** - CC can run and interact with scripts that 
-   require user input, answering prompts automatically based on your instructions.
-
-2. **UI Development & Testing** - CC can launch web servers and coordinate with 
-   browser automation tools to test your applications.
-
-3. **Interactive Debugging** - CC can use debuggers (pdb, node inspect, gdb) to 
-   step through code, examine variables, and help you understand program flow.
-
-4. **Claude-to-Claude Communication** - CC can launch another Claude Code instance 
-   to get specialized help or code reviews.
-
-Claude Code knows how to use tmux-cli through its built-in help. You just describe 
-what you want, and CC handles the technical details.
-
-For complete command reference, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
-
-### Setting up tmux-cli for Claude Code
-
-To enable CC to use tmux-cli, add this snippet to your global
-`~/.claude/CLAUDE.md` file:
-
-```markdown
-# tmux-cli Command to interact with CLI applications
-
-`tmux-cli` is a bash command that enables Claude Code to control CLI applications 
-running in separate tmux panes - launch programs, send input, capture output, 
-and manage interactive sessions. Run `tmux-cli --help` for detailed usage 
-instructions.
-
-Example uses:
-- Interact with a script that waits for user input
-- Launch another Claude Code instance to have it perform some analysis or review or 
-  debugging etc
-- Run a Python script with the Pdb debugger to step thru its execution, for 
-  code-understanding and debugging
-- Launch web apps and test them with browser automation MCP tools like Playwright or 
-Chrome Dev Tools.
-```
-
-More frequently, I use this method: I launch another CLI-agent (say Codex-CLI) 
-in another tmux pane, and say something like this to the first agent:
-
-> There's another coding agent "Codex" running in tmux Pane 3. Feel free to use Codex 
-to help you with your task or review your work. You can communicate with Codex using
-the tmux-cli command; you can do tmux-cli --help to see how to use it.
-
-## Tmux-cli skill
-
-To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
-
-For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
-
-All of this assumes you're familiar and comfortable with tmux, and (like me) run
-all CLI coding sessions inside tmux sessions.
 
 <a id="aichat-session-management"></a>
 # 💬 aichat — Session Management
@@ -352,6 +277,85 @@ Direct commands that skip the menu:
 | `aichat find-derived [session]` | Find all derived sessions |
 
 Run `aichat <command> --help` for options
+
+<a id="tmux-cli-terminal-automation"></a>
+# 🎮 tmux-cli — Terminal Automation
+
+> **Note**: While the description below focuses on Claude Code, tmux-cli works with any CLI coding agent.
+
+![tmux-cli demo](demos/tmux-cli-demo-short.gif)
+
+**Think Playwright for terminals** - Terminal automation for AI agents.
+
+tmux-cli enables Claude Code to programmatically control terminal applications:
+test interactive scripts, debug with pdb, launch and interact with other CLI agents.
+
+**Important**: You don't need to learn tmux-cli commands. Claude Code handles
+everything automatically—just describe what you want.
+
+**Works anywhere**: Automatically handles both local tmux panes and remote sessions.
+
+<a id="tmux-cli-deep-dive"></a>
+## 🎮 tmux-cli Deep Dive
+
+### What Claude Code Can Do With tmux-cli
+
+1. **Test Interactive Scripts** - CC can run and interact with scripts that 
+   require user input, answering prompts automatically based on your instructions.
+
+2. **UI Development & Testing** - CC can launch web servers and coordinate with 
+   browser automation tools to test your applications.
+
+3. **Interactive Debugging** - CC can use debuggers (pdb, node inspect, gdb) to 
+   step through code, examine variables, and help you understand program flow.
+
+4. **Claude-to-Claude Communication** - CC can launch another Claude Code instance 
+   to get specialized help or code reviews.
+
+Claude Code knows how to use tmux-cli through its built-in help. You just describe 
+what you want, and CC handles the technical details.
+
+For complete command reference, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
+
+### Setting up tmux-cli for Claude Code
+
+To enable CC to use tmux-cli, add this snippet to your global
+`~/.claude/CLAUDE.md` file:
+
+```markdown
+# tmux-cli Command to interact with CLI applications
+
+`tmux-cli` is a bash command that enables Claude Code to control CLI applications 
+running in separate tmux panes - launch programs, send input, capture output, 
+and manage interactive sessions. Run `tmux-cli --help` for detailed usage 
+instructions.
+
+Example uses:
+- Interact with a script that waits for user input
+- Launch another Claude Code instance to have it perform some analysis or review or 
+  debugging etc
+- Run a Python script with the Pdb debugger to step thru its execution, for 
+  code-understanding and debugging
+- Launch web apps and test them with browser automation MCP tools like Playwright or 
+Chrome Dev Tools.
+```
+
+More frequently, I use this method: I launch another CLI-agent (say Codex-CLI) 
+in another tmux pane, and say something like this to the first agent:
+
+> There's another coding agent "Codex" running in tmux Pane 3. Feel free to use Codex 
+to help you with your task or review your work. You can communicate with Codex using
+the tmux-cli command; you can do tmux-cli --help to see how to use it.
+
+## Tmux-cli skill
+
+To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
+
+For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
+
+All of this assumes you're familiar and comfortable with tmux, and (like me) run
+all CLI coding sessions inside tmux sessions.
+
 
 <a id="lmsh-experimental"></a>
 # 🚀 lmsh (Experimental)
