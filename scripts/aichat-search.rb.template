@@ -1,0 +1,36 @@
+class AichatSearch < Formula
+  desc "Fast TUI for searching Claude Code and Codex sessions"
+  homepage "https://github.com/pchalasani/claude-code-tools"
+  version "REPLACE_VERSION"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vREPLACE_VERSION/aichat-search-macos-arm64.tar.gz"
+      sha256 "REPLACE_SHA_ARM64"
+    end
+    on_intel do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vREPLACE_VERSION/aichat-search-macos-intel.tar.gz"
+      sha256 "REPLACE_SHA_INTEL"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vREPLACE_VERSION/aichat-search-linux-arm64.tar.gz"
+      sha256 "REPLACE_SHA_LINUX_ARM"
+    end
+    on_intel do
+      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-vREPLACE_VERSION/aichat-search-linux-x86_64.tar.gz"
+      sha256 "REPLACE_SHA_LINUX_X86"
+    end
+  end
+
+  def install
+    bin.install "aichat-search"
+  end
+
+  test do
+    assert_match "aichat-search", shell_output("#{bin}/aichat-search --version")
+  end
+end

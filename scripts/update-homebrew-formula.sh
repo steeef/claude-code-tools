@@ -30,6 +30,9 @@ if [[ ! -d "$TAP_REPO" ]]; then
     exit 1
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TEMPLATE_FILE="${SCRIPT_DIR}/aichat-search.rb.template"
+
 echo "Updating formula for version $VERSION..."
 
 # Base URL for release assets
@@ -55,45 +58,13 @@ echo "  $SHA_LINUX_ARM"
 # Create Formula directory if needed
 mkdir -p "$(dirname "$FORMULA_FILE")"
 
-# Generate the formula
-cat > "$FORMULA_FILE" << EOF
-class AichatSearch < Formula
-  desc "Fast TUI for searching Claude Code and Codex sessions"
-  homepage "https://github.com/pchalasani/claude-code-tools"
-  version "${VERSION}"
-  license "MIT"
-
-  on_macos do
-    on_arm do
-      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-v${VERSION}/aichat-search-macos-arm64.tar.gz"
-      sha256 "${SHA_ARM64}"
-    end
-    on_intel do
-      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-v${VERSION}/aichat-search-macos-intel.tar.gz"
-      sha256 "${SHA_INTEL}"
-    end
-  end
-
-  on_linux do
-    on_arm do
-      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-v${VERSION}/aichat-search-linux-arm64.tar.gz"
-      sha256 "${SHA_LINUX_ARM}"
-    end
-    on_intel do
-      url "https://github.com/pchalasani/claude-code-tools/releases/download/rust-v${VERSION}/aichat-search-linux-x86_64.tar.gz"
-      sha256 "${SHA_LINUX_X86}"
-    end
-  end
-
-  def install
-    bin.install "aichat-search"
-  end
-
-  test do
-    assert_match "aichat-search", shell_output("#{bin}/aichat-search --version")
-  end
-end
-EOF
+# Copy template and replace placeholders
+cp "$TEMPLATE_FILE" "$FORMULA_FILE"
+sed -i '' "s/REPLACE_VERSION/${VERSION}/g" "$FORMULA_FILE"
+sed -i '' "s/REPLACE_SHA_ARM64/${SHA_ARM64}/g" "$FORMULA_FILE"
+sed -i '' "s/REPLACE_SHA_INTEL/${SHA_INTEL}/g" "$FORMULA_FILE"
+sed -i '' "s/REPLACE_SHA_LINUX_ARM/${SHA_LINUX_ARM}/g" "$FORMULA_FILE"
+sed -i '' "s/REPLACE_SHA_LINUX_X86/${SHA_LINUX_X86}/g" "$FORMULA_FILE"
 
 echo ""
 echo "Formula written to: $FORMULA_FILE"
