@@ -2311,7 +2311,8 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
                         gen.set_max_num_chars(10000); // Large enough for full lines
                         for line in app.full_content.lines() {
                             let html = gen.snippet(line).to_html();
-                            query_html_lines.push(if html.is_empty() { line.to_string() } else { html });
+                            let merged = merge_adjacent_highlights(&html);
+                            query_html_lines.push(if merged.is_empty() { line.to_string() } else { merged });
                         }
                     }
                 }
@@ -2794,6 +2795,23 @@ fn strip_html_tags(text: &str) -> String {
     text.replace("<b>", "").replace("</b>", "")
 }
 
+/// Merge adjacent <b> tags to highlight phrases as a unit.
+/// Converts "<b>single</b> <b>fix</b>" to "<b>single fix</b>"
+/// This improves phrase query highlighting since Tantivy highlights terms individually.
+fn merge_adjacent_highlights(html: &str) -> String {
+    // Pattern: </b> followed by whitespace and then <b>
+    // We want to replace "</b> <b>" (and variants with multiple spaces) with just a space
+    let mut result = html.to_string();
+    // Handle single space
+    result = result.replace("</b> <b>", " ");
+    // Handle multiple spaces (normalize to single)
+    result = result.replace("</b>  <b>", " ");
+    result = result.replace("</b>   <b>", " ");
+    // Handle newlines between terms
+    result = result.replace("</b>\n<b>", " ");
+    result
+}
+
 /// Render text with two-layer highlighting:
 /// 1. Blue highlighting from HTML <b> tags (original query via SnippetGenerator)
 /// 2. Yellow highlighting for view search pattern (overlays on top)
@@ -3264,6 +3282,10 @@ fn search_tantivy(
         let query_lower = query_clean.to_lowercase();
         let keywords: Vec<&str> = query_lower.split_whitespace().collect();
 
+        // Detect if this is a phrase query (multi-word)
+        let is_phrase_query = keywords.len() > 1;
+        let phrase_to_find = if is_phrase_query { Some(query_lower.clone()) } else { None };
+
         // Recency ranking: 7-day half-life exponential decay
         let now = Utc::now().timestamp() as f64;
         let half_life_secs = 7.0 * 24.0 * 3600.0; // 7 days
@@ -3287,17 +3309,32 @@ fn search_tantivy(
                 let final_score = *score * recency_mult as f32;
                 // Use Tantivy's snippet generator if available, else fallback to manual extraction
                 // Keep <b> tags for highlighting - they'll be parsed when rendering
+                // For phrase queries, prefer snippets that actually contain the phrase
                 let snippet = if let Some(ref gen) = snippet_generator {
                     let tantivy_snippet = gen.snippet(content);
                     let html = tantivy_snippet.to_html();
                     if html.is_empty() {
                         // Fallback if Tantivy snippet is empty
-                        extract_snippet(content, &keywords, 100)
+                        extract_snippet_with_highlight(content, &keywords, 100)
                     } else {
-                        html
+                        // For phrase queries, check if Tantivy's snippet contains the phrase
+                        // If not, use our custom extractor which prioritizes phrase matches
+                        if let Some(ref phrase) = phrase_to_find {
+                            let html_lower = strip_html_tags(&html).to_lowercase();
+                            if html_lower.contains(phrase) {
+                                // Tantivy's snippet has the phrase, use it with merged highlights
+                                merge_adjacent_highlights(&html)
+                            } else {
+                                // Tantivy missed the phrase, use custom extraction
+                                extract_snippet_with_highlight(content, &keywords, 100)
+                            }
+                        } else {
+                            // Single word query, just use Tantivy's snippet
+                            html
+                        }
                     }
                 } else {
-                    extract_snippet(content, &keywords, 100)
+                    extract_snippet_with_highlight(content, &keywords, 100)
                 };
                 Some((final_score, session_id, snippet))
             })
