@@ -305,7 +305,8 @@ class TestIndexFromJsonl:
         parsed = index._parse_jsonl_session(sample_jsonl_sessions[0])
 
         assert parsed is not None
-        assert parsed["metadata"]["session_id"] == "jsonl-session-001"
+        # session_id is extracted from filename, not from internal sessionId field
+        assert parsed["metadata"]["session_id"] == "session-jsonl-001"
         assert parsed["metadata"]["cwd"] == "/Users/test/my-project"
         assert parsed["metadata"]["branch"] == "main"
         assert parsed["metadata"]["project"] == "my-project"
@@ -387,12 +388,12 @@ class TestIndexFromJsonl:
         # Search for Python content
         results = index.search("Python decorators")
         assert len(results) >= 1
-        assert "jsonl-session-001" in results[0]["session_id"]
+        assert "session-jsonl-001" in results[0]["session_id"]
 
         # Search for Rust content
         results = index.search("Rust borrow checker")
         assert len(results) >= 1
-        assert "jsonl-session-002" in results[0]["session_id"]
+        assert "session-jsonl-002" in results[0]["session_id"]
 
     def test_index_from_jsonl_incremental(
         self, sample_jsonl_sessions: list[Path], index_path: Path

@@ -1,7 +1,5 @@
 # claude-code-tools
 
-> ⚠️ **README Under Construction** — This documentation is being actively revised. Some sections may be incomplete or outdated.
-
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 

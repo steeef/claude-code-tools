@@ -64,7 +64,7 @@ exclude = [
     ".pytest_cache/",
     "*.egg-info/",
     "dist/",
-    "build/",
+    "/build/",
 ]
 
 [tool.pytest.ini_options]
