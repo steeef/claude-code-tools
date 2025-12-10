@@ -104,6 +104,7 @@ struct Session {
     cwd: String,
     created: String,
     modified: String,
+    modified_ts: u64,         // Epoch milliseconds for reliable sorting
     lines: i64,
     #[serde(rename = "file_path")]
     export_path: String,
@@ -926,9 +927,9 @@ impl App {
                 });
 
                 if self.sort_by_time {
-                    // Sort by modified time (reverse chronological)
+                    // Sort by modified_ts (numeric epoch ms, reverse chronological)
                     self.filtered.sort_by(|&a, &b| {
-                        self.sessions[b].modified.cmp(&self.sessions[a].modified)
+                        self.sessions[b].modified_ts.cmp(&self.sessions[a].modified_ts)
                     });
                 } else {
                     // Reorder filtered by Tantivy ranking (phrase + recency boosted)
@@ -956,7 +957,7 @@ impl App {
             // Clear snippets when no query - sort by time (most recent first)
             self.search_snippets.clear();
             self.filtered.sort_by(|&a, &b| {
-                self.sessions[b].modified.cmp(&self.sessions[a].modified)
+                self.sessions[b].modified_ts.cmp(&self.sessions[a].modified_ts)
             });
         }
 
@@ -3109,6 +3110,7 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
     let cwd_field = schema.get_field("cwd").context("missing cwd")?;
     let created_field = schema.get_field("created").context("missing created")?;
     let modified_field = schema.get_field("modified").context("missing modified")?;
+    let modified_ts_field = schema.get_field("modified_ts").context("missing modified_ts")?;
     let lines_field = schema.get_field("lines").context("missing lines")?;
     let export_path_field = schema.get_field("export_path").context("missing export_path")?;
     let first_msg_role_field = schema.get_field("first_msg_role").context("missing first_msg_role")?;
@@ -3147,6 +3149,11 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
 
+        let modified_ts = doc
+            .get_first(modified_ts_field)
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
         let is_sidechain_str = get_text(is_sidechain_field);
 
         // Get claude_home if field exists, otherwise empty string
@@ -3162,6 +3169,7 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
             cwd: get_text(cwd_field),
             created: get_text(created_field),
             modified: get_text(modified_field),
+            modified_ts,
             lines,
             export_path: get_text(export_path_field),
             first_msg_role: get_text(first_msg_role_field),
@@ -3174,7 +3182,8 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
         });
     }
 
-    sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+    // Sort by modified_ts (numeric epoch ms) for reliable time ordering
+    sessions.sort_by(|a, b| b.modified_ts.cmp(&a.modified_ts));
     sessions.truncate(limit);
 
     Ok(sessions)
