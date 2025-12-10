@@ -1303,7 +1303,22 @@ function LineageView({session, rpcPath, onContinue, onBack, clearScreen}) {
 function ContinueForm({onSubmit, onBack, clearScreen, session}) {
   const [field, setField] = useState('agent');
   const [agent, setAgent] = useState(session.agent || 'claude');
+  const [rolloverType, setRolloverType] = useState('quick'); // 'quick' or 'context'
   const [prompt, setPrompt] = useState('');
+
+  // Fields order: agent -> rollover_type -> prompt (only if context recovery)
+  const getNextField = (current) => {
+    if (current === 'agent') return 'rollover_type';
+    if (current === 'rollover_type') return rolloverType === 'context' ? 'prompt' : null;
+    if (current === 'prompt') return null;
+    return null;
+  };
+  const getPrevField = (current) => {
+    if (current === 'prompt') return 'rollover_type';
+    if (current === 'rollover_type') return 'agent';
+    if (current === 'agent') return rolloverType === 'context' ? 'prompt' : 'rollover_type';
+    return null;
+  };
 
   useInput((input, key) => {
     if (key.escape) {
@@ -1312,26 +1327,30 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
     }
     // Down arrow: cycle through fields (wrap around)
     if (key.downArrow) {
-      if (field === 'agent') setField('prompt');
-      else if (field === 'prompt') setField('agent'); // Cycle back to top
+      const next = getNextField(field);
+      if (next) setField(next);
+      else setField('agent'); // Wrap to top
       return;
     }
     // Up arrow: cycle through fields (wrap around)
     if (key.upArrow) {
-      if (field === 'prompt') setField('agent');
-      else if (field === 'agent') setField('prompt'); // Cycle to bottom
+      const prev = getPrevField(field);
+      if (prev) setField(prev);
       return;
     }
     // Enter: advance to next field, or submit on last field
     if (key.return) {
-      if (field === 'agent') setField('prompt');
-      else if (field === 'prompt') {
-        onSubmit({agent, prompt});  // Empty string means "skip prompt", not "prompt again"
+      const next = getNextField(field);
+      if (next) {
+        setField(next);
+      } else {
+        // Submit - for quick resume, prompt is ignored
+        onSubmit({agent, rollover_type: rolloverType, prompt: rolloverType === 'context' ? prompt : ''});
       }
       return;
     }
     if (key.backspace || key.delete) {
-      if (field === 'agent') return; // Can't backspace on selection
+      if (field === 'agent' || field === 'rollover_type') return; // Can't backspace on selection
       if (field === 'prompt') setPrompt((t) => t.slice(0, -1));
       return;
     }
@@ -1339,8 +1358,16 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       if (field === 'agent') {
         if (input === '1') setAgent('claude');
         else if (input === '2') setAgent('codex');
+      } else if (field === 'rollover_type') {
+        // Handle rollover type changes
+        if (input === '1') {
+          setRolloverType('quick');
+        } else if (input === '2') {
+          setRolloverType('context');
+        }
+      } else if (field === 'prompt') {
+        setPrompt((t) => t + input);
       }
-      if (field === 'prompt') setPrompt((t) => t + input);
     }
   });
 
@@ -1350,14 +1377,25 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
   const date = formatDateRange(session.create_time, session.mod_time);
   const branchDisplay = session.branch ? `${BRANCH_ICON} ${session.branch}` : '';
 
+  // Build the value display for each field
+  const agentValue = agent === 'claude' ? 'Claude' : 'Codex';
+  const rolloverValue = rolloverType === 'quick' ? 'Quick' : 'Context';
+
   return h(
     Box,
     {flexDirection: 'column'},
+    // Banner header explaining rollover
+    h(
+      Box,
+      {flexDirection: 'column', marginBottom: 1},
+      h(Text, null, chalk.bgCyan.black(' 🔄 ROLLOVER '), ' ', chalk.cyan('Continue work in a fresh session')),
+      h(Text, {dimColor: true}, '─'.repeat(60))
+    ),
+    // Session info
     h(
       Box,
       {flexDirection: 'column'},
       h(Text, null,
-        chalk.bgCyan.black(' Rollover options '), ' ',
         colorize.project(session.project || ''), ' ',
         colorize.branch(branchDisplay)
       ),
@@ -1372,48 +1410,69 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
-    h(Text, {dimColor: true}, '↑↓: cycle fields | Enter: next/submit | Esc: back'),
+    h(Text, {dimColor: true}, 'Esc: back | ↑↓: navigate | 1/2: select | Enter: submit'),
     h(Box, {marginBottom: 1}),
-    // Agent field
+    // Agent field - compact horizontal with [1]/[2] labels
     h(
-      Box,
-      {flexDirection: 'column'},
-      h(
-        Text,
-        null,
-        field === 'agent' ? chalk.cyan(arrow) : ' ',
-        ' Agent for rollover'
-      ),
-      h(Text, {dimColor: true}, '    Type 1 for Claude, 2 for Codex'),
-      h(
-        Text,
-        null,
-        '  > ',
-        h(Text, {color: field === 'agent' ? 'yellow' : undefined},
-          agent === 'claude' ? 'Claude (1)' : 'Codex (2)'
-        )
-      )
+      Text,
+      null,
+      field === 'agent' ? chalk.cyan(figures.pointer) : ' ',
+      ' Agent: ',
+      h(Text, {color: agent === 'claude' ? 'yellow' : 'white'}, agent === 'claude' ? '[1] Claude' : ' 1  Claude'),
+      '   ',
+      h(Text, {color: agent === 'codex' ? 'yellow' : 'white'}, agent === 'codex' ? '[2] Codex' : ' 2  Codex')
     ),
-    h(Text, null, ''),
-    // Custom instructions field
+    h(Text, {dimColor: true}, '─'.repeat(60)),
+    // Rollover type section header
+    h(Box, {marginTop: 1}),
+    h(Text, null, field === 'rollover_type' ? chalk.cyan(figures.pointer) : ' ', ' Rollover Type:'),
+    h(Box, {marginTop: 1}),
+    // Quick Resume option
     h(
       Box,
-      {flexDirection: 'column'},
+      {flexDirection: 'column', marginLeft: 3},
       h(
         Text,
         null,
-        field === 'prompt' ? chalk.cyan(arrow) : ' ',
-        ' Custom instructions ',
-        h(Text, {dimColor: true}, '(optional)')
+        rolloverType === 'quick' ? chalk.yellow('[1] Quick Resume') : chalk.white(' 1  Quick Resume')
       ),
-      h(Text, {dimColor: true}, '    Enter any context or instructions for the new session'),
+      h(Text, {dimColor: true}, '    Inject session lineage only, and quickly start new session.'),
+      h(Text, {dimColor: true}, '    You provide context-extraction instructions once session resumes.')
+    ),
+    h(Box, {marginTop: 1}),
+    // Context Recovery option
+    h(
+      Box,
+      {flexDirection: 'column', marginLeft: 3},
       h(
         Text,
         null,
-        '  > ',
-        h(Text, {color: field === 'prompt' ? 'yellow' : undefined}, prompt || chalk.dim('(none)'))
+        rolloverType === 'context' ? chalk.yellow('[2] Resume with Context Recovery') : chalk.white(' 2  Resume with Context Recovery')
+      ),
+      h(Text, {dimColor: true}, '    Inject lineage + use sub-agents to extract context.'),
+      h(Text, {dimColor: true}, '    Slower, but resumes with full understanding of last task and overall work.')
+    ),
+    // Context instructions field - only shown when on prompt field (after pressing Enter/down)
+    // This prevents layout shift from interfering with rollover type selection
+    (rolloverType === 'context' && field === 'prompt') ? h(
+      Box,
+      {flexDirection: 'column', marginTop: 1},
+      h(Text, {dimColor: true}, '─'.repeat(60)),
+      h(Box, {marginTop: 1}),
+      h(
+        Text,
+        null,
+        chalk.cyan(figures.pointer),
+        ' Custom context recovery instructions ',
+        chalk.dim('(optional)')
+      ),
+      h(
+        Text,
+        null,
+        '   ',
+        h(Text, {color: 'yellow'}, prompt || chalk.dim('(default: recover context of last task)'))
       )
-    )
+    ) : null
   );
 }
 

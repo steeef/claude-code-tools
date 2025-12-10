@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from claude_code_tools.export_codex_session import resolve_session_path
+from claude_code_tools.session_utils import build_rollover_prompt
 
 
 def codex_continue(
@@ -29,6 +30,7 @@ def codex_continue(
     verbose: bool = False,
     custom_prompt: Optional[str] = None,
     precomputed_session_files: Optional[List[Path]] = None,
+    quick_rollover: bool = False,
 ) -> None:
     """
     Continue a Codex session in a new session with full context.
@@ -41,6 +43,8 @@ def codex_continue(
         precomputed_session_files: If provided, skip lineage tracing and use
             these JSONL session files directly. Used by continue_with_options()
             to avoid duplicate work.
+        quick_rollover: If True, just present lineage and wait for user input
+            instead of running analysis to extract context (context rollover).
     """
     print("🔄 Codex Rollover - Transferring context to fresh session")
     print()
@@ -56,7 +60,7 @@ def codex_continue(
     if precomputed_session_files is not None:
         # Skip lineage tracing - use precomputed data
         all_session_files = precomputed_session_files
-        print(f"ℹ️  Using {len(all_session_files)} precomputed session file(s)")
+        print(f"ℹ️  Using {len(all_session_files)} parent session file(s)")
         print()
         # Still need derivation types for the file list - trace from last file
         from claude_code_tools.session_lineage import get_full_lineage_chain
@@ -94,80 +98,44 @@ def codex_continue(
             all_session_files = [session_file]
             chronological_chain = [(session_file, "original")]
 
-    # Step 2: Build analysis prompt with lineage
+    # Step 2: Build prompt based on rollover type and number of session files
+    # Codex-specific sub-agent instruction (more generic than Claude's)
+    subagent_instruction = "parallel sub-agents (if available)"
 
-    # Build prompt based on number of session files
-    if len(all_session_files) == 1:
-        # Simple case: just the current session
-        session_file_path = all_session_files[0]
-        analysis_prompt = f"""There is a log of a past conversation with an AI agent in this JSONL session file: {session_file_path}
-
-The file is in JSONL format (one JSON object per line). Each line represents a message in the conversation with fields like 'type' (user/assistant), 'message.content', etc. This format is easy to parse and understand.
-
-CAUTION: {session_file_path} may be very large. Strategically use parallel sub-agents if available, or use another strategy to efficiently read the file so your context window is not overloaded. For example, you could read specific sections (beginning, middle, end) rather than the entire file at once.
-
-When done exploring, state your understanding of the most recent task to me."""
-    else:
-        # Complex case: multiple sessions in the chain
-        # Build file list with derivation relationships
-        def friendly_type(dtype: str) -> str:
-            if dtype == "continued":
-                return "rolled over"
-            return dtype
-
-        file_lines = []
-        for i, (path, derivation_type) in enumerate(chronological_chain):
-            if derivation_type == "original":
-                file_lines.append(f"{i+1}. {path} (original)")
-            else:
-                parent_num = i  # previous item in 1-indexed
-                friendly = friendly_type(derivation_type)
-                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num})")
-        file_list = "\n".join(file_lines)
-
-        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work progressed across multiple sessions as context filled up. Here are ALL the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
-
-{file_list}
-
-**Terminology:**
-- "trimmed" = Long messages were strategically truncated to free up context space. The full content is preserved in the parent session.
-- "rolled over" = Work was handed off to a fresh session by summarizing the previous session's state.
-
-Each file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc.
-
-The LAST file ({all_session_files[-1]}) is the most recent session that ran out of context.
-
-CAUTION: These files may be very large. Strategically use parallel sub-agents if available, or use another strategy to efficiently read the files so your context window is not overloaded. Consider:
-- Reading the beginning of the first file to understand the original task
-- Reading the end of each session to see what was accomplished
-- Reading the most recent file ({all_session_files[-1]}) thoroughly to understand the current state
-
-When done exploring, state your understanding of the full task history and the most recent work to me."""
-
-    # Add directive about analyzing sessions
-    analysis_prompt += """
-
-IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs otherwise (e.g., "only analyze the most recent one", "skip the older sessions", etc.)."""
-
-    # Append custom instructions if provided (with clear demarcation)
-    if custom_prompt:
-        analysis_prompt += f"""
-
-=== USER INSTRUCTIONS (PRIORITIZE THESE) ===
-{custom_prompt}
-=== END USER INSTRUCTIONS ==="""
+    # Use shared prompt builder
+    analysis_prompt = build_rollover_prompt(
+        all_session_files=all_session_files,
+        chronological_chain=chronological_chain,
+        quick_rollover=quick_rollover,
+        custom_prompt=custom_prompt,
+        subagent_instruction=subagent_instruction,
+    )
 
     # Step 3: Create new Codex session with analysis prompt and capture thread_id
-    print("Step 2: 🤖 Creating session and analyzing history...")
-    print(f"   Analyzing {len(all_session_files)} session file(s)...")
+    # For context rollover, use a smaller/cheaper model for the analysis step
+    # Then resume with default model so user gets full capability
+    from claude_code_tools.config import codex_rollover_model
+    analysis_model = codex_rollover_model() if not quick_rollover else None
+
+    if quick_rollover:
+        print("Step 2: 🚀 Creating session with lineage info...")
+    else:
+        print("Step 2: 🤖 Creating session and analyzing history...")
+        print(f"   Analyzing {len(all_session_files)} session file(s)...")
+        print(f"   Using model: {analysis_model}")
     print()
 
     try:
         # Use codex exec --json with analysis prompt to create session and analyze
-        cmd = ["codex", "exec", "--json", analysis_prompt]
+        # For context rollover: use smaller model for analysis (cheaper/faster)
+        # For quick rollover: use default model (no --model flag)
+        if analysis_model:
+            cmd = ["codex", "exec", "--json", "--model", analysis_model, analysis_prompt]
+        else:
+            cmd = ["codex", "exec", "--json", analysis_prompt]
 
         if verbose:
-            print(f"$ codex exec --json '<analysis prompt>'")
+            print(f"$ codex exec --json '<prompt>'")
 
         # Run and capture JSON stream
         result = subprocess.run(
@@ -206,15 +174,25 @@ IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs
         sys.exit(1)
 
     # Step 3: Resume in interactive mode - hand off to Codex
+    # Resume with default model (not the mini model used for analysis)
+    from claude_code_tools.config import codex_default_model
+    default_model = codex_default_model()
+
     print("Step 3: 🚀 Launching interactive Codex session...")
     print(f"   Session ID: {thread_id}")
-    print(f"$ codex resume {thread_id}")
+    if default_model:
+        print(f"   Model: {default_model}")
+        resume_cmd = f'codex resume {shlex.quote(thread_id)} -c model="{default_model}"'
+    else:
+        print(f"   (Using codex default model)")
+        resume_cmd = f"codex resume {shlex.quote(thread_id)}"
+    print(f"$ {resume_cmd}")
     print()
     print("=" * 70)
     print()
 
     # Launch interactive Codex session
-    exit_code = os.system(f"codex resume {shlex.quote(thread_id)}")
+    exit_code = os.system(resume_cmd)
     sys.exit(exit_code >> 8)  # Exit with codex's exit code
 
 
