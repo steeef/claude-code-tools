@@ -26,6 +26,7 @@ from claude_code_tools.session_utils import (
     get_claude_home,
     resolve_session_path,
     encode_claude_project_path,
+    build_rollover_prompt,
 )
 
 
@@ -42,6 +43,7 @@ def claude_continue(
     claude_cli: str = "claude",
     custom_prompt: Optional[str] = None,
     precomputed_session_files: Optional[List[Path]] = None,
+    quick_rollover: bool = False,
 ) -> None:
     """
     Continue a Claude Code session in a new session with full context.
@@ -55,6 +57,8 @@ def claude_continue(
         precomputed_session_files: If provided, skip lineage tracing and use
             these JSONL session files directly. Used by continue_with_options()
             to avoid duplicate work.
+        quick_rollover: If True, just present lineage and wait for user input
+            instead of running sub-agents to extract context (context rollover).
     """
     print("🔄 Claude Rollover - Transferring context to fresh session")
     print()
@@ -110,83 +114,27 @@ def claude_continue(
             all_session_files = [old_session_file]
             chronological_chain = [(old_session_file, "original")]
 
-    # Step 2: Build analysis prompt with lineage
-    # Build prompt based on number of session files
-    if len(all_session_files) == 1:
-        # Simple case: just the current session
-        session_file = all_session_files[0]
-        analysis_prompt = f"""There is a log of a past conversation with an AI agent in this JSONL session file: {session_file}
+    # Step 2: Build prompt based on rollover type and number of session files
+    # Get sub-agent model from config for Claude-specific instruction
+    from claude_code_tools.config import claude_subagent_model
+    subagent_model = claude_subagent_model()
+    subagent_instruction = f"PARALLEL {subagent_model.upper()} SUB-AGENTS"
 
-The file is in JSONL format (one JSON object per line). Each line represents a message in the conversation with fields like 'type' (user/assistant), 'message.content', etc. This format is easy to parse and understand.
-
-Strategically use PARALLEL SUB-AGENTS to explore {session_file} (which may be very long) so that YOU have proper CONTEXT to continue the task that the agent was working on at the end of that chat.
-
-DO NOT TRY TO READ {session_file} by YOURSELF! To save your own context, you must use parallel sub-agents, possibly to explore the beginning, middle, and end of that chat, so that you have sufficient context to continue the work where the agent left off.
-
-If in this conversation you need more information about what happened during that previous conversation/session, you can again use a sub-agent(s) to explore {session_file}
-
-When done exploring, state your understanding of the most recent task to me."""
-    else:
-        # Complex case: multiple sessions in the chain
-        # Build file list with derivation relationships
-        def friendly_type(dtype: str) -> str:
-            if dtype == "continued":
-                return "rolled over"
-            return dtype
-
-        file_lines = []
-        for i, (path, derivation_type) in enumerate(chronological_chain):
-            if derivation_type == "original":
-                file_lines.append(f"{i+1}. {path} (original)")
-            else:
-                parent_num = i  # previous item in 1-indexed
-                friendly = friendly_type(derivation_type)
-                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num})")
-        file_list = "\n".join(file_lines)
-
-        analysis_prompt = f"""There is a CHAIN of past conversations with an AI agent. The work progressed across multiple sessions as context filled up. Here are ALL the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
-
-{file_list}
-
-**Terminology:**
-- "trimmed" = Long messages were strategically truncated to free up context space. The full content is preserved in the parent session.
-- "rolled over" = Work was handed off to a fresh session by summarizing the previous session's state.
-
-Each file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc.
-
-The LAST file ({all_session_files[-1]}) is the most recent session that ran out of context.
-
-Strategically use PARALLEL SUB-AGENTS to explore ALL these files so that YOU have proper CONTEXT to continue the task. You should understand:
-- The original task and requirements
-- How the work progressed across sessions
-- What was accomplished in each session
-- The current state and what needs to be done next
-
-DO NOT TRY TO READ these files by YOURSELF! To save your own context, you must use parallel sub-agents to explore these files. Consider:
-- Exploring the beginning of the first file to understand the original task
-- Exploring the end of each session to see what was accomplished
-- Exploring the most recent file ({all_session_files[-1]}) thoroughly to understand the current state
-
-If later in this conversation you need more information about what happened during those previous sessions, you can again use sub-agent(s) to explore the relevant files.
-
-When done exploring, state your understanding of the full task history and the most recent work to me."""
-
-    # Add directive about analyzing sessions
-    analysis_prompt += """
-
-IMPORTANT: Analyze ALL linked chat sessions unless the user explicitly instructs otherwise (e.g., "only analyze the most recent one", "skip the older sessions", etc.)."""
-
-    # Append custom instructions if provided (with clear demarcation)
-    if custom_prompt:
-        analysis_prompt += f"""
-
-=== USER INSTRUCTIONS (PRIORITIZE THESE) ===
-{custom_prompt}
-=== END USER INSTRUCTIONS ==="""
+    # Use shared prompt builder
+    analysis_prompt = build_rollover_prompt(
+        all_session_files=all_session_files,
+        chronological_chain=chronological_chain,
+        quick_rollover=quick_rollover,
+        custom_prompt=custom_prompt,
+        subagent_instruction=subagent_instruction,
+    )
 
     # Step 3: Create new session with analysis prompt and capture session ID
-    print("Step 2: 🤖 Creating session and analyzing history with sub-agents...")
-    print(f"   Analyzing {len(all_session_files)} session file(s)...")
+    if quick_rollover:
+        print("Step 2: 🚀 Creating session with lineage info...")
+    else:
+        print("Step 2: 🤖 Creating session and analyzing history with sub-agents...")
+        print(f"   Analyzing {len(all_session_files)} session file(s)...")
     print()
 
     try:
