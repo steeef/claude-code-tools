@@ -63,7 +63,7 @@ exclude = [
     "*.pyc",
     ".pytest_cache/",
     "*.egg-info/",
-    "dist/",
+    "/dist/",
     "/build/",
 ]
 
