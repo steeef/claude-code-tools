@@ -1358,12 +1358,16 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       if (field === 'agent') {
         if (input === '1') setAgent('claude');
         else if (input === '2') setAgent('codex');
+      } else if (field === 'rollover_type') {
+        // Handle rollover type changes
+        if (input === '1') {
+          setRolloverType('quick');
+        } else if (input === '2') {
+          setRolloverType('context');
+        }
+      } else if (field === 'prompt') {
+        setPrompt((t) => t + input);
       }
-      if (field === 'rollover_type') {
-        if (input === '1') setRolloverType('quick');
-        else if (input === '2') setRolloverType('context');
-      }
-      if (field === 'prompt') setPrompt((t) => t + input);
     }
   });
 
@@ -1380,12 +1384,18 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
   return h(
     Box,
     {flexDirection: 'column'},
-    // Header
+    // Banner header explaining rollover
+    h(
+      Box,
+      {flexDirection: 'column', marginBottom: 1},
+      h(Text, null, chalk.bgCyan.black(' 🔄 ROLLOVER '), ' ', chalk.cyan('Continue work in a fresh session')),
+      h(Text, {dimColor: true}, '─'.repeat(60))
+    ),
+    // Session info
     h(
       Box,
       {flexDirection: 'column'},
       h(Text, null,
-        chalk.bgCyan.black(' Rollover options '), ' ',
         colorize.project(session.project || ''), ' ',
         colorize.branch(branchDisplay)
       ),
@@ -1400,44 +1410,67 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
       renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
-    h(Text, {dimColor: true}, 'Esc: back | ↑↓: navigate | Enter: submit'),
+    h(Text, {dimColor: true}, 'Esc: back | ↑↓: navigate | 1/2: select | Enter: submit'),
     h(Box, {marginBottom: 1}),
-    // Agent field - single line
+    // Agent field - compact horizontal with [1]/[2] labels
     h(
       Text,
       null,
       field === 'agent' ? chalk.cyan(figures.pointer) : ' ',
-      ' Agent to rollover: ',
-      chalk.dim('(1=Claude, 2=Codex)'),
-      '  ',
-      h(Text, {color: field === 'agent' ? 'yellow' : 'white'}, `[${agentValue}]`)
+      ' Agent: ',
+      h(Text, {color: agent === 'claude' ? 'yellow' : 'white'}, agent === 'claude' ? '[1] Claude' : ' 1  Claude'),
+      '   ',
+      h(Text, {color: agent === 'codex' ? 'yellow' : 'white'}, agent === 'codex' ? '[2] Codex' : ' 2  Codex')
     ),
-    // Rollover type field - single line
+    h(Text, {dimColor: true}, '─'.repeat(60)),
+    // Rollover type section header
+    h(Box, {marginTop: 1}),
+    h(Text, null, field === 'rollover_type' ? chalk.cyan(figures.pointer) : ' ', ' Rollover Type:'),
+    h(Box, {marginTop: 1}),
+    // Quick Resume option
     h(
-      Text,
-      null,
-      field === 'rollover_type' ? chalk.cyan(figures.pointer) : ' ',
-      ' Rollover type: ',
-      chalk.dim('(1=Quick, 2=Context)'),
-      '  ',
-      h(Text, {color: field === 'rollover_type' ? 'yellow' : 'white'}, `[${rolloverValue}]`)
-    ),
-    // Context instructions field - only shown for context rollover
-    rolloverType === 'context' ? h(
       Box,
-      {flexDirection: 'column', marginTop: 1},
+      {flexDirection: 'column', marginLeft: 3},
       h(
         Text,
         null,
-        field === 'prompt' ? chalk.cyan(figures.pointer) : ' ',
-        ' Context instructions: ',
-        chalk.dim('(optional, Enter when done)')
+        rolloverType === 'quick' ? chalk.yellow('[1] Quick Resume') : chalk.white(' 1  Quick Resume')
+      ),
+      h(Text, {dimColor: true}, '    Inject session lineage only, and quickly start new session.'),
+      h(Text, {dimColor: true}, '    You provide context-extraction instructions once session resumes.')
+    ),
+    h(Box, {marginTop: 1}),
+    // Context Recovery option
+    h(
+      Box,
+      {flexDirection: 'column', marginLeft: 3},
+      h(
+        Text,
+        null,
+        rolloverType === 'context' ? chalk.yellow('[2] Resume with Context Recovery') : chalk.white(' 2  Resume with Context Recovery')
+      ),
+      h(Text, {dimColor: true}, '    Inject lineage + use sub-agents to extract context.'),
+      h(Text, {dimColor: true}, '    Slower, but resumes with full understanding of last task and overall work.')
+    ),
+    // Context instructions field - only shown when on prompt field (after pressing Enter/down)
+    // This prevents layout shift from interfering with rollover type selection
+    (rolloverType === 'context' && field === 'prompt') ? h(
+      Box,
+      {flexDirection: 'column', marginTop: 1},
+      h(Text, {dimColor: true}, '─'.repeat(60)),
+      h(Box, {marginTop: 1}),
+      h(
+        Text,
+        null,
+        chalk.cyan(figures.pointer),
+        ' Custom context recovery instructions ',
+        chalk.dim('(optional)')
       ),
       h(
         Text,
         null,
-        '    ',
-        h(Text, {color: field === 'prompt' ? 'yellow' : 'white'}, prompt || '_')
+        '   ',
+        h(Text, {color: 'yellow'}, prompt || chalk.dim('(default: recover context of last task)'))
       )
     ) : null
   );

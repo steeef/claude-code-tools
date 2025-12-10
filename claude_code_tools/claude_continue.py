@@ -76,7 +76,7 @@ def claude_continue(
     if precomputed_session_files is not None:
         # Skip lineage tracing - use precomputed data
         all_session_files = precomputed_session_files
-        print(f"ℹ️  Using {len(all_session_files)} precomputed session file(s)")
+        print(f"ℹ️  Using {len(all_session_files)} parent session file(s)")
         print()
         # Still need derivation types for the file list - trace from last file
         from claude_code_tools.session_lineage import get_full_lineage_chain
