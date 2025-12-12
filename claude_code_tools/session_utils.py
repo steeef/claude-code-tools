@@ -604,7 +604,7 @@ def is_valid_session(filepath: Path) -> bool:
 
     # Whitelist of resumable message types
     # Claude Code types (require sessionId)
-    claude_valid_types = {"user", "assistant", "tool_result", "tool_use"}
+    claude_valid_types = {"user", "assistant", "tool_result", "tool_use", "system"}
     # Codex types (conversation content types)
     codex_valid_types = {"event_msg", "response_item", "turn_context"}
 
