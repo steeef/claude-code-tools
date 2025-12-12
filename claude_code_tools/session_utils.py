@@ -1027,14 +1027,14 @@ def _format_time_span(created: Optional[str], modified: Optional[str]) -> str:
     if not modified:
         return ""
 
-    # Parse modified timestamp for display
+    # Parse modified timestamp for display (convert to local time)
     try:
         # Handle various ISO formats
         mod_str = modified.replace("Z", "+00:00")
-        if "T" in mod_str:
-            mod_dt = datetime.fromisoformat(mod_str)
-        else:
-            mod_dt = datetime.fromisoformat(mod_str)
+        mod_dt = datetime.fromisoformat(mod_str)
+        # Convert to local time if timezone-aware
+        if mod_dt.tzinfo is not None:
+            mod_dt = mod_dt.astimezone()  # Convert to local timezone
         mod_display = mod_dt.strftime("%Y-%m-%d %H:%M")
     except (ValueError, TypeError):
         mod_display = modified[:16] if len(modified) >= 16 else modified
