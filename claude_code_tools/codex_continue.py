@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import List, Optional
 
 from claude_code_tools.export_codex_session import resolve_session_path
-from claude_code_tools.session_utils import build_rollover_prompt
+from claude_code_tools.session_utils import (
+    build_rollover_prompt,
+    build_session_file_list,
+)
 
 
 def codex_continue(
@@ -82,8 +85,9 @@ def codex_continue(
 
             if len(lineage_chain) > 1:
                 print(f"✅ Found {len(lineage_chain)} session(s) in lineage:")
-                for session_path, derivation_type in lineage_chain:
-                    print(f"   - {session_path.name} ({derivation_type})")
+                # Use shared formatter (expects chronological order)
+                chronological = list(reversed(lineage_chain))
+                print(build_session_file_list(chronological))
                 print()
 
             # Collect all session files in chronological order (oldest first)

@@ -416,8 +416,9 @@ def display_lineage(
 
         if len(lineage_chain) > 1:
             print(f"✅ Found {len(lineage_chain)} session(s) in lineage:")
-            for session_path, derivation_type in lineage_chain:
-                print(f"   - {session_path.name} ({derivation_type})")
+            # Use shared formatter (expects chronological order)
+            chronological = list(reversed(lineage_chain))
+            print(build_session_file_list(chronological))
             print()
         else:
             print("✅ This is the original session (no parent chain)")
@@ -955,11 +956,119 @@ def friendly_derivation_type(dtype: str) -> str:
         dtype: Derivation type from lineage chain (e.g., "continued", "trimmed")
 
     Returns:
-        User-friendly string (e.g., "rolled over" instead of "continued")
+        User-friendly string (e.g., "rollover" instead of "continued")
     """
     if dtype == "continued":
-        return "rolled over"
+        return "rollover"
     return dtype
+
+
+def _get_session_timestamps(session_path: Path) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract created and modified timestamps from a session file.
+
+    Args:
+        session_path: Path to the JSONL session file
+
+    Returns:
+        Tuple of (created_iso, modified_iso) strings, or None if not found
+    """
+    created = None
+    modified = None
+
+    try:
+        with open(session_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    data = json.loads(line)
+
+                    # Get timestamp from message entries (user/assistant types)
+                    # These have timestamp at top level
+                    ts = data.get("timestamp") or data.get("isoTimestamp")
+
+                    # Also check nested snapshot.timestamp for file-history entries
+                    if not ts and isinstance(data.get("snapshot"), dict):
+                        ts = data["snapshot"].get("timestamp")
+
+                    if ts:
+                        if created is None:
+                            created = ts
+                        modified = ts  # Keep updating to get the last one
+
+                except json.JSONDecodeError:
+                    pass
+
+    except (OSError, IOError):
+        pass
+
+    # Fallback to file mtime if no modified timestamp found
+    if not modified and session_path.exists():
+        mtime = session_path.stat().st_mtime
+        modified = datetime.fromtimestamp(mtime).strftime("%Y-%m-%dT%H:%M:%S")
+
+    return created, modified
+
+
+def _format_time_span(created: Optional[str], modified: Optional[str]) -> str:
+    """
+    Format the time span between created and modified timestamps.
+
+    Args:
+        created: ISO timestamp string for session start
+        modified: ISO timestamp string for session end
+
+    Returns:
+        Formatted string like "spanning 2 days, last modified 2025-12-10 11:45"
+    """
+    if not modified:
+        return ""
+
+    # Parse modified timestamp for display (convert to local time)
+    try:
+        # Handle various ISO formats
+        mod_str = modified.replace("Z", "+00:00")
+        mod_dt = datetime.fromisoformat(mod_str)
+        # Convert to local time if timezone-aware
+        if mod_dt.tzinfo is not None:
+            mod_dt = mod_dt.astimezone()  # Convert to local timezone
+        mod_display = mod_dt.strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        mod_display = modified[:16] if len(modified) >= 16 else modified
+
+    # Calculate span if we have both timestamps
+    span_str = ""
+    if created and modified:
+        try:
+            cre_str = created.replace("Z", "+00:00")
+            mod_str = modified.replace("Z", "+00:00")
+            cre_dt = datetime.fromisoformat(cre_str)
+            mod_dt = datetime.fromisoformat(mod_str)
+
+            delta = mod_dt - cre_dt
+            total_minutes = int(delta.total_seconds() // 60)
+            days = delta.days
+            hours = delta.seconds // 3600
+            minutes = (delta.seconds % 3600) // 60
+
+            if days >= 1:
+                span_str = f"{days}d"
+            elif hours >= 1:
+                span_str = f"{hours}h"
+            elif total_minutes >= 1:
+                span_str = f"{total_minutes}m"
+            else:
+                span_str = "<1m"
+        except (ValueError, TypeError):
+            pass
+
+    if span_str:
+        return f"{span_str}, {mod_display}"
+    else:
+        return mod_display
 
 
 def build_session_file_list(
@@ -974,18 +1083,27 @@ def build_session_file_list(
 
     Returns:
         Formatted string with numbered file list, e.g.:
-            1. /path/to/session1.jsonl (original)
-            2. /path/to/session2.jsonl (rolled over from 1)
-            3. /path/to/session3.jsonl (trimmed from 2)
+            1. /path/to/session1.jsonl (original, spanning 2 days, last modified 2025-12-10 11:45)
+            2. /path/to/session2.jsonl (rollover from 1, spanning 1 day, last modified 2025-12-10 15:30)
     """
     file_lines = []
     for i, (path, derivation_type) in enumerate(chronological_chain):
+        # Get timestamps and format span
+        created, modified = _get_session_timestamps(path)
+        time_info = _format_time_span(created, modified)
+
         if derivation_type == "original":
-            file_lines.append(f"{i+1}. {path} (original)")
+            if time_info:
+                file_lines.append(f"{i+1}. {path} (original, {time_info})")
+            else:
+                file_lines.append(f"{i+1}. {path} (original)")
         else:
             parent_num = i  # previous item in 1-indexed
             friendly = friendly_derivation_type(derivation_type)
-            file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num})")
+            if time_info:
+                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num}, {time_info})")
+            else:
+                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num})")
     return "\n".join(file_lines)
 
 
