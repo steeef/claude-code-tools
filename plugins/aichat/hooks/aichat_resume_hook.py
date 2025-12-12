@@ -11,6 +11,9 @@ import json
 import subprocess
 import sys
 
+# Trigger patterns that activate this hook
+TRIGGERS = (">resume", ">continue", ">handoff")
+
 
 def copy_to_clipboard(text: str) -> bool:
     """
@@ -47,7 +50,7 @@ def main():
     session_id = data.get("session_id", "")
     prompt = data.get("prompt", "").strip()
 
-    if not prompt.startswith(">resume"):
+    if not any(prompt.startswith(t) for t in TRIGGERS):
         # Not our trigger, let it pass through
         sys.exit(0)
 
@@ -63,22 +66,31 @@ def main():
     # Try to copy session ID to clipboard
     copied = copy_to_clipboard(session_id)
 
+    # ANSI escape codes for bright blue color and code style
+    BLUE = "\033[94m"
+    CODE = "\033[37m"  # Regular white for code-like appearance
+    RESET = "\033[0m"
+
     if copied:
         message = (
-            f"Session ID copied to clipboard!\n\n"
-            f"To continue your work from this session:\n"
-            f"  1. Quit Claude (Ctrl+D twice)\n"
-            f"  2. Run: aichat resume <paste>\n\n"
-            f"Session ID: {session_id}"
+            f"{BLUE}Session ID copied to clipboard!{RESET}\n\n"
+            f"{BLUE}To continue your work in a new session:{RESET}\n"
+            f"{BLUE}  1. Quit Claude (Ctrl+D twice){RESET}\n"
+            f"{BLUE}  2. Run: {CODE}`aichat resume <paste>`{RESET}\n\n"
+            f"{BLUE}You can then choose between a few different ways of{RESET}\n"
+            f"{BLUE}continuing your work.{RESET}\n\n"
+            f"{BLUE}Session ID: {session_id}{RESET}"
         )
     else:
         message = (
-            f"Could not copy to clipboard. Here's your session ID:\n\n"
-            f"  {session_id}\n\n"
-            f"To continue your work from this session:\n"
-            f"  1. Copy the session ID above\n"
-            f"  2. Quit Claude (Ctrl+D twice)\n"
-            f"  3. Run: aichat resume <session-id>"
+            f"{BLUE}Could not copy to clipboard. Here's your session ID:{RESET}\n\n"
+            f"{BLUE}  {session_id}{RESET}\n\n"
+            f"{BLUE}To continue your work in a new session:{RESET}\n"
+            f"{BLUE}  1. Copy the session ID above{RESET}\n"
+            f"{BLUE}  2. Quit Claude (Ctrl+D twice){RESET}\n"
+            f"{BLUE}  3. Run: {CODE}`aichat resume <session-id>`{RESET}\n\n"
+            f"{BLUE}You can then choose between a few different ways of{RESET}\n"
+            f"{BLUE}continuing your work.{RESET}"
         )
 
     # Block the prompt and show the message
