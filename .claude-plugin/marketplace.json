@@ -11,9 +11,9 @@
       "description": "Safety hooks to block or require user approval for dangerous commands (rm, git operations, .env access, file size limits)"
     },
     {
-      "name": "session-search",
-      "source": "./plugins/session-search",
-      "description": "Provides session-search skill to search past sessions using the `aichat search` command"
+      "name": "aichat",
+      "source": "./plugins/aichat",
+      "description": "Provides skills, hooks, slash commands related to the `aichat` tool-set for searching and resuming CLI-agent sessions"
     },
     {
       "name": "tmux-cli",
