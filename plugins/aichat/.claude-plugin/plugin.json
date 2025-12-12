@@ -1,8 +1,8 @@
 {
-  "name": "session-search",
+  "name": "aichat",
   "version": "0.1.0",
-  "description": "Provides session-search skill, to allow Claude-Code to search past sessions using the `aichat search` command",
+  "description": "Provides skills, hooks, slash commands related to the aichat tool-set for searching and resuming CLI-agent sessions",
   "author": {
-    "name": "Prasad Chalasani",
+    "name": "Prasad Chalasani"
   }
 }
