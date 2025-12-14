@@ -3291,10 +3291,6 @@ fn search_tantivy(
         let query_lower = query_clean.to_lowercase();
         let keywords: Vec<&str> = query_lower.split_whitespace().collect();
 
-        // Detect if this is a phrase query (multi-word)
-        let is_phrase_query = keywords.len() > 1;
-        let phrase_to_find = if is_phrase_query { Some(query_lower.clone()) } else { None };
-
         // Recency ranking: 7-day half-life exponential decay
         let now = Utc::now().timestamp() as f64;
         let half_life_secs = 7.0 * 24.0 * 3600.0; // 7 days
@@ -3318,29 +3314,24 @@ fn search_tantivy(
                 let final_score = *score * recency_mult as f32;
                 // Use Tantivy's snippet generator if available, else fallback to manual extraction
                 // Keep <b> tags for highlighting - they'll be parsed when rendering
-                // For phrase queries, prefer snippets that actually contain the phrase
+                // For multi-word queries WITHOUT quotes, this is an OR search - highlight any keyword
+                let is_multi_word = keywords.len() > 1;
                 let snippet = if let Some(ref gen) = snippet_generator {
                     let tantivy_snippet = gen.snippet(content);
                     let html = tantivy_snippet.to_html();
                     if html.is_empty() {
                         // Fallback if Tantivy snippet is empty
                         extract_snippet(content, &keywords, 100)
+                    } else if is_multi_word {
+                        // Multi-word query: Tantivy's highlighting is unreliable for OR queries
+                        // Re-highlight all keywords (case-insensitive, substring-aware)
+                        rehighlight_keywords(&html, &keywords)
+                    } else if html.contains("<b>") {
+                        // Single keyword: Tantivy found something to highlight - use it
+                        merge_adjacent_highlights(&html)
                     } else {
-                        // For phrase queries, check if Tantivy's snippet contains the phrase
-                        // If not, use our custom extractor which prioritizes phrase matches
-                        if let Some(ref phrase) = phrase_to_find {
-                            let html_lower = strip_html_tags(&html).to_lowercase();
-                            if html_lower.contains(phrase) {
-                                // Tantivy's snippet has the phrase, use it with merged highlights
-                                merge_adjacent_highlights(&html)
-                            } else {
-                                // Tantivy missed the phrase, use custom extraction
-                                extract_snippet(content, &keywords, 100)
-                            }
-                        } else {
-                            // Single word query, just use Tantivy's snippet
-                            html
-                        }
+                        // Tantivy returned text but no highlights - use custom extraction
+                        extract_snippet(content, &keywords, 100)
                     }
                 } else {
                     extract_snippet(content, &keywords, 100)
@@ -3366,16 +3357,82 @@ fn search_tantivy(
     result.unwrap_or_default()
 }
 
+/// Re-highlight all keywords in a snippet (case-insensitive, including substrings).
+/// This fixes Tantivy's SnippetGenerator which doesn't always highlight all occurrences
+/// for multi-term queries.
+fn rehighlight_keywords(snippet: &str, keywords: &[&str]) -> String {
+    // First strip any existing <b> tags to get plain text
+    let plain = strip_html_tags(snippet);
+    let plain_lower = plain.to_lowercase();
+    let plain_chars: Vec<char> = plain.chars().collect();
+    let plain_lower_chars: Vec<char> = plain_lower.chars().collect();
+
+    // Find all keyword positions (case-insensitive, substring matching)
+    let mut highlights: Vec<(usize, usize)> = Vec::new();
+    for keyword in keywords {
+        let kw_lower = keyword.to_lowercase();
+        let kw_chars: Vec<char> = kw_lower.chars().collect();
+        if kw_chars.is_empty() {
+            continue;
+        }
+        let mut search_pos = 0;
+        while search_pos + kw_chars.len() <= plain_lower_chars.len() {
+            let match_found = (0..kw_chars.len())
+                .all(|i| plain_lower_chars.get(search_pos + i) == Some(&kw_chars[i]));
+            if match_found {
+                highlights.push((search_pos, search_pos + kw_chars.len()));
+                search_pos += kw_chars.len();
+            } else {
+                search_pos += 1;
+            }
+        }
+    }
+
+    if highlights.is_empty() {
+        return plain;
+    }
+
+    // Sort and merge overlapping highlights
+    highlights.sort_by_key(|h| h.0);
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (start, end) in highlights {
+        if let Some(last) = merged.last_mut() {
+            if start <= last.1 {
+                last.1 = last.1.max(end);
+                continue;
+            }
+        }
+        merged.push((start, end));
+    }
+
+    // Build result with <b> tags
+    let mut result = String::new();
+    let mut current_pos = 0;
+    for (start, end) in merged {
+        if start > current_pos {
+            result.push_str(&plain_chars[current_pos..start].iter().collect::<String>());
+        }
+        result.push_str("<b>");
+        result.push_str(&plain_chars[start..end].iter().collect::<String>());
+        result.push_str("</b>");
+        current_pos = end;
+    }
+    if current_pos < plain_chars.len() {
+        result.push_str(&plain_chars[current_pos..].iter().collect::<String>());
+    }
+    result
+}
+
 /// Extract a snippet from content containing the keywords.
 /// For multi-word queries, prioritizes finding the exact phrase over scattered keywords.
-/// Returns a window of text around the best match.
+/// Returns a window of text around the best match with HTML highlighting.
 fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> String {
     let content_lower = content.to_lowercase();
     let chars: Vec<char> = content.chars().collect();
     let chars_lower: Vec<char> = content_lower.chars().collect();
 
-    // Helper to build snippet around a character position
-    let build_snippet = |match_start: usize, match_len: usize| -> String {
+    // Helper to build snippet around a character position (returns plain text)
+    let build_snippet_text = |match_start: usize, match_len: usize| -> (String, bool, bool) {
         let half_window = window_chars / 2;
         let start_idx = match_start.saturating_sub(half_window);
         let end_idx = (match_start + match_len + half_window).min(chars.len());
@@ -3391,15 +3448,70 @@ fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> Str
             .unwrap_or(end_idx);
 
         let snippet_text: String = chars[snippet_start..snippet_end].iter().collect();
-        let mut snippet = String::new();
-        if snippet_start > 0 {
-            snippet.push_str("...");
+        (snippet_text.trim().to_string(), snippet_start > 0, snippet_end < chars.len())
+    };
+
+    // Helper to add <b> tags around keywords in a snippet
+    let highlight_keywords = |text: &str, has_prefix: bool, has_suffix: bool| -> String {
+        let text_lower = text.to_lowercase();
+        let text_chars: Vec<char> = text.chars().collect();
+        let text_lower_chars: Vec<char> = text_lower.chars().collect();
+
+        // Find all keyword positions
+        let mut highlights: Vec<(usize, usize)> = Vec::new();
+        for keyword in keywords {
+            let kw_chars: Vec<char> = keyword.chars().collect();
+            if kw_chars.is_empty() {
+                continue;
+            }
+            let mut search_pos = 0;
+            while search_pos + kw_chars.len() <= text_lower_chars.len() {
+                let match_found = (0..kw_chars.len())
+                    .all(|i| text_lower_chars.get(search_pos + i) == Some(&kw_chars[i]));
+                if match_found {
+                    highlights.push((search_pos, search_pos + kw_chars.len()));
+                    search_pos += kw_chars.len();
+                } else {
+                    search_pos += 1;
+                }
+            }
         }
-        snippet.push_str(snippet_text.trim());
-        if snippet_end < chars.len() {
-            snippet.push_str("...");
+
+        // Sort and merge overlapping highlights
+        highlights.sort_by_key(|h| h.0);
+        let mut merged: Vec<(usize, usize)> = Vec::new();
+        for (start, end) in highlights {
+            if let Some(last) = merged.last_mut() {
+                if start <= last.1 {
+                    last.1 = last.1.max(end);
+                    continue;
+                }
+            }
+            merged.push((start, end));
         }
-        snippet
+
+        // Build result with <b> tags
+        let mut result = String::new();
+        if has_prefix {
+            result.push_str("...");
+        }
+        let mut current_pos = 0;
+        for (start, end) in merged {
+            if start > current_pos {
+                result.push_str(&text_chars[current_pos..start].iter().collect::<String>());
+            }
+            result.push_str("<b>");
+            result.push_str(&text_chars[start..end].iter().collect::<String>());
+            result.push_str("</b>");
+            current_pos = end;
+        }
+        if current_pos < text_chars.len() {
+            result.push_str(&text_chars[current_pos..].iter().collect::<String>());
+        }
+        if has_suffix {
+            result.push_str("...");
+        }
+        result
     };
 
     // For multi-word queries, first try to find the exact phrase
@@ -3412,7 +3524,8 @@ fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> Str
                 .enumerate()
                 .all(|(j, &pc)| chars_lower.get(i + j) == Some(&pc));
             if matches {
-                return build_snippet(i, phrase_chars.len());
+                let (text, has_prefix, has_suffix) = build_snippet_text(i, phrase_chars.len());
+                return highlight_keywords(&text, has_prefix, has_suffix);
             }
         }
     }
@@ -3431,12 +3544,13 @@ fn extract_snippet(content: &str, keywords: &[&str], window_chars: usize) -> Str
                 .enumerate()
                 .all(|(j, &kc)| chars_lower.get(i + j) == Some(&kc));
             if matches {
-                return build_snippet(i, kw_chars.len());
+                let (text, has_prefix, has_suffix) = build_snippet_text(i, kw_chars.len());
+                return highlight_keywords(&text, has_prefix, has_suffix);
             }
         }
     }
 
-    // Fallback: return start of content
+    // Fallback: return start of content (no highlights)
     let end_idx = window_chars.min(chars.len());
     let snippet_end = (0..end_idx)
         .rev()
