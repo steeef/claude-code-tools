@@ -1,30 +1,73 @@
 ---
 name: session-search
-description: Use this skill when you need to find out details of specific work that was 
-done in previous sessions with a code agent, which could be Claude-Code or Codex-CLI.
+description: Search previous code agent sessions (Claude-Code or Codex-CLI) for specific work, decisions, or code patterns. Use when user asks about previous sessions or needs context from earlier conversations. Delegates to subagent to preserve main context.
 ---
 
-# session-search
+<objective>
+Search previous Claude Code sessions for specific work, decisions, or code patterns. Uses a subagent to keep context clean.
+</objective>
 
-Use the `aichat search` command in bash to search previous code-agent session JSONL 
-files. Do `aichat search --help` to see how to use it!
-In that help string, pay particular attention to the fields returned in the 
-JSONL-formatted results.
+<quick_start>
+Use the session-searcher subagent via the Task tool to search previous sessions:
 
-IMPORTANT: 
+```
+Task(subagent_type="session-searcher", prompt="Find sessions where we discussed [topic]")
+```
 
-(1) you MUST set the flag `--json` when you use this command, otherwise
-it will spawn an interactive UI, which is NOT what you want. When you use this flag, you will get results in JSONL format, And you would typically use `jq` to query these.
+The subagent handles all searching and returns only a concise summary.
 
-(2) This command depends on the `claude-code-tools` and `aichat-search` packages being 
-installed on the user's machine. If you get an error indicating that these are not 
-available, then you must ask the user to install them using the following instructions 
-shown in install.md
+See `plugins/aichat/agents/session-searcher.md` for subagent implementation details.
+</quick_start>
 
+<workflow>
+1. Invoke the `session-searcher` subagent using the Task tool
+2. Provide a clear search query describing what you're looking for
+3. The subagent searches, parses results, and returns a summary
+4. Use session IDs from the summary if you need to read specific sessions directly
+</workflow>
 
+<success_criteria>
+- Subagent returns a focused summary (not raw JSON)
+- User receives relevant session references with IDs and dates
+- Search executed without spawning interactive UI
+- Main conversation context remains clean
+</success_criteria>
 
+<example>
+User asks: "What design direction did we decide on for the terminal UI?"
 
+You invoke:
+```
+Task(
+  subagent_type="session-searcher",
+  prompt="Find sessions discussing terminal UI design direction, especially any decisions about styling, colors, or aesthetic approach"
+)
+```
 
+You receive: A 300-word summary with key findings and session references (not 260 lines of JSON)
+</example>
 
+<fallback>
+If the subagent is not available, you can search directly:
 
+```bash
+aichat search --json "query terms"
+```
 
+Requirements:
+- MUST use `--json` flag (never spawn interactive UI)
+- Parse JSON output with `jq` or similar
+- Summarize results before presenting to user
+
+Installation (if aichat command not found):
+```bash
+uv tool install claude-code-tools   # Python package
+cargo install aichat-search         # Rust search TUI
+```
+</fallback>
+
+<constraints>
+- ALWAYS prefer the subagent approach for context efficiency
+- NEVER dump raw JSON into the main conversation
+- MUST summarize findings concisely
+</constraints>
