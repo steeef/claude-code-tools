@@ -2,13 +2,23 @@
 
 import json
 import math
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime
+from importlib.metadata import version as get_pkg_version
 from pathlib import Path
 from typing import Any, Optional
 
 from claude_code_tools.session_utils import is_valid_session
+
+
+def _get_package_version() -> str:
+    """Get installed package version for automatic index rebuilding."""
+    try:
+        return get_pkg_version("claude-code-tools")
+    except Exception:
+        return "unknown"
 
 # Lazy imports to allow module to load even if deps not installed
 try:
@@ -184,10 +194,43 @@ class SessionIndex:
         # Create or open index
         self.index_path.mkdir(parents=True, exist_ok=True)
 
-        if (self.index_path / "meta.json").exists():
-            self.index = tantivy.Index(self.schema, path=str(self.index_path))
-        else:
-            self.index = tantivy.Index(self.schema, path=str(self.index_path))
+        # Check index version - rebuild if package version changed
+        version_file = self.index_path / "VERSION"
+        current_version = _get_package_version()
+        needs_rebuild = False
+
+        if version_file.exists():
+            try:
+                stored_version = version_file.read_text().strip()
+                if stored_version != current_version:
+                    needs_rebuild = True
+                    print(
+                        f"Package version changed ({stored_version} -> {current_version}), "
+                        "rebuilding index..."
+                    )
+            except IOError:
+                needs_rebuild = True
+                print("Index version file corrupted, rebuilding...")
+        elif (self.index_path / "meta.json").exists():
+            # Index exists but no VERSION file - legacy index, rebuild
+            needs_rebuild = True
+            print("Upgrading index to versioned format, rebuilding...")
+
+        if needs_rebuild:
+            # Clear index directory contents (but keep the directory itself)
+            for item in self.index_path.iterdir():
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir():
+                    shutil.rmtree(item)
+            # Reset state tracker
+            self.state = IndexState(self.index_path / "index_state.json")
+
+        # Create or open index
+        self.index = tantivy.Index(self.schema, path=str(self.index_path))
+
+        # Write current version
+        version_file.write_text(current_version)
 
     def _parse_export_file(self, export_path: Path) -> Optional[dict[str, Any]]:
         """
