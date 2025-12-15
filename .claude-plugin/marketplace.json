@@ -24,6 +24,11 @@
       "name": "workflow",
       "source": "./plugins/workflow",
       "description": "Workflow skills and agents: code-walk-thru, log-work, make-issue-spec skills; ui-tester agent for browser-based UI validation"
+    },
+    {
+      "name": "steeef-safety",
+      "source": "./plugins/steeef-safety",
+      "description": "Additional safety hooks for kubectl, terraform, skill activation, and CLAUDE.md protection"
     }
   ]
 }
