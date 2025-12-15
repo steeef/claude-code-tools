@@ -53,14 +53,14 @@ export const RESUME_SUBMENU = [
   {value: 'resume', label: 'Resume as-is'},
   {value: 'clone', label: 'Clone session and resume clone'},
   {value: 'suppress_resume', label: 'Trim + resume...'},
-  {value: 'smart_trim_resume', label: 'Smart trim + resume'},
-  {value: 'continue', label: 'Rollover: handoff work to fresh session'},
+  {value: 'smart_trim_resume', label: 'Smart trim + resume...'},
+  {value: 'continue', label: 'Rollover: handoff work to fresh session...'},
 ];
 
 // Trim-only submenu (for aichat trim command)
 export const TRIM_SUBMENU = [
   {value: 'suppress_resume', label: 'Trim + resume...'},
-  {value: 'smart_trim_resume', label: 'Smart trim + resume'},
+  {value: 'smart_trim_resume', label: 'Smart trim + resume...'},
 ];
 
 export function filteredActions(isSidechain = false) {

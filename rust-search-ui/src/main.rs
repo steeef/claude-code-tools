@@ -522,9 +522,9 @@ impl ActionMenuItem {
             ActionMenuItem::Query => "(q) Query the session",
             ActionMenuItem::Resume => "(r) Resume as-is",
             ActionMenuItem::Clone => "(l) Clone session + resume clone",
-            ActionMenuItem::Trim => "(t) Trim + resume",
-            ActionMenuItem::SmartTrim => "(s) Smart trim + resume",
-            ActionMenuItem::Continue => "(o) Rollover: handoff work to fresh session",
+            ActionMenuItem::Trim => "(t) Trim + resume...",
+            ActionMenuItem::SmartTrim => "(s) Smart trim + resume...",
+            ActionMenuItem::Continue => "(o) Rollover: handoff work to fresh session...",
             ActionMenuItem::Delete => "(d) Delete session",
         }
     }
@@ -1493,7 +1493,7 @@ fn render_action_modal(frame: &mut Frame, app: &App, t: &Theme, area: Rect) {
     use ratatui::widgets::{Block, Borders, Clear};
 
     // Center the modal - sized for 11 action items + Esc hint
-    let modal_width = 50u16;
+    let modal_width = 54u16;
     let modal_height = 15u16; // 11 items + 1 hint + 2 border + 1 padding
     let x = (area.width.saturating_sub(modal_width)) / 2;
     let y = (area.height.saturating_sub(modal_height)) / 2;
