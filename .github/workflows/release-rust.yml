@@ -92,13 +92,27 @@ jobs:
         with:
           path: artifacts
 
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/rust-}" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
-          generate_release_notes: true
+          make_latest: false
+          generate_release_notes: false
+          body: |
+            ## aichat-search ${{ steps.version.outputs.VERSION }}
+
+            Pre-built binaries for the Rust search TUI.
+
+            **Install/Upgrade:**
+            - Homebrew: `brew upgrade aichat-search`
+            - Cargo: `cargo install aichat-search`
+            - Or download binary below
 
   update-homebrew:
     name: Update Homebrew Formula

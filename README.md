@@ -1,5 +1,8 @@
 # claude-code-tools
 
+[![claude-code-tools](https://img.shields.io/github/v/release/pchalasani/claude-code-tools?filter=v*&label=claude-code-tools&color=blue)](https://pypi.org/project/claude-code-tools/)
+[![aichat-search](https://img.shields.io/github/v/release/pchalasani/claude-code-tools?filter=rust-v*&label=aichat-search&color=orange)](https://github.com/pchalasani/claude-code-tools/releases?q=rust)
+
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
