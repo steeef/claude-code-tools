@@ -1167,7 +1167,7 @@ This session continues from a previous conversation. The prior session log is:
 
   {session_file}
 
-The file is in JSONL format. You can use sub-agents to explore it if needed.
+The file is in JSONL format. Since it can be large, use appropriate strategies (such as sub-agents if available) to carefully explore it if you need context.
 
 Do not do anything yet. Simply greet the user and await instructions on how they want to continue the work based on the above session."""
     else:
@@ -1182,7 +1182,7 @@ This session continues from a chain of prior conversations. Here are the JSONL s
 - "trimmed" = Long messages were truncated to free up context. Full content in parent session.
 - "rolled over" = Work handed off to fresh session.
 
-You can use sub-agents to explore these files if you need context.
+Since these files can be large, use appropriate strategies (such as sub-agents if available) to carefully explore them if you need context.
 
 Do not do anything yet. Simply greet the user and await instructions on how they want to continue the work based on the above sessions."""
 

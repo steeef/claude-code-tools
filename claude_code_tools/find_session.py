@@ -570,6 +570,18 @@ def handle_suppress_resume(
         print(f"❌ Error trimming session: {e}", file=output)
         return
 
+    # Check if nothing to trim (savings below threshold)
+    if result.get("nothing_to_trim"):
+        print(f"\n{'='*70}", file=output)
+        print(f"⚠️  NOTHING TO TRIM", file=output)
+        print(f"{'='*70}", file=output)
+        print(
+            f"   Savings too small ({result['tokens_saved']} tokens) - "
+            f"no new session created",
+            file=output,
+        )
+        return
+
     new_session_id = result["session_id"]
     new_session_file = result["output_file"]
 
