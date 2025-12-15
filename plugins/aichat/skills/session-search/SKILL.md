@@ -4,7 +4,7 @@ description: Search previous code agent sessions (Claude-Code or Codex-CLI) for 
 ---
 
 <objective>
-Search previous Claude Code sessions for specific work, decisions, or code patterns. Uses a subagent to keep context clean.
+Search previous code agent sessions (Claude Code or Codex-CLI) for specific work, decisions, or code patterns. Uses a subagent to keep context clean.
 </objective>
 
 <quick_start>
