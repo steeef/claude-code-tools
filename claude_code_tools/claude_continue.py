@@ -192,6 +192,10 @@ def claude_continue(
                 try:
                     # Parse first line and add metadata fields
                     first_line_data = json.loads(lines[0])
+                    # Remove trim_metadata if present - a session is either continued
+                    # OR trimmed, not both. continue_metadata.parent_session_file
+                    # preserves ancestry.
+                    first_line_data.pop("trim_metadata", None)
                     first_line_data.update(metadata_fields)
                     lines[0] = json.dumps(first_line_data) + "\n"
 

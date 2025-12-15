@@ -471,6 +471,9 @@ def trim_and_create_session(
         try:
             # Parse first line and add metadata fields
             first_line_data = json.loads(lines[0])
+            # Remove continue_metadata if present - a session is either trimmed OR
+            # continued, not both. The trim_metadata.parent_file preserves ancestry.
+            first_line_data.pop("continue_metadata", None)
             first_line_data.update(metadata_fields)
             lines[0] = json.dumps(first_line_data) + "\n"
 
