@@ -23,10 +23,7 @@ if command -v terminal-notifier >/dev/null 2>&1; then
     else
         terminal-notifier -title "$title" -message "$message" -timeout 10
     fi
-else
-    if [[ -n "$subtitle" ]]; then
-        curl -H "Title: $title - $subtitle" -d "$message" ntfy.sh/cc-alerts
-    else
-        curl -H "Title: $title" -d "$message" ntfy.sh/cc-alerts
-    fi
 fi
+
+# Output valid JSON to prevent "hook error" display (workaround for Claude Code bug #10463)
+echo '{"decision": "approve"}'
