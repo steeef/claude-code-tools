@@ -365,6 +365,9 @@ def create_placeholder(tool_name: str, original_length: int) -> str:
     )
 
 
+MIN_TOKEN_SAVINGS = 300  # Minimum tokens saved to consider trim worthwhile
+
+
 def trim_and_create_session(
     agent: Optional[str],
     input_file: Path,
@@ -372,6 +375,7 @@ def trim_and_create_session(
     threshold: int,
     output_dir: Optional[Path] = None,
     trim_assistant_messages: Optional[int] = None,
+    min_token_savings: int = MIN_TOKEN_SAVINGS,
 ) -> dict:
     """
     Trim tool results and assistant messages, creating a new session file.
@@ -386,16 +390,19 @@ def trim_and_create_session(
             - Positive N: trim first N assistant messages exceeding threshold
             - Negative N: trim all except last abs(N) assistant messages exceeding threshold
             - None: don't trim assistant messages
+        min_token_savings: Minimum tokens saved to consider trim worthwhile.
+            If savings are below this, deletes output file and sets nothing_to_trim=True.
 
     Returns:
         Dict with:
-            - session_id: New session UUID
-            - output_file: Path to new session file
+            - session_id: New session UUID (None if nothing_to_trim)
+            - output_file: Path to new session file (None if nothing_to_trim)
             - num_tools_trimmed: Number of tool results trimmed
             - num_assistant_trimmed: Number of assistant messages trimmed
             - chars_saved: Characters saved
             - tokens_saved: Estimated tokens saved
             - detected_agent: Detected agent type
+            - nothing_to_trim: True if savings below min_token_savings threshold
     """
     import json
     from datetime import datetime, timezone
@@ -471,6 +478,9 @@ def trim_and_create_session(
         try:
             # Parse first line and add metadata fields
             first_line_data = json.loads(lines[0])
+            # Remove continue_metadata if present - a session is either trimmed OR
+            # continued, not both. The trim_metadata.parent_file preserves ancestry.
+            first_line_data.pop("continue_metadata", None)
             first_line_data.update(metadata_fields)
             lines[0] = json.dumps(first_line_data) + "\n"
 
@@ -480,6 +490,21 @@ def trim_and_create_session(
         except json.JSONDecodeError:
             # If first line is not valid JSON, leave file as-is
             pass
+
+    # Check if savings are worth it
+    if tokens_saved < min_token_savings:
+        # Not worth trimming - delete output file and return nothing_to_trim flag
+        output_path.unlink(missing_ok=True)
+        return {
+            "session_id": None,
+            "output_file": None,
+            "num_tools_trimmed": num_tools_trimmed,
+            "num_assistant_trimmed": num_assistant_trimmed,
+            "chars_saved": chars_saved,
+            "tokens_saved": tokens_saved,
+            "detected_agent": agent,
+            "nothing_to_trim": True,
+        }
 
     # Inject parent session lineage into first user message
     inject_lineage_into_first_user_message(output_path, input_file, agent)
@@ -492,6 +517,7 @@ def trim_and_create_session(
         "chars_saved": chars_saved,
         "tokens_saved": tokens_saved,
         "detected_agent": agent,
+        "nothing_to_trim": False,
     }
 
 

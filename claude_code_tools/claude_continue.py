@@ -143,7 +143,7 @@ def claude_continue(
         # Run shell in interactive mode to load rc files (for shell functions like ccrja)
         # Use jq to add a marker prefix so we can reliably extract the session ID
         shell = os.environ.get('SHELL', '/bin/sh')
-        cmd = f'{claude_cli} -p --no-session-persistence {shlex.quote(analysis_prompt)} --output-format json | jq -r \'"SESSION_ID:" + .session_id\''
+        cmd = f'{claude_cli} -p {shlex.quote(analysis_prompt)} --output-format json | jq -r \'"SESSION_ID:" + .session_id\''
         print(f"$ {claude_cli} -p '<analysis prompt>' --output-format json | jq ...")
         result = subprocess.run(
             [shell, "-i", "-c", cmd],
@@ -192,6 +192,10 @@ def claude_continue(
                 try:
                     # Parse first line and add metadata fields
                     first_line_data = json.loads(lines[0])
+                    # Remove trim_metadata if present - a session is either continued
+                    # OR trimmed, not both. continue_metadata.parent_session_file
+                    # preserves ancestry.
+                    first_line_data.pop("trim_metadata", None)
                     first_line_data.update(metadata_fields)
                     lines[0] = json.dumps(first_line_data) + "\n"
 

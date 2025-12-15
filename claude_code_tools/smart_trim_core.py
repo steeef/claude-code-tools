@@ -8,6 +8,7 @@ from typing import List, Optional, Any, Dict
 from claude_code_tools.session_utils import (
     get_codex_home,
     get_claude_home,
+    get_session_uuid,
     encode_claude_project_path,
     mark_session_as_helper,
 )
@@ -181,8 +182,8 @@ def analyze_session_with_cli(
 
     session_content = "\n".join(content_parts)
 
-    # Extract session_id from filename
-    session_id = session_file.stem
+    # Extract session_id (UUID) from filename - works for both Claude and Codex formats
+    session_id = get_session_uuid(session_file.name)
 
     # Determine if this is a Codex session (for output directory placement)
     # Resolve paths to handle ~ and relative paths correctly

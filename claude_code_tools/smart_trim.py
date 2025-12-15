@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from claude_code_tools.smart_trim_core import identify_trimmable_lines_cli, SMART_TRIM_THRESHOLD
 from claude_code_tools.trim_session import detect_agent, inject_lineage_into_first_user_message
-from claude_code_tools.session_utils import get_claude_home, resolve_session_path
+from claude_code_tools.session_utils import get_claude_home, get_session_uuid, resolve_session_path
 
 
 def trim_lines(
@@ -334,18 +334,28 @@ def main():
     line_indices = [item[0] for item in trimmable]
 
     # Determine output file
-    output_dir = args.output_dir or session_file.parent
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     # Use agent type already detected earlier
     if agent == "claude":
-        # Generate new UUID for trimmed session
+        # Claude: output in same directory or specified output_dir
+        output_dir = args.output_dir or session_file.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
         new_uuid = str(uuid.uuid4())
         output_file = output_dir / f"{new_uuid}.jsonl"
     else:
-        # Codex style
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        # Codex: new session goes in today's date folder (YYYY/MM/DD)
+        now = datetime.datetime.now()
+        timestamp = now.strftime("%Y-%m-%dT%H-%M-%S")
+        date_path = now.strftime("%Y/%m/%d")
         new_uuid = str(uuid.uuid4())
+
+        if args.output_dir:
+            output_dir = args.output_dir / date_path
+        else:
+            # Find sessions root by going up from input file (sessions/YYYY/MM/DD/file.jsonl)
+            sessions_root = session_file.parent.parent.parent.parent
+            output_dir = sessions_root / date_path
+
+        output_dir.mkdir(parents=True, exist_ok=True)
         output_file = output_dir / f"rollout-{timestamp}-{new_uuid}.jsonl"
 
     # Perform trimming (pass descriptions for truncation summaries)
@@ -407,7 +417,7 @@ def main():
     print(f"   Tokens saved (est): ~{stats['tokens_saved']:,}")
     print()
     print(f"📄 Output: {output_file}")
-    print(f"   Session ID: {output_file.stem}")
+    print(f"   Session ID: {get_session_uuid(output_file.name)}")
 
 
 if __name__ == "__main__":

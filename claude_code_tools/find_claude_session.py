@@ -833,6 +833,19 @@ def handle_suppress_resume_claude(
         print(f"❌ Error trimming session: {e}")
         return None
 
+    # Check if nothing to trim (savings below threshold)
+    from claude_code_tools.node_menu_ui import run_trim_confirm_ui
+    if result.get("nothing_to_trim"):
+        print(f"   Savings too small ({result['tokens_saved']} tokens)")
+        action = run_trim_confirm_ui(
+            nothing_to_trim=True,
+            original_session_id=session_id,
+        )
+        if action == 'resume':
+            resume_session(session_id, project_path, claude_home=claude_home)
+            return None
+        return 'back'
+
     new_session_id = result["session_id"]
     new_session_file = Path(result["output_file"])
 
@@ -840,7 +853,6 @@ def handle_suppress_resume_claude(
     total_trimmed = result['num_tools_trimmed'] + result['num_assistant_trimmed']
 
     # Show confirmation UI
-    from claude_code_tools.node_menu_ui import run_trim_confirm_ui
     action = run_trim_confirm_ui(
         new_session_id=new_session_id,
         lines_trimmed=total_trimmed,

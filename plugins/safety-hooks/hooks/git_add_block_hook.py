@@ -4,9 +4,30 @@ import os
 import subprocess
 from pathlib import Path
 
+from command_utils import extract_subcommands
+
+
 def check_git_add_command(command):
     """
     Check if a git add command contains dangerous patterns.
+    Handles compound commands (e.g., "cd /path && git add .").
+
+    Returns tuple: (decision, reason) where decision is bool or "ask"/"block"/"allow"
+    """
+    # Check each subcommand in compound commands
+    for subcmd in extract_subcommands(command):
+        result = _check_single_git_add_command(subcmd)
+        decision, reason = result
+        # Return on first block (True) or ask
+        if decision is True or decision == "ask" or decision == "block":
+            return result
+
+    return False, None
+
+
+def _check_single_git_add_command(command):
+    """
+    Check a single (non-compound) command for dangerous git add patterns.
     Returns tuple: (decision, reason) where decision is bool or "ask"/"block"/"allow"
     """
     # Normalize the command - handle multiple spaces, tabs, etc.
@@ -20,7 +41,7 @@ def check_git_add_command(command):
     # Check for wildcards or dangerous patterns anywhere in the arguments
     if '*' in normalized_cmd and normalized_cmd.startswith('git add'):
         reason = """BLOCKED: Wildcard patterns are not allowed in git add!
-        
+
 DO NOT use wildcards like 'git add *.py' or 'git add *'
 
 Instead, use:
@@ -29,7 +50,7 @@ Instead, use:
 
 This restriction prevents accidentally staging unwanted files."""
         return True, reason
-    
+
     # Hard block patterns: -A, --all, -a, ., ../, etc.
     dangerous_pattern = re.compile(
         r'^git\s+add\s+(?:.*\s+)?('
@@ -39,10 +60,10 @@ This restriction prevents accidentally staging unwanted files."""
         r'\.\./[\.\w/]*(\s|$)'             # git add ../ or ../.. patterns
         r')', re.IGNORECASE
     )
-    
+
     if dangerous_pattern.search(normalized_cmd):
         reason = """BLOCKED: Dangerous git add pattern detected!
-        
+
 DO NOT use:
 - 'git add -A', 'git add -a', 'git add --all' (adds ALL files)
 - 'git add .' (adds entire current directory)
@@ -56,7 +77,7 @@ Instead, use:
 
 This restriction prevents accidentally staging unwanted files."""
         return True, reason
-    
+
     # Check for git add with a directory
     # Match: git add <dirname>/ or git add <path/to/dir>/
     directory_pattern = re.compile(r'^git\s+add\s+(?!-)[^\s]+/$')
@@ -121,7 +142,7 @@ This restriction prevents accidentally staging unwanted files."""
                 # If dry-run fails, fall back to asking permission
                 reason = f"Staging directory {dir_path}/ (couldn't verify file status)"
                 return "ask", reason
-    
+
     # Also check for git commit -a without -m (which would open an editor)
     # Check if command has -a flag but no -m flag
     if re.search(r'^git\s+commit\s+', normalized_cmd):
@@ -188,20 +209,20 @@ def get_modified_files_being_staged(command):
 if __name__ == "__main__":
     import json
     import sys
-    
+
     data = json.load(sys.stdin)
-    
+
     # Check if this is a Bash tool call
     tool_name = data.get("tool_name")
     if tool_name != "Bash":
         print(json.dumps({"decision": "approve"}))
         sys.exit(0)
-    
+
     # Get the command being executed
     command = data.get("tool_input", {}).get("command", "")
-    
+
     should_block, reason = check_git_add_command(command)
-    
+
     if should_block:
         print(json.dumps({
             "decision": "block",
@@ -209,5 +230,5 @@ if __name__ == "__main__":
         }))
     else:
         print(json.dumps({"decision": "approve"}))
-    
+
     sys.exit(0)

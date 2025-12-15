@@ -11,12 +11,14 @@ the context limit. It:
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
 import shlex
 import subprocess
 import sys
+from datetime import timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -24,6 +26,7 @@ from claude_code_tools.export_codex_session import resolve_session_path
 from claude_code_tools.session_utils import (
     build_rollover_prompt,
     build_session_file_list,
+    get_session_uuid,
 )
 
 
@@ -176,6 +179,51 @@ def codex_continue(
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    # Inject continue_metadata into new session file
+    try:
+        new_session_file = resolve_session_path(thread_id, codex_home)
+
+        # Create metadata
+        metadata_fields = {
+            "continue_metadata": {
+                "parent_session_id": get_session_uuid(session_file.name),
+                "parent_session_file": str(session_file.absolute()),
+                "continued_at": datetime.datetime.now(timezone.utc).isoformat(),
+            }
+        }
+
+        # Read the new session file and modify first line
+        if new_session_file.exists():
+            with open(new_session_file, "r") as f:
+                lines = f.readlines()
+
+            if lines:
+                try:
+                    # Parse first line and add metadata fields
+                    first_line_data = json.loads(lines[0])
+                    # Remove trim_metadata if present - a session is either continued
+                    # OR trimmed, not both. continue_metadata.parent_session_file
+                    # preserves ancestry.
+                    first_line_data.pop("trim_metadata", None)
+                    first_line_data.update(metadata_fields)
+                    lines[0] = json.dumps(first_line_data) + "\n"
+
+                    # Write back the modified file
+                    with open(new_session_file, "w") as f:
+                        f.writelines(lines)
+
+                    if verbose:
+                        print(f"✅ Added continue_metadata to new session")
+                        print()
+                except json.JSONDecodeError:
+                    # If first line is malformed, skip adding metadata
+                    if verbose:
+                        print(f"⚠️  Could not add metadata (first line malformed)", file=sys.stderr)
+    except Exception as e:
+        # Don't fail the whole operation if metadata injection fails
+        if verbose:
+            print(f"⚠️  Could not add continue_metadata: {e}", file=sys.stderr)
 
     # Step 3: Resume in interactive mode - hand off to Codex
     # Resume with default model (not the mini model used for analysis)
