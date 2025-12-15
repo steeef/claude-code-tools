@@ -212,6 +212,7 @@ def execute_action(
         from claude_code_tools.session_utils import continue_with_options
         preset_agent = action_kwargs.get("agent") if action_kwargs else None
         preset_prompt = action_kwargs.get("prompt") if action_kwargs else None
+        rollover_type = action_kwargs.get("rollover_type", "context") if action_kwargs else "context"
         continue_with_options(
             str(session_file),
             agent,
@@ -219,6 +220,7 @@ def execute_action(
             codex_home=codex_home,
             preset_agent=preset_agent,
             preset_prompt=preset_prompt,
+            rollover_type=rollover_type,
         )
 
     elif action == "delete":

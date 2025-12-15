@@ -1,0 +1,8 @@
+{
+  "name": "aichat",
+  "version": "0.1.0",
+  "description": "Provides skills, hooks, slash commands related to the aichat tool-set for searching and resuming CLI-agent sessions",
+  "author": {
+    "name": "Prasad Chalasani"
+  }
+}

@@ -416,8 +416,9 @@ def display_lineage(
 
         if len(lineage_chain) > 1:
             print(f"✅ Found {len(lineage_chain)} session(s) in lineage:")
-            for session_path, derivation_type in lineage_chain:
-                print(f"   - {session_path.name} ({derivation_type})")
+            # Use shared formatter (expects chronological order)
+            chronological = list(reversed(lineage_chain))
+            print(build_session_file_list(chronological))
             print()
         else:
             print("✅ This is the original session (no parent chain)")
@@ -441,6 +442,7 @@ def continue_with_options(
     codex_home: Optional[str] = None,
     preset_agent: Optional[str] = None,
     preset_prompt: Optional[str] = None,
+    rollover_type: str = "context",
 ) -> None:
     """
     Unified continue flow with proper timing.
@@ -459,6 +461,8 @@ def continue_with_options(
         codex_home: Optional custom Codex home directory
         preset_agent: If provided, skip agent choice prompt and use this agent
         preset_prompt: If provided, skip custom prompt and use this
+        rollover_type: "quick" for fast resume (just lineage), "context" for
+            full context recovery with sub-agents (default)
     """
     session_file = Path(session_file_path)
 
@@ -531,6 +535,7 @@ def continue_with_options(
             return
 
     # Step 5: Execute continuation with precomputed session files
+    quick_rollover = rollover_type == "quick"
     if continue_agent == "claude":
         from claude_code_tools.claude_continue import claude_continue
         claude_continue(
@@ -539,6 +544,7 @@ def continue_with_options(
             verbose=False,
             custom_prompt=custom_prompt,
             precomputed_session_files=all_session_files,
+            quick_rollover=quick_rollover,
         )
     else:
         from claude_code_tools.codex_continue import codex_continue
@@ -548,6 +554,7 @@ def continue_with_options(
             verbose=False,
             custom_prompt=custom_prompt,
             precomputed_session_files=all_session_files,
+            quick_rollover=quick_rollover,
         )
 
 
@@ -597,7 +604,7 @@ def is_valid_session(filepath: Path) -> bool:
 
     # Whitelist of resumable message types
     # Claude Code types (require sessionId)
-    claude_valid_types = {"user", "assistant", "tool_result", "tool_use"}
+    claude_valid_types = {"user", "assistant", "tool_result", "tool_use", "system"}
     # Codex types (conversation content types)
     codex_valid_types = {"event_msg", "response_item", "turn_context"}
 
@@ -932,6 +939,313 @@ def get_session_uuid(filename_or_stem: str) -> str:
     if len(stem) >= 36:
         return stem[-36:]
     return stem
+
+
+# =============================================================================
+# Rollover Prompt Building Utilities
+# =============================================================================
+# These functions consolidate the prompt-building logic shared between
+# claude_continue.py and codex_continue.py to avoid code duplication.
+
+
+def friendly_derivation_type(dtype: str) -> str:
+    """
+    Convert derivation type to user-friendly display string.
+
+    Args:
+        dtype: Derivation type from lineage chain (e.g., "continued", "trimmed")
+
+    Returns:
+        User-friendly string (e.g., "rollover" instead of "continued")
+    """
+    if dtype == "continued":
+        return "rollover"
+    return dtype
+
+
+def _get_session_timestamps(session_path: Path) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract created and modified timestamps from a session file.
+
+    Args:
+        session_path: Path to the JSONL session file
+
+    Returns:
+        Tuple of (created_iso, modified_iso) strings, or None if not found
+    """
+    created = None
+    modified = None
+
+    try:
+        with open(session_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    data = json.loads(line)
+
+                    # Get timestamp from message entries (user/assistant types)
+                    # These have timestamp at top level
+                    ts = data.get("timestamp") or data.get("isoTimestamp")
+
+                    # Also check nested snapshot.timestamp for file-history entries
+                    if not ts and isinstance(data.get("snapshot"), dict):
+                        ts = data["snapshot"].get("timestamp")
+
+                    if ts:
+                        if created is None:
+                            created = ts
+                        modified = ts  # Keep updating to get the last one
+
+                except json.JSONDecodeError:
+                    pass
+
+    except (OSError, IOError):
+        pass
+
+    # Fallback to file mtime if no modified timestamp found
+    if not modified and session_path.exists():
+        mtime = session_path.stat().st_mtime
+        modified = datetime.fromtimestamp(mtime).strftime("%Y-%m-%dT%H:%M:%S")
+
+    return created, modified
+
+
+def _format_time_span(created: Optional[str], modified: Optional[str]) -> str:
+    """
+    Format the time span between created and modified timestamps.
+
+    Args:
+        created: ISO timestamp string for session start
+        modified: ISO timestamp string for session end
+
+    Returns:
+        Formatted string like "spanning 2 days, last modified 2025-12-10 11:45"
+    """
+    if not modified:
+        return ""
+
+    # Parse modified timestamp for display (convert to local time)
+    try:
+        # Handle various ISO formats
+        mod_str = modified.replace("Z", "+00:00")
+        mod_dt = datetime.fromisoformat(mod_str)
+        # Convert to local time if timezone-aware
+        if mod_dt.tzinfo is not None:
+            mod_dt = mod_dt.astimezone()  # Convert to local timezone
+        mod_display = mod_dt.strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        mod_display = modified[:16] if len(modified) >= 16 else modified
+
+    # Calculate span if we have both timestamps
+    span_str = ""
+    if created and modified:
+        try:
+            cre_str = created.replace("Z", "+00:00")
+            mod_str = modified.replace("Z", "+00:00")
+            cre_dt = datetime.fromisoformat(cre_str)
+            mod_dt = datetime.fromisoformat(mod_str)
+
+            delta = mod_dt - cre_dt
+            total_minutes = int(delta.total_seconds() // 60)
+            days = delta.days
+            hours = delta.seconds // 3600
+            minutes = (delta.seconds % 3600) // 60
+
+            if days >= 1:
+                span_str = f"{days}d"
+            elif hours >= 1:
+                span_str = f"{hours}h"
+            elif total_minutes >= 1:
+                span_str = f"{total_minutes}m"
+            else:
+                span_str = "<1m"
+        except (ValueError, TypeError):
+            pass
+
+    if span_str:
+        return f"{span_str}, {mod_display}"
+    else:
+        return mod_display
+
+
+def build_session_file_list(
+    chronological_chain: List[Tuple[Path, str]],
+) -> str:
+    """
+    Build a numbered list of session files with derivation relationships.
+
+    Args:
+        chronological_chain: List of (path, derivation_type) tuples in
+            chronological order (oldest first)
+
+    Returns:
+        Formatted string with numbered file list, e.g.:
+            1. /path/to/session1.jsonl (original, spanning 2 days, last modified 2025-12-10 11:45)
+            2. /path/to/session2.jsonl (rollover from 1, spanning 1 day, last modified 2025-12-10 15:30)
+    """
+    file_lines = []
+    for i, (path, derivation_type) in enumerate(chronological_chain):
+        # Get timestamps and format span
+        created, modified = _get_session_timestamps(path)
+        time_info = _format_time_span(created, modified)
+
+        if derivation_type == "original":
+            if time_info:
+                file_lines.append(f"{i+1}. {path} (original, {time_info})")
+            else:
+                file_lines.append(f"{i+1}. {path} (original)")
+        else:
+            parent_num = i  # previous item in 1-indexed
+            friendly = friendly_derivation_type(derivation_type)
+            if time_info:
+                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num}, {time_info})")
+            else:
+                file_lines.append(f"{i+1}. {path} ({friendly} from {parent_num})")
+    return "\n".join(file_lines)
+
+
+def build_rollover_prompt(
+    all_session_files: List[Path],
+    chronological_chain: List[Tuple[Path, str]],
+    quick_rollover: bool = False,
+    custom_prompt: Optional[str] = None,
+    subagent_instruction: Optional[str] = None,
+) -> str:
+    """
+    Build the rollover prompt for continuing a session.
+
+    This function consolidates the prompt-building logic for both quick rollover
+    (just present lineage) and context rollover (use sub-agents to extract
+    context). It handles both single-session and multi-session lineage chains.
+
+    Args:
+        all_session_files: List of session file paths in chronological order
+        chronological_chain: List of (path, derivation_type) tuples in
+            chronological order (oldest first)
+        quick_rollover: If True, just present lineage without context recovery.
+            If False, include instructions for sub-agent context recovery.
+        custom_prompt: Optional custom instructions for context recovery.
+            Only used when quick_rollover=False.
+        subagent_instruction: Instructions for sub-agent usage, e.g.:
+            - "PARALLEL HAIKU SUB-AGENTS" (for Claude)
+            - "parallel sub-agents (if available)" (for Codex)
+            Only used when quick_rollover=False.
+
+    Returns:
+        The formatted rollover prompt string
+    """
+    is_single = len(all_session_files) == 1
+
+    if quick_rollover:
+        return _build_quick_rollover_prompt(
+            all_session_files, chronological_chain, is_single
+        )
+    else:
+        return _build_context_rollover_prompt(
+            all_session_files,
+            chronological_chain,
+            is_single,
+            custom_prompt,
+            subagent_instruction,
+        )
+
+
+def _build_quick_rollover_prompt(
+    all_session_files: List[Path],
+    chronological_chain: List[Tuple[Path, str]],
+    is_single: bool,
+) -> str:
+    """Build prompt for quick rollover (just present lineage)."""
+    if is_single:
+        session_file = all_session_files[0]
+        return f"""[SESSION LINEAGE]
+
+This session continues from a previous conversation. The prior session log is:
+
+  {session_file}
+
+The file is in JSONL format. You can use sub-agents to explore it if needed.
+
+Do not do anything yet. Simply greet the user and await instructions on how they want to continue the work based on the above session."""
+    else:
+        file_list = build_session_file_list(chronological_chain)
+        return f"""[SESSION LINEAGE]
+
+This session continues from a chain of prior conversations. Here are the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
+
+{file_list}
+
+**Terminology:**
+- "trimmed" = Long messages were truncated to free up context. Full content in parent session.
+- "rolled over" = Work handed off to fresh session.
+
+You can use sub-agents to explore these files if you need context.
+
+Do not do anything yet. Simply greet the user and await instructions on how they want to continue the work based on the above sessions."""
+
+
+def _build_context_rollover_prompt(
+    all_session_files: List[Path],
+    chronological_chain: List[Tuple[Path, str]],
+    is_single: bool,
+    custom_prompt: Optional[str],
+    subagent_instruction: Optional[str],
+) -> str:
+    """Build prompt for context rollover (sub-agent context recovery)."""
+    # Default context recovery instructions
+    default_instructions = """Recover context from the session(s) above:
+1. Get a rough overview of what happened throughout the session(s)
+2. Extract detailed context of the LAST task being worked on, in the MOST RECENT session-file, so work can continue smoothly.
+
+When done, state your understanding of the task history and current state to me."""
+
+    context_instructions = custom_prompt if custom_prompt else default_instructions
+
+    # Default sub-agent instruction if not provided
+    if subagent_instruction is None:
+        subagent_instruction = "parallel sub-agents"
+
+    if is_single:
+        session_file = all_session_files[0]
+        return f"""[SESSION LINEAGE]
+
+This session continues from a previous conversation. The prior session log is:
+
+  {session_file}
+
+The file is in JSONL format (one JSON object per line). Each line represents a message with fields like 'type' (user/assistant), 'message.content', etc.
+
+---
+
+Strategically use {subagent_instruction} to recover context as instructed below. Do NOT read the file yourself - use sub-agents to preserve your context window.
+
+=== CONTEXT RECOVERY INSTRUCTIONS ===
+{context_instructions}
+=== END CONTEXT RECOVERY INSTRUCTIONS ==="""
+    else:
+        file_list = build_session_file_list(chronological_chain)
+        return f"""[SESSION LINEAGE]
+
+This session continues from a chain of prior conversations. Here are the JSONL session files in CHRONOLOGICAL ORDER (oldest to newest):
+
+{file_list}
+
+**Terminology:**
+- "trimmed" = Long messages were truncated to free up context. Full content in parent session.
+- "rolled over" = Work handed off to fresh session.
+
+Each file is in JSONL format. The LAST file ({all_session_files[-1]}) is the most recent session.
+
+---
+
+Strategically use {subagent_instruction} to recover context as instructed below. Do NOT read these files yourself - use sub-agents to preserve your context window.
+
+=== CONTEXT RECOVERY INSTRUCTIONS ===
+{context_instructions}
+=== END CONTEXT RECOVERY INSTRUCTIONS ==="""
 
 
 def count_user_messages(session_file: Path, agent: str) -> int:

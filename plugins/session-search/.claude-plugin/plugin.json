@@ -1,8 +1,0 @@
-{
-  "name": "session-search",
-  "version": "0.1.0",
-  "description": "Provides session-search skill, to allow Claude-Code to search past sessions using the `aichat search` command",
-  "author": {
-    "name": "Prasad Chalasani",
-  }
-}

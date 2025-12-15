@@ -273,7 +273,9 @@ Provide a clear and concise answer."""
             if agent == "claude":
                 # Use claude -p for non-interactive mode with haiku for faster queries
                 cmd = [
-                    "claude", "-p", full_prompt,
+                    "claude", "-p",
+                    "--no-session-persistence",
+                    full_prompt,
                     "--model", "haiku",
                     "--permission-mode", "bypassPermissions",
                     "--output-format", "json",

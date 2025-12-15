@@ -224,6 +224,7 @@ def analyze_session_with_cli(
             result = subprocess.run(
                 [
                     "claude", "-p",
+                    "--no-session-persistence",
                     "--output-format", "json",
                     "--permission-mode", "bypassPermissions",
                     prompt,
