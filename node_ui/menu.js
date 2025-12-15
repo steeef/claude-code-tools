@@ -1449,7 +1449,7 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
         null,
         rolloverType === 'context' ? chalk.yellow('[2] Resume with Context Recovery') : chalk.white(' 2  Resume with Context Recovery')
       ),
-      h(Text, {dimColor: true}, '    Inject lineage + use sub-agents to extract context.'),
+      h(Text, {dimColor: true}, '    Inject lineage + use headless/non-interactive agents to extract context.'),
       h(Text, {dimColor: true}, '    Slower, but resumes with full understanding of last task and overall work.')
     ),
     // Context instructions field - only shown when on prompt field (after pressing Enter/down)

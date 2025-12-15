@@ -65,6 +65,7 @@ from claude_code_tools.smart_trim_core import (
 from claude_code_tools.smart_trim import trim_lines
 from claude_code_tools.session_utils import (
     get_codex_home,
+    get_session_uuid,
     format_session_id_display,
     filter_sessions_by_time,
 )
@@ -689,11 +690,17 @@ def handle_smart_trim_resume_codex(
         }
 
         # Generate new session ID (UUID only) and filename with Codex format
-        timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        # New session goes in today's date folder (YYYY/MM/DD)
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%dT%H-%M-%S")
+        date_path = now.strftime("%Y/%m/%d")
         new_session_id = str(uuid.uuid4())
 
-        # Create output path in same directory as original
-        output_file = session_file.parent / f"rollout-{timestamp}-{new_session_id}.jsonl"
+        # Find sessions root by going up from input file (sessions/YYYY/MM/DD/file.jsonl)
+        sessions_root = session_file.parent.parent.parent.parent
+        output_dir = sessions_root / date_path
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / f"rollout-{timestamp}-{new_session_id}.jsonl"
 
         # Perform trimming
         stats = trim_lines(
@@ -760,7 +767,7 @@ def handle_export_session(session_file_path: str, dest_override: str | None = No
 
     # Generate default export path using session's project directory
     session_file = Path(session_file_path)
-    session_id = session_file.stem
+    session_id = get_session_uuid(session_file.name)
     today = datetime.now().strftime("%Y%m%d")
 
     # Infer project directory from session metadata
