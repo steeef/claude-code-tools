@@ -187,8 +187,11 @@ if __name__ == "__main__":
 
         if should_block:
             print(json.dumps({
-                "decision": "block",
-                "reason": reason
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason
+                }
             }))
         else:
             print(json.dumps({"decision": "approve"}))
