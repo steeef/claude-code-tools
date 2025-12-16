@@ -126,6 +126,37 @@
       },
       "message": "🎯 SKILL AVAILABLE: Consider using the 'tatari-turbolift' skill (automate bulk changes across multiple repositories using turbolift and slam)",
       "cooldown_minutes": 45
+    },
+    "argocd-ops": {
+      "description": "Manage ArgoCD applications - sync status, refresh, toggle settings, run jobs",
+      "priority": 8,
+      "activation": {
+        "promptKeywords": [
+          "argocd",
+          "argo cd",
+          "application sync",
+          "sync status",
+          "hard refresh",
+          "self-heal",
+          "auto-sync",
+          "cronjob",
+          "applicationset"
+        ],
+        "promptPatterns": [
+          "argocd.*app",
+          "argo.*sync",
+          "sync.*status",
+          "refresh.*app",
+          "toggle.*auto-sync",
+          "toggle.*self-heal",
+          "run.*job.*cronjob",
+          "trigger.*job"
+        ],
+        "cwdPatterns": [],
+        "minScore": 10
+      },
+      "message": "🎯 SKILL AVAILABLE: Consider using the 'argocd-ops' skill (manage ArgoCD apps - sync status, refresh, toggle settings, run jobs)",
+      "cooldown_minutes": 30
     }
   },
   "scoring": {
