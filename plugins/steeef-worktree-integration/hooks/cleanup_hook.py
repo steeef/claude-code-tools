@@ -210,7 +210,7 @@ def main():
     # Check if this is a Bash tool call
     tool_name = data.get("tool_name")
     if tool_name != "Bash":
-        print(json.dumps({}))
+        print(json.dumps({"decision": "approve"}))
         sys.exit(0)
 
     # Get the command and output
@@ -224,7 +224,7 @@ def main():
             "additionalContext": cleanup_instructions
         }))
     else:
-        print(json.dumps({}))
+        print(json.dumps({"decision": "approve"}))
 
     sys.exit(0)
 
