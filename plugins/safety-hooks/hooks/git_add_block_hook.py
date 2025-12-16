@@ -15,12 +15,24 @@ def check_git_add_command(command):
     Returns tuple: (decision, reason) where decision is bool or "ask"/"block"/"allow"
     """
     # Check each subcommand in compound commands
+    # Scan ALL subcommands to ensure blocks aren't hidden after asks
+    first_ask_result = None
+
     for subcmd in extract_subcommands(command):
         result = _check_single_git_add_command(subcmd)
         decision, reason = result
-        # Return on first block (True) or ask
-        if decision is True or decision == "ask" or decision == "block":
+
+        # Hard blocks return immediately
+        if decision is True or decision == "block":
             return result
+
+        # Collect first "ask" but continue scanning for blocks
+        if decision == "ask" and first_ask_result is None:
+            first_ask_result = result
+
+    # Return ask only after confirming no blocks exist
+    if first_ask_result:
+        return first_ask_result
 
     return False, None
 
