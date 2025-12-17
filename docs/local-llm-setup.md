@@ -4,10 +4,19 @@ This guide covers running **Claude Code** and **OpenAI Codex CLI** with local
 models using [llama.cpp](https://github.com/ggml-org/llama.cpp)'s server:
 
 - **Claude Code** uses the Anthropic-compatible `/v1/messages` endpoint
-  (available for certain supported models)
 - **Codex CLI** uses the OpenAI-compatible `/v1/chat/completions` endpoint
 
-The models documented here have been tested to work with both endpoints.
+## Table of Contents
+
+- [When to Use Local Models](#when-to-use-local-models)
+- [How It Works](#how-it-works)
+- [Prerequisites](#prerequisites)
+- [Shell Function for Claude Code](#shell-function-for-claude-code)
+- [Model Commands](#model-commands)
+- [Quick Reference](#quick-reference)
+- [Usage](#usage)
+- [Troubleshooting](#troubleshooting)
+- [Using Codex CLI with Local LLMs](#using-codex-cli-with-local-llms)
 
 ## When to Use Local Models
 
