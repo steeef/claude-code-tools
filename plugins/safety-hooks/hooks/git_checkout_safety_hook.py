@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-import subprocess
 import os
 import re
+import subprocess
+import sys
+
+# Add plugin hooks directory to Python path for local imports
+PLUGIN_ROOT = os.environ.get('CLAUDE_PLUGIN_ROOT')
+if PLUGIN_ROOT:
+    hooks_dir = os.path.join(PLUGIN_ROOT, 'hooks')
+    if hooks_dir not in sys.path:
+        sys.path.insert(0, hooks_dir)
 
 from command_utils import extract_subcommands
 
