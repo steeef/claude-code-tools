@@ -1,5 +1,5 @@
 {
-  "description": "Additional safety hooks for kubectl, terraform, skill activation, and CLAUDE.md protection",
+  "description": "Safety hooks for kubectl, terraform, git branch workflow, skill activation, and CLAUDE.md protection",
   "hooks": {
     "PreToolUse": [
       {
@@ -13,6 +13,11 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/terraform_safety_hook.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/git_branch_workflow_hook.py",
             "timeout": 10
           }
         ]
