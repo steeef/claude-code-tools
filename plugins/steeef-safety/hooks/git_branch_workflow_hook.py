@@ -84,23 +84,22 @@ def extract_new_branch_name(command: str) -> Optional[str]:
     return None
 
 
-def check_git_branch_workflow(command: str) -> Tuple[str, Optional[str]]:
+def _check_single_subcommand(subcmd: str) -> Tuple[str, Optional[str]]:
     """
-    Check if git command should prompt for branch workflow.
+    Check a single subcommand for git workflow rules.
     Returns (decision, reason) where decision is "allow", "ask", or "block".
     """
-    for subcmd in extract_subcommands(command):
-        normalized = subcmd.strip().lower()
+    normalized = subcmd.strip().lower()
 
-        # Check for git commit
-        if normalized.startswith('git commit'):
-            branch = get_current_branch()
-            if branch is None:
-                # Can't determine branch, allow and let git handle it
-                return ("allow", None)
+    # Check for git commit
+    if normalized.startswith('git commit'):
+        branch = get_current_branch()
+        if branch is None:
+            # Can't determine branch, allow and let git handle it
+            return ("allow", None)
 
-            if branch in PROTECTED_BRANCHES:
-                reason = f"""🚫 COMMIT ON PROTECTED BRANCH BLOCKED
+        if branch in PROTECTED_BRANCHES:
+            reason = f"""🚫 COMMIT ON PROTECTED BRANCH BLOCKED
 
 Cannot commit directly to '{branch}'.
 
@@ -108,57 +107,86 @@ Required workflow:
 1. Create a feature branch with Jira prefix: git checkout -b PROJ-123-description
 2. Make your changes and commit there
 3. Create a PR to merge back"""
-                return ("block", reason)
+            return ("block", reason)
 
-            # Check if branch has Jira prefix
-            if not JIRA_PATTERN.match(branch):
-                reason = f"""⚠️  BRANCH MISSING JIRA PREFIX
+        # Check if branch has Jira prefix
+        if not JIRA_PATTERN.match(branch):
+            reason = f"""⚠️  BRANCH MISSING JIRA PREFIX
 
 Current branch: {branch}
 
 Branch names should start with a Jira issue (e.g., ORG-123-feature-description).
 
 This helps track work back to tickets. Continue with this branch name?"""
-                return ("ask", reason)
+            return ("ask", reason)
 
-            # Branch is properly named, allow (other hooks may still ask)
-            return ("allow", None)
+        # Branch is properly named, still ask for commit approval
+        return ("ask", "Git commit requires your approval.")
 
-        # Check for git stash
-        if normalized.startswith('git stash'):
-            try:
-                parts = shlex.split(subcmd)
-                # Get stash subcommand (or empty string for bare 'git stash')
-                stash_subcmd = parts[2] if len(parts) > 2 else ''
+    # Check for git stash
+    if normalized.startswith('git stash'):
+        try:
+            parts = shlex.split(subcmd)
+            # Get stash subcommand (or empty string for bare 'git stash')
+            stash_subcmd = parts[2] if len(parts) > 2 else ''
 
-                if stash_subcmd in STASH_RETRIEVE_SUBCOMMANDS:
-                    # Allow retrieval operations
-                    return ("allow", None)
+            if stash_subcmd in STASH_RETRIEVE_SUBCOMMANDS:
+                # Allow retrieval operations
+                return ("allow", None)
 
-                if stash_subcmd in STASH_STORE_SUBCOMMANDS or stash_subcmd.startswith('-'):
-                    reason = """🚫 GIT STASH BLOCKED
+            if stash_subcmd in STASH_STORE_SUBCOMMANDS or stash_subcmd.startswith('-'):
+                reason = """🚫 GIT STASH BLOCKED
 
 git stash bypasses the branch workflow by hiding uncommitted changes.
 
 Required workflow:
 1. Create a feature branch: git checkout -b PROJ-123-wip
 2. Commit your work-in-progress there"""
-                    return ("block", reason)
+                return ("block", reason)
 
-            except Exception:
-                pass
+        except Exception:
+            pass
 
-        # Check for branch creation without Jira prefix
-        new_branch = extract_new_branch_name(subcmd)
-        if new_branch and not JIRA_PATTERN.match(new_branch):
-            reason = f"""⚠️  BRANCH MISSING JIRA PREFIX
+    # Check for branch creation without Jira prefix
+    new_branch = extract_new_branch_name(subcmd)
+    if new_branch and not JIRA_PATTERN.match(new_branch):
+        reason = f"""⚠️  BRANCH MISSING JIRA PREFIX
 
 Proposed branch: {new_branch}
 
 Branch names should start with a Jira issue (e.g., ORG-123-{new_branch}).
 
 What's the Jira issue for this work? Or continue with this name?"""
-            return ("ask", reason)
+        return ("ask", reason)
+
+    return ("allow", None)
+
+
+def check_git_branch_workflow(command: str) -> Tuple[str, Optional[str]]:
+    """
+    Check if git command should prompt for branch workflow.
+    Returns (decision, reason) where decision is "allow", "ask", or "block".
+
+    Checks ALL subcommands in compound commands and applies priority:
+    block > ask > allow
+    """
+    block_reasons = []
+    ask_reasons = []
+
+    for subcmd in extract_subcommands(command):
+        decision, reason = _check_single_subcommand(subcmd)
+        if decision == "block":
+            block_reasons.append(reason)
+        elif decision == "ask":
+            ask_reasons.append(reason)
+
+    # Priority: block > ask > allow
+    if block_reasons:
+        # Return first block reason (could combine if multiple)
+        return ("block", block_reasons[0])
+    elif ask_reasons:
+        # Return first ask reason
+        return ("ask", ask_reasons[0])
 
     return ("allow", None)
 
