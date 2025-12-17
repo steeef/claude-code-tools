@@ -553,12 +553,12 @@ each using a different LLM.
 
 ### Using Claude Code and Codex with Local LLMs
 
-You can run both **Claude Code** and **OpenAI Codex CLI** with local models using
-[llama.cpp](https://github.com/ggml-org/llama.cpp)'s server. This enables fully
-offline usage with models like GPT-OSS-20B, GPT-OSS-120B, Qwen3, and Nemotron.
+You can run **Claude Code** and **OpenAI Codex CLI** with local models using
+[llama.cpp](https://github.com/ggml-org/llama.cpp)'s server for fully offline usage.
 
-- **Claude Code** uses llama-server's Anthropic-compatible `/v1/messages` endpoint
-- **Codex CLI** uses llama-server's OpenAI-compatible `/v1/chat/completions` endpoint
+- **Claude Code** uses the Anthropic-compatible `/v1/messages` endpoint with models
+  like GPT-OSS-20B, Qwen3-Coder-30B, Qwen3-Next-80B, and Nemotron-3-Nano
+- **Codex CLI** uses the OpenAI-compatible `/v1/chat/completions` endpoint with GPT-OSS
 
 For complete setup instructions including llama-server commands, config files, and
 command-line options for switching models, see

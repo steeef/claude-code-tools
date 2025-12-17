@@ -11,25 +11,18 @@ The models documented here have been tested to work with both endpoints.
 
 ## When to Use Local Models
 
-These local models (20B-80B parameters) are not intended for complex coding tasks
-where frontier models like Claude Opus excel. However, they are well-suited for
-scenarios where privacy, offline access, or cost considerations are paramount:
+These local models (20B-80B parameters) aren't suited for complex coding tasks
+where frontier models excel, but they're useful for non-coding tasks like
+summarization, answering questions about your private notes, working with
+sensitive documents that can't be sent to external APIs, or high-volume tasks
+where API costs would add up.
 
-- **Sensitive documents**: Working with confidential, proprietary, or classified
-  materials that cannot be sent to external APIs
-- **Personal knowledge management**: Querying your own private notes, journals,
-  or research without data leaving your machine
-- **Air-gapped environments**: Operating in secure facilities without internet
-  access
-- **Non-coding tasks**: Summarization, analysis, Q&A, and general text
-  processing where model capability requirements are lower
-- **Cost-sensitive workflows**: High-volume tasks where API costs would be
-  prohibitive
-- **Experimentation**: Testing prompts and workflows before committing to API
-  usage
+## How It Works
 
-For production coding assistance, complex reasoning, or tasks requiring frontier
-model capabilities, use Claude Code with the standard Anthropic API.
+1. **Start llama-server** with a model (see [Model Commands](#model-commands)
+   below) - this makes the model available at a local endpoint (e.g., port 8123)
+2. **Run Claude Code** pointing to that endpoint using the `cclocal` helper
+   function
 
 ## Prerequisites
 
