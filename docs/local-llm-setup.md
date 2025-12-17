@@ -1,9 +1,13 @@
-# Running Claude Code with Local LLMs
+# Running Claude Code and Codex with Local LLMs
 
-This guide covers running Claude Code with local models using
-[llama.cpp](https://github.com/ggml-org/llama.cpp)'s server, which provides an
-Anthropic-compatible `/v1/messages` endpoint for certain supported models. The
-models documented here have been tested to work with this endpoint.
+This guide covers running **Claude Code** and **OpenAI Codex CLI** with local
+models using [llama.cpp](https://github.com/ggml-org/llama.cpp)'s server:
+
+- **Claude Code** uses the Anthropic-compatible `/v1/messages` endpoint
+  (available for certain supported models)
+- **Codex CLI** uses the OpenAI-compatible `/v1/chat/completions` endpoint
+
+The models documented here have been tested to work with both endpoints.
 
 ## When to Use Local Models
 
@@ -184,3 +188,79 @@ Code sends large system prompts (~20k+ tokens).
 
 Ensure you're using the correct chat template for your model. The template
 handles formatting the Anthropic API messages into the model's expected format.
+
+---
+
+# Using Codex CLI with Local LLMs
+
+[OpenAI Codex CLI](https://github.com/openai/codex) can also use local models via
+llama-server's OpenAI-compatible `/v1/chat/completions` endpoint.
+
+## Configuration
+
+Add a local provider to `~/.codex/config.toml`:
+
+```toml
+[model_providers.llama-local]
+name = "Local LLM via llama.cpp"
+base_url = "http://localhost:8123/v1"
+wire_api = "chat"
+```
+
+For multiple ports (different models), define multiple providers:
+
+```toml
+[model_providers.llama-8123]
+name = "Local LLM port 8123"
+base_url = "http://localhost:8123/v1"
+wire_api = "chat"
+
+[model_providers.llama-8124]
+name = "Local LLM port 8124"
+base_url = "http://localhost:8124/v1"
+wire_api = "chat"
+```
+
+## Switching Models at Command Line
+
+Use the `--model` flag and `-c` (config) flag to switch models without editing
+the TOML file:
+
+```bash
+# Use GPT-OSS-20B on port 8123
+codex --model gpt-oss-20b -c model_provider=llama-8123
+
+# Use Qwen3-30B on port 8124
+codex --model qwen3-30b -c model_provider=llama-8124
+
+# Switch back to OpenAI
+codex --model o3
+```
+
+You can also override nested config values with dots:
+
+```bash
+codex --model gpt-oss-20b \
+  -c model_provider=llama-local \
+  -c model_providers.llama-local.base_url="http://localhost:8124/v1"
+```
+
+## Running llama-server for Codex
+
+Use the same llama-server commands as for Claude Code, but you can omit the
+`-a claude-opus-4-5` alias since Codex doesn't check the model name:
+
+```bash
+# GPT-OSS-20B
+llama-server --gpt-oss-20b-default --port 8123
+
+# Qwen3-Coder-30B
+llama-server --fim-qwen-30b-default --port 8127
+```
+
+## Notes
+
+- Codex uses the `/v1/chat/completions` endpoint (OpenAI format), not
+  `/v1/messages` (Anthropic format)
+- Both endpoints are served by llama-server simultaneously
+- The same model can serve both Claude Code and Codex at the same time
