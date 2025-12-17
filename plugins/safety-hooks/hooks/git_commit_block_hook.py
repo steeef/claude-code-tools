@@ -4,7 +4,15 @@ Git commit hook that asks for user permission before allowing commits.
 Uses the "ask" decision type to prompt user in the UI.
 """
 import json
+import os
 import sys
+
+# Add plugin hooks directory to Python path for local imports
+PLUGIN_ROOT = os.environ.get('CLAUDE_PLUGIN_ROOT')
+if PLUGIN_ROOT:
+    hooks_dir = os.path.join(PLUGIN_ROOT, 'hooks')
+    if hooks_dir not in sys.path:
+        sys.path.insert(0, hooks_dir)
 
 from command_utils import extract_subcommands
 
