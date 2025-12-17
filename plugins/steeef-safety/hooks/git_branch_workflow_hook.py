@@ -5,6 +5,7 @@ Git branch workflow enforcement hook.
 Enforces branch-based development workflow:
 - Block commits on main/master (must create Jira-prefixed branch)
 - Block git stash store operations (can bypass workflow)
+- Ask for Jira issue when creating branch without prefix
 - Validate branch names have Jira prefix (PROJ-123 pattern)
 """
 import json
@@ -48,6 +49,39 @@ def extract_subcommands(command: str) -> list[str]:
     """Split compound commands on &&, ||, and ;"""
     subcommands = re.split(r'\s*(?:&&|\|\||;)\s*', command)
     return [cmd.strip() for cmd in subcommands if cmd.strip()]
+
+
+def extract_new_branch_name(command: str) -> Optional[str]:
+    """
+    Extract branch name from branch creation commands.
+    Supports: git checkout -b <branch>, git switch -c <branch>
+    Returns None if not a branch creation command.
+    """
+    try:
+        parts = shlex.split(command)
+        if len(parts) < 4:
+            return None
+
+        # git checkout -b <branch> [start-point]
+        if parts[0] == 'git' and parts[1] == 'checkout' and '-b' in parts:
+            idx = parts.index('-b')
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+
+        # git switch -c <branch> [start-point] or git switch --create <branch>
+        if parts[0] == 'git' and parts[1] == 'switch':
+            if '-c' in parts:
+                idx = parts.index('-c')
+                if idx + 1 < len(parts):
+                    return parts[idx + 1]
+            if '--create' in parts:
+                idx = parts.index('--create')
+                if idx + 1 < len(parts):
+                    return parts[idx + 1]
+
+    except Exception:
+        pass
+    return None
 
 
 def check_git_branch_workflow(command: str) -> Tuple[str, Optional[str]]:
@@ -113,6 +147,18 @@ Required workflow:
 
             except Exception:
                 pass
+
+        # Check for branch creation without Jira prefix
+        new_branch = extract_new_branch_name(subcmd)
+        if new_branch and not JIRA_PATTERN.match(new_branch):
+            reason = f"""⚠️  BRANCH MISSING JIRA PREFIX
+
+Proposed branch: {new_branch}
+
+Branch names should start with a Jira issue (e.g., ORG-123-{new_branch}).
+
+What's the Jira issue for this work? Or continue with this name?"""
+            return ("ask", reason)
 
     return ("allow", None)
 
