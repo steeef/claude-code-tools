@@ -547,9 +547,15 @@ After adding these functions:
 - Run `zai` to use Claude Code with the GLM-4.5 model
 - Run `dseek` to use Claude Code with the DeepSeek model
 
-The functions use subshells to ensure the environment variables don't affect 
+The functions use subshells to ensure the environment variables don't affect
 your main shell session, so you could be running multiple instances of Claude Code,
 each using a different LLM.
+
+### Using Claude Code with Local LLMs
+
+You can also run Claude Code with local models using [llama.cpp](https://github.com/ggml-org/llama.cpp)'s server, which provides an Anthropic-compatible `/v1/messages` endpoint. This enables fully offline usage with models like GPT-OSS, Qwen3, and Nemotron.
+
+For complete setup instructions including llama-server commands and recommended settings for each model, see **[docs/local-llm-setup.md](docs/local-llm-setup.md)**.
 
 <a id="documentation"></a>
 ## 📚 Documentation
