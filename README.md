@@ -122,6 +122,10 @@ aichat <subcommand> --help # Help for specific subcommand
 The primary entry point for session management. Uses Tantivy (Rust full-text
 search) to provide fast search across all your Claude and Codex sessions.
 
+Here's what it looks like:
+
+![aichat search demo](demos/aichat-search-asciinema.gif)
+
 ```bash
 aichat search                      # Interactive TUI for current project
 aichat search "langroid MCP"       # Pre-fill search query
