@@ -80,7 +80,7 @@ cclocal 8124 --resume abc123  # With additional claude args
 Uses the built-in preset with optimized settings:
 
 ```bash
-llama-server --gpt-oss-20b-default --port 8123 -a claude-opus-4-5
+llama-server --gpt-oss-20b-default --port 8123
 ```
 
 **Performance:** ~17-38 tok/s generation on M1 Max
@@ -95,8 +95,7 @@ llama-server -hf unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF \
   -ub 1024 \
   --parallel 1 \
   --jinja \
-  --chat-template-file ~/Git/llama.cpp/models/templates/Qwen3-Coder.jinja \
-  -a claude-opus-4-5
+  --chat-template-file ~/Git/llama.cpp/models/templates/Qwen3-Coder.jinja
 ```
 
 **Performance:** ~15-27 tok/s generation on M1 Max
@@ -106,7 +105,7 @@ llama-server -hf unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF \
 Uses the built-in preset with Q8_0 quantization (higher quality):
 
 ```bash
-llama-server --fim-qwen-30b-default --port 8127 -a claude-opus-4-5
+llama-server --fim-qwen-30b-default --port 8127
 ```
 
 Downloads `ggml-org/Qwen3-Coder-30B-A3B-Instruct-Q8_0-GGUF` automatically on first
@@ -124,8 +123,7 @@ llama-server -hf unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF:Q4_K_XL \
   -b 32768 \
   -ub 1024 \
   --parallel 1 \
-  --jinja \
-  -a claude-opus-4-5
+  --jinja
 ```
 
 **Performance:** ~5x slower generation than Qwen3-30B-A3B, but better on long
@@ -144,8 +142,7 @@ llama-server -hf unsloth/Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_XL \
   --chat-template-file ~/Git/llama.cpp/models/templates/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16.jinja \
   --temp 0.6 \
   --top-p 0.95 \
-  --min-p 0.01 \
-  -a claude-opus-4-5
+  --min-p 0.01
 ```
 
 **Recommended settings (from NVIDIA):**
@@ -157,11 +154,11 @@ llama-server -hf unsloth/Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_XL \
 
 | Model | Port | Command |
 |-------|------|---------|
-| GPT-OSS-20B | 8123 | `llama-server --gpt-oss-20b-default --port 8123 -a claude-opus-4-5` |
+| GPT-OSS-20B | 8123 | `llama-server --gpt-oss-20b-default --port 8123|
 | Qwen3-30B-A3B | 8124 | See full command above |
 | Nemotron-3-Nano | 8125 | See full command above |
-| Qwen3-Next-80B | 8126 | See full command above |
-| Qwen3-Coder-30B | 8127 | `llama-server --fim-qwen-30b-default --port 8127 -a claude-opus-4-5` |
+| Qwen3-Next-80B-A3B | 8126 | See full command above |
+| Qwen3-Coder-30B | 8127 | `llama-server --fim-qwen-30b-default --port 8127 |
 
 ## Usage
 
@@ -175,7 +172,6 @@ llama-server -hf unsloth/Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_XL \
 - First request is slow while the model loads into memory (~10-30 seconds
   depending on model size)
 - Subsequent requests are fast
-- The `-a claude-opus-4-5` flag aliases the model name for compatibility
 - The `/v1/messages` endpoint in llama-server handles Anthropic API translation
   automatically
 - Each model's chat template handles the model-specific prompt formatting
@@ -236,14 +232,12 @@ Use the `--model` flag and `-c` (config) flag to switch models without editing
 the TOML file:
 
 ```bash
-# Use GPT-OSS-20B on port 8123
+# Use GPT-OSS-20B on port 8123 (model name is immaterial)
 codex --model gpt-oss-20b -c model_provider=llama-8123
 
-# Use Qwen3-30B on port 8124
+# Use Qwen3-30B on port 8124 (model name is immaterial)
 codex --model qwen3-30b -c model_provider=llama-8124
 
-# Switch back to OpenAI
-codex --model o3
 ```
 
 You can also override nested config values with dots:
@@ -256,8 +250,8 @@ codex --model gpt-oss-20b \
 
 ## Running llama-server for Codex
 
-Use the same llama-server commands as for Claude Code, but you can omit the
-`-a claude-opus-4-5` alias since Codex doesn't check the model name:
+Use the same llama-server commands as for Claude Code.
+
 
 ```bash
 # GPT-OSS-20B
