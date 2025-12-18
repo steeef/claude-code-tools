@@ -42,7 +42,14 @@ where API costs would add up.
 
 ## Shell Function for Claude Code
 
-Add this function to your `~/.zshrc` or `~/.bashrc`:
+At its simplest, connecting Claude Code to a local model is just one line:
+
+```bash
+ANTHROPIC_BASE_URL=http://127.0.0.1:8123 claude
+```
+
+The helper function below is just a convenience wrapper for this. Add it to your
+`~/.zshrc` or `~/.bashrc`:
 
 ```bash
 cclocal() {
