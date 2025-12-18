@@ -1,13 +1,17 @@
 # aichat
 
-Provides the `session-searcher` subagent so Claude Code can search past sessions using
-the `aichat search` command.
+Provides session search capability for CLI coding agents using the `aichat search`
+command.
 
 ## What it does
 
-This plugin adds a subagent that Claude auto-invokes when you ask about previous work.
-It searches through code-agent session JSONL files (from Claude Code or Codex CLI) and
-returns concise summaries without polluting main context.
+This plugin enables searching through previous code-agent session JSONL files (from
+Claude Code or Codex CLI) to find details of specific work done in past sessions.
+
+- **Claude Code**: Uses the `session-searcher` subagent (auto-invoked, returns concise
+  summaries without polluting main context)
+- **Codex CLI and other agents**: Uses the `session-search` skill (instructions
+  injected into context)
 
 ## Usage
 
