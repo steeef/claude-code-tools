@@ -13,7 +13,7 @@
     {
       "name": "aichat",
       "source": "./plugins/aichat",
-      "description": "Provides skills, hooks, slash commands related to the `aichat` tool-set for searching and resuming CLI-agent sessions"
+      "description": "Provides an agent, skill, hook, and slash command related to the `aichat` tool-set for searching and resuming CLI-agent sessions"
     },
     {
       "name": "tmux-cli",
