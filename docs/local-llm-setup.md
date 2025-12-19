@@ -73,6 +73,21 @@ cclocal 8124         # Connect to localhost:8124
 cclocal 8124 --resume abc123  # With additional claude args
 ```
 
+> [!IMPORTANT]
+> Add this to your `~/.claude/settings.json` to disable telemetry:
+>
+> ```json
+> {
+>   "env": {
+>     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+>   }
+> }
+> ```
+>
+> Without this, Claude Code sends telemetry requests to your local server,
+> which returns 404s and retries aggressively—causing ephemeral port exhaustion
+> on macOS and system-wide network failures.
+
 ## Model Commands
 
 ### GPT-OSS-20B (Fast, Good Baseline)
@@ -177,21 +192,6 @@ llama-server -hf unsloth/Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_XL \
 - Each model's chat template handles the model-specific prompt formatting
 
 ## Troubleshooting
-
-> [!IMPORTANT]
-> Add this to your `~/.claude/settings.json` to disable telemetry:
->
-> ```json
-> {
->   "env": {
->     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
->   }
-> }
-> ```
->
-> Without this, Claude Code sends telemetry requests to your local server,
-> which returns 404s and retries aggressively—causing ephemeral port exhaustion
-> on macOS and system-wide network failures.
 
 **"failed to find a memory slot" errors:**
 
