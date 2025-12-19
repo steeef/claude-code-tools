@@ -78,9 +78,11 @@ cclocal 8124 --resume abc123  # With additional claude args
 >
 > ```json
 > {
+>   // ... other settings ...
 >   "env": {
 >     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
 >   }
+>   // ... other settings ...
 > }
 > ```
 >
