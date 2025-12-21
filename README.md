@@ -85,6 +85,7 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 - [💬 aichat — Session Management](#aichat-session-management)
 - [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
+- [📊 Status Line](#status-line)
 - [🔐 Utilities](#utilities)
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
 - [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
@@ -543,6 +544,34 @@ cp target/release/lmsh ~/.cargo/bin/
 ```
 
 See [docs/lmsh.md](docs/lmsh.md) for details.
+
+<a id="status-line"></a>
+## 📊 Status Line
+
+A custom status line script for Claude Code is available at
+[`scripts/statusline.sh`](scripts/statusline.sh). It displays model name,
+project directory, git branch, git status indicators, and a context window
+progress bar that changes color as you approach the limit.
+
+To use it, copy the script and configure Claude Code:
+
+```bash
+cp scripts/statusline.sh ~/.claude/
+chmod +x ~/.claude/statusline.sh
+```
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  }
+}
+```
+
+Requires `jq` and a Nerd Font for powerline symbols.
 
 <a id="utilities"></a>
 # 🔐 Utilities
