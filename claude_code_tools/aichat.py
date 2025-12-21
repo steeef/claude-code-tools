@@ -1783,10 +1783,10 @@ def index_stats(index, cwd, claude_home, codex_home):
               help='Filter to specific git branch (only effective when not global)')
 @click.option('-n', '--num-results', type=int, default=None,
               help='Limit number of results displayed')
-@click.option('--original', is_flag=True, help='Include original sessions')
-@click.option('--sub-agent', is_flag=True, help='Include sub-agent sessions')
-@click.option('--trimmed', is_flag=True, help='Include trimmed sessions')
-@click.option('--rollover', is_flag=True, help='Include rollover sessions')
+@click.option('--no-original', is_flag=True, help='Exclude original sessions')
+@click.option('--sub-agent', is_flag=True, help='Include sub-agent sessions (additive)')
+@click.option('--no-trimmed', is_flag=True, help='Exclude trimmed sessions')
+@click.option('--no-rollover', '--no-continued', is_flag=True, help='Exclude rollover sessions')
 @click.option('--min-lines', type=int, default=None,
               help='Only show sessions with at least N lines')
 @click.option('--after', metavar='DATE',
@@ -1805,7 +1805,7 @@ def index_stats(index, cwd, claude_home, codex_home):
 @click.argument('query', required=False)
 def search(
     claude_home_arg, codex_home_arg, global_search, filter_dir, filter_branch,
-    num_results, original, sub_agent, trimmed, rollover, min_lines,
+    num_results, no_original, sub_agent, no_trimmed, no_rollover, min_lines,
     after, before, agent, json_output, by_time, query
 ):
     """Launch interactive TUI for full-text session search.
@@ -1898,14 +1898,14 @@ def search(
         rust_args.extend(["--branch", filter_branch])
     if num_results:
         rust_args.extend(["--num-results", str(num_results)])
-    if original:
-        rust_args.append("--original")
+    if no_original:
+        rust_args.append("--no-original")
     if sub_agent:
         rust_args.append("--sub-agent")
-    if trimmed:
-        rust_args.append("--trimmed")
-    if rollover:
-        rust_args.append("--rollover")
+    if no_trimmed:
+        rust_args.append("--no-trimmed")
+    if no_rollover:
+        rust_args.append("--no-rollover")
     if min_lines:
         rust_args.extend(["--min-lines", str(min_lines)])
     if after:
@@ -2071,15 +2071,17 @@ def search(
             if filter_state.get("filter_branch"):
                 rust_args.extend(["--branch", filter_state["filter_branch"]])
 
-            # Session type filters (only add if true)
-            if filter_state.get("include_original"):
-                rust_args.append("--original")
+            # Session type filters
+            # Subtractive: add --no-* when type is excluded
+            # Additive: add --sub-agent when sub-agents are included
+            if not filter_state.get("include_original", True):
+                rust_args.append("--no-original")
             if filter_state.get("include_sub"):
                 rust_args.append("--sub-agent")
-            if filter_state.get("include_trimmed"):
-                rust_args.append("--trimmed")
-            if filter_state.get("include_continued"):
-                rust_args.append("--rollover")
+            if not filter_state.get("include_trimmed", True):
+                rust_args.append("--no-trimmed")
+            if not filter_state.get("include_continued", True):
+                rust_args.append("--no-rollover")
 
             # Other filters
             if filter_state.get("filter_min_lines"):

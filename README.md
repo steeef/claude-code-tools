@@ -179,20 +179,20 @@ aichat search --json -g "error"    # JSONL output for AI agents
 **Session type filters:**
 
 By default, search includes original, trimmed, and rollover sessions (but not
-sub-agents). Use flags to include only specific types:
+sub-agents). Use flags to customize:
 
 ```bash
-aichat search                           # Default: original + trimmed + rollover
-aichat search --sub-agent               # Only sub-agents
-aichat search --original                # Only original sessions
-aichat search --original --sub-agent    # Only originals and sub-agents
-aichat search --trimmed --rollover      # Only trimmed and rollover
+aichat search                       # Default: original + trimmed + rollover
+aichat search --sub-agent           # Add sub-agents to defaults
+aichat search --no-original         # Exclude originals (show trimmed + rollover)
+aichat search --no-trimmed          # Exclude trimmed (show original + rollover)
+aichat search --sub-agent --no-rollover  # Add sub-agents, exclude rollovers
 ```
 
-The flags are: `--original`, `--trimmed`, `--rollover`, `--sub-agent`
+**Subtractive flags** (exclude from defaults): `--no-original`, `--no-trimmed`,
+`--no-rollover` (or `--no-continued`)
 
-When ANY type flag is specified, ONLY those types are included. When no type
-flags are specified, defaults apply (original + trimmed + rollover).
+**Additive flag** (add to defaults): `--sub-agent`
 
 ---
 
@@ -244,14 +244,20 @@ aichat search "langroid agent"
 
 ### Running Out of Context
 
-When context fills up, you have three strategies. All preserve **session
-lineage** - a chain of links back to the original session that the agent can
-reference at any time.
+When context fills up, you have three strategies. All create a new session,
+(a clone for the trim strategies, and a fresh session in case of the
+rollover strategy), and inject **session lineage** into the first user message - a chain of links back to the original session that the agent can reference at any time.
 
 **1. Trim + Resume**
 
 Truncates large tool call results and assistant messages to free up space.
-Quick and deterministic - you control what gets cut.
+Quick and deterministic - you control what gets cut. The default is to trim
+all tool results longer than 500 characters, and no assistant messages. This can
+often free up 30-50% of context when applied the first time to a normal session
+(of course depending on what exactly is going on in the session). This is a quick
+way to free up some context space when you need to continue the work for a little 
+longer without having to do (necessarily lossy) compaction.
+
 
 **2. Smart Trim + Resume**
 
@@ -260,8 +266,11 @@ be safely truncated. More intelligent but adds processing time.
 
 **3. Rollover**
 
-Hands off work to a fresh session with a summary of the current task. The new
-session starts with maximum context available while maintaining full access
+The above trim strategies can work well one or two times but eventually will not 
+free up much context. The rollover strategy can be a better alternative,
+either after a couple of trim iterations, or directly from a normall session.
+This strategy hands off work to a fresh session with a summary of the current task.
+The new session starts with maximum context available while maintaining full access
 to the parent session's details.
 
 ### Why Lineage Matters

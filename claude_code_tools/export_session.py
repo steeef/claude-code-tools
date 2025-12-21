@@ -216,6 +216,11 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
     Returns:
         Dict with extracted metadata
     """
+    # Detect sidechain from filename pattern (agent-* prefix)
+    # This is more reliable than checking isSidechain field in JSON,
+    # which can be set on individual messages within main sessions
+    is_sidechain = session_file.name.startswith("agent-")
+
     metadata: dict[str, Any] = {
         "session_id": session_file.stem,
         "agent": agent,
@@ -223,7 +228,7 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
         "cwd": None,
         "branch": None,
         "derivation_type": None,
-        "is_sidechain": False,
+        "is_sidechain": is_sidechain,
         "session_type": None,  # "helper" for SDK/headless sessions
         "parent_session_id": None,
         "parent_session_file": None,
@@ -277,10 +282,6 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
                     metadata["derivation_type"] = "continued"
                     metadata["parent_session_id"] = cm.get("parent_session_id")
                     metadata["parent_session_file"] = cm.get("parent_session_file")
-
-                # Check if sidechain (sub-agent session)
-                if "isSidechain" in data and data["isSidechain"] is True:
-                    metadata["is_sidechain"] = True
 
                 # Extract sessionType (e.g., "helper" for SDK/headless sessions)
                 if "sessionType" in data and metadata["session_type"] is None:
