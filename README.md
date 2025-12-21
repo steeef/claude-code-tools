@@ -338,14 +338,13 @@ historical context.
 
 ---
 
-## Other Commands
-
-Direct commands that skip the menu:
+## All Subcommands
 
 | Command | Description |
 |---------|-------------|
-| `aichat` | Action menu for latest session(s) |
-| `aichat <session-id>` | Action menu for specific session |
+| `aichat search [query]` | Full-text search TUI across all sessions |
+| `aichat menu [session]` | Interactive action menu for a session |
+| `aichat resume [session]` | Resume options (resume, clone, trim, rollover) |
 | `aichat info [session]` | Show session metadata, path, and lineage |
 | `aichat export [session]` | Export session to text |
 | `aichat copy [session]` | Copy session file to new location |
@@ -358,6 +357,21 @@ Direct commands that skip the menu:
 | `aichat delete [session]` | Delete with confirmation |
 | `aichat find-original [session]` | Trace back to original session |
 | `aichat find-derived [session]` | Find all derived sessions |
+
+**Index management:**
+
+| Command | Description |
+|---------|-------------|
+| `aichat build-index` | Manually rebuild the search index |
+| `aichat clear-index` | Clear the index for a fresh rebuild |
+| `aichat index-stats` | Show index statistics and reconciliation |
+
+The search index is powered by [Tantivy](https://github.com/quickwit-oss/tantivy)
+(Rust full-text search). You typically don't need to manage it manually:
+
+- **Auto-updates**: Index updates incrementally on every `aichat` command
+- **Version rebuilds**: Index rebuilds automatically when the tool version changes
+- **Manual rebuild**: Use `aichat clear-index && aichat build-index` if needed
 
 Run `aichat <command> --help` for options
 
