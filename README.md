@@ -40,6 +40,36 @@ Four commands are installed:
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
 
+### Claude Code Plugins
+
+This repo also provides plugins for the
+[Claude Code marketplace](https://github.com/anthropics/claude-code-plugins):
+
+| Plugin | Description |
+|--------|-------------|
+| `aichat` | `>resume` hook, session-searcher agent, session-search skill |
+| `tmux-cli` | Terminal automation skill for controlling other tmux panes |
+| `workflow` | Work logging and code walk-through skills |
+| `safety-hooks` | Prevent destructive git/docker/rm commands |
+
+**Install the plugins:**
+
+Add the marketplace via the `claude plugin` CLI:
+```bash
+claude plugin marketplace add pchalasani/claude-code-tools
+```
+This creates the `cctools-plugins` plugin group. From this, you can add the following 
+plugins:
+```bash
+claude plugin install "aichat@cctools-plugins"
+claude plugin install "tmux-cli@cctools-plugins"
+claude plugin install "workflow@cctools-plugins"
+claude plugin install "safety-hooks@cctools-plugins"
+```
+
+These can also be installed via the built-in `/plugin` command which launches a TUI.
+
+
 ---
 
 ## ⚠️ Breaking Change (v1.0)
@@ -374,6 +404,29 @@ The search index is powered by [Tantivy](https://github.com/quickwit-oss/tantivy
 - **Manual rebuild**: Use `aichat clear-index && aichat build-index` if needed
 
 Run `aichat <command> --help` for options
+
+---
+
+### Quick Resume from Within Claude Code
+
+If you've installed the `aichat` plugin, you get a convenient hook for resuming
+sessions. While in a Claude Code session, just type:
+
+```
+>resume
+```
+
+(Also works: `>continue`, `>handoff`)
+
+This will:
+
+1. Copy the current session ID to your clipboard
+2. Show instructions to terminate Claude Code and run `aichat resume <paste>`
+3. Block the prompt (Claude won't process it, so no more tokens spent)
+
+This is a quick escape hatch when you want to continue the work in a fresh 
+session using any of the methods provided by `aichat` (trim, smart-trim, rollover)
+while Claude Code is still running — no need to manually find the session ID.
 
 <a id="tmux-cli-terminal-automation"></a>
 # 🎮 tmux-cli — Terminal Automation
