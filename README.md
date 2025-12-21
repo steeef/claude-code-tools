@@ -346,7 +346,13 @@ Direct commands that skip the menu:
 |---------|-------------|
 | `aichat` | Action menu for latest session(s) |
 | `aichat <session-id>` | Action menu for specific session |
+| `aichat info [session]` | Show session metadata, path, and lineage |
 | `aichat export [session]` | Export session to text |
+| `aichat copy [session]` | Copy session file to new location |
+| `aichat query [session] [question]` | Query session with AI |
+| `aichat clone [session]` | Clone session and resume the clone |
+| `aichat rollover [session]` | Hand off to fresh session with lineage |
+| `aichat lineage [session]` | Show parent lineage chain |
 | `aichat trim [session]` | Trim large tool outputs |
 | `aichat smart-trim [session]` | AI-powered trimming (EXPERIMENTAL) |
 | `aichat delete [session]` | Delete with confirmation |
