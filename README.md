@@ -47,7 +47,7 @@ This repo also provides plugins for the
 
 | Plugin | Description |
 |--------|-------------|
-| `aichat` | `>resume` hook, session-searcher agent, session-search skill |
+| `aichat` | Session management: hooks (`>resume`), commands, skills, agents |
 | `tmux-cli` | Terminal automation skill for controlling other tmux panes |
 | `workflow` | Work logging and code walk-through skills |
 | `safety-hooks` | Prevent destructive git/docker/rm commands |
