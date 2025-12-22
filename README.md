@@ -106,16 +106,10 @@ Two main capabilities:
    links to parent sessions (unlike lossy compaction)
 
 ```bash
-aichat search "topic"  # Find sessions by keyword
-aichat resume          # Resume latest session with trim/rollover options
+aichat search "topic"          # Find sessions by keyword
+aichat resume <session_id>     # Resume specific session with trim/rollover options
+aichat resume                  # Resume latest session with trim/rollover options
 ```
-
-**Key principles:**
-
-- **Session ID optional in `aichat resume`:** Commands auto-find latest sessions for your current
-  project/branch
-- **No extra API costs:** AI features (smart-trim, query, rollover) use your
-  existing Claude-Code/Codex-CLI subscription (using headless agents or Agents SDK).
 
 ```bash
 aichat --help              # See all subcommands
@@ -148,7 +142,8 @@ aichat search --json -g "error"    # JSONL output for AI agents
 - **CLI options:** All search options are available as command-line arguments. Run
   `aichat search --help` for details.
 - **JSON mode for Agents:** Use `--json` for JSONL output that AI agents can process with
-  `jq` or other tools. See [Session-Searcher sub-agent](#agent-access-to-history-the-session-searcher-sub-agent) below.
+  `jq` or other tools. See [Session-Searcher sub-agent](#agent-access-to-history-the-session-searcher-sub-agent), which is available
+when you install the `aichat` plugin mentioned above.
 
 **Session type filters:**
 
@@ -203,15 +198,17 @@ After selecting a session, the action menu offers:
 
 You have several ways to access the resume functionality:
 
-**1. In-session trigger** — The is likely to be used the most frequenlty: while already in a Claude Code session, type:
+**1. In-session trigger** — The is likely to be used the most frequenlty: while already in a Claude Code session, when you're close to filling up the context limit, type:
 
 ```bash
 >resume # or >continue, >handoff; MUST include the ">" at the start
 ```
 
-This triggers a `UserPromptSubmit` hook that copies the current session ID to your 
-clipboard and shows instructions to quit Claude Code and run `aichat resume <paste>`. A 
-quick escape hatch when context is filling up — no need to manually find the session ID.
+This triggers a `UserPromptSubmit` hook that blocks handling by Claude-Code 
+(hence no further tokens consumed), copies the current session ID to your 
+clipboard, and shows instructions to quit Claude Code and run `aichat resume <paste>`. 
+This is a quick escape hatch when context is filling up — no need to manually find the 
+session ID.
 
 *Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
 for installation.*
@@ -318,10 +315,6 @@ mode:
 aichat search --json -g "error handling"  # Returns JSONL for programmatic use
 aichat search --json --by-time            # Sort by last-modified time
 ```
-<!--CLAUDE - mention that there is a plugin `session-search` that provides a skill
-called `session-search` that shows Claude Code how to use `aichat search`
-to search past sessions.
--->
 
 This enables agents to find and retrieve context from any past session in the
 lineage, either on their own initiative or when you prompt them to look up
@@ -329,8 +322,12 @@ historical context.
 
 Installing the `aichat` plugin mentioned above creates a `Session-Searcher` sub-agent 
 (for Claude-Code) that has instructions to either directly search a known session jsonl 
-file if clear from context, or use `aichat search ... --json` to search past sessions
-for user-specified work.
+file if clear from context, or use `aichat search --json` to search past sessions. 
+E.g. in Claude Code you can say:
+
+> From past sessions, recover details of our work on task-termination specification in Langroid agents/taks configuration.
+
+This will trigger the `Session-Searcher` sub-agent to search past sessions for the specified query.
 
 ---
 
