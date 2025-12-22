@@ -1,0 +1,199 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.0.3 Chrome/140.0.7339.249 Electron/38.7.0 Safari/537.36" version="29.0.3">
+  <diagram name="Session Rollover" id="rollover-diagram-v3">
+    <mxGraphModel dx="1411" dy="1052" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;b&gt;Session Rollover&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=32;" parent="1" vertex="1">
+          <mxGeometry x="550" y="20" width="400" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Two Options: Quick or With Summary" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="550" y="65" width="400" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="session1-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=3;" parent="1" vertex="1">
+          <mxGeometry x="60" y="200" width="340" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="session1-title" value="&lt;b&gt;Original Session&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;" parent="1" vertex="1">
+          <mxGeometry x="90" y="215" width="280" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="session1-id" value="abc123.jsonl" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontColor=#666666;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="90" y="245" width="280" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="turn1" value="User: Fix the auth bug" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="80" y="285" width="300" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="turn2" value="Assistant: Investigating..." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="80" y="328" width="300" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="turn3" value="Tool: [2500 lines...]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="80" y="371" width="300" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="turn4" value="..." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="80" y="414" width="300" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="meter1-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6e6e6;strokeColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="80" y="455" width="300" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="meter1-fill" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ea6b66;strokeColor=none;" parent="1" vertex="1">
+          <mxGeometry x="80" y="455" width="285" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="meter1-label" value="Context: 95% FULL" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontColor=#CC0000;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="80" y="485" width="300" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="choice-diamond" value="" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="480" y="350" width="100" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="choice-label" value="&lt;b&gt;Choose&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="485" y="380" width="90" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="to-choice-arrow" value="" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#666666;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="400" y="400" as="sourcePoint" />
+            <mxPoint x="480" y="400" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="quick-arrow" value="" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#0066CC;curved=1;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="580" y="370" as="sourcePoint" />
+            <mxPoint x="720" y="240" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="650" y="300" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="quick-arrow-label" value="&lt;b&gt;Quick&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontColor=#0066CC;" parent="1" vertex="1">
+          <mxGeometry x="580" y="275" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-session-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=3;" parent="1" vertex="1">
+          <mxGeometry x="720" y="120" width="340" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-session-title" value="&lt;b&gt;Quick Rollover&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontColor=#0066CC;" parent="1" vertex="1">
+          <mxGeometry x="750" y="130" width="280" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-session-id" value="def456.jsonl" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontColor=#666666;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="750" y="158" width="280" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="lineage-only-box" value="&lt;b&gt;First User Message:&lt;/b&gt;&lt;br&gt;[Parent: &lt;u&gt;abc123.jsonl&lt;/u&gt;]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="740" y="190" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-user-msg" value="User: [custom recovery instructions]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;strokeDashPattern=8 8;fontSize=16;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="740" y="260" width="300" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-space" value="Fresh context available..." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#CCCCCC;strokeWidth=1;strokeDashPattern=4 4;fontSize=16;fontColor=#999999;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="740" y="315" width="300" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-meter-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6e6e6;strokeColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="740" y="362" width="300" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-meter-fill" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#82b366;strokeColor=none;" parent="1" vertex="1">
+          <mxGeometry x="740" y="362" width="30" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-meter-label" value="~10% used" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="740" y="386" width="300" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-arrow" value="" style="endArrow=classic;html=1;strokeWidth=4;strokeColor=#009900;curved=1;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="580" y="430" as="sourcePoint" />
+            <mxPoint x="720" y="560" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="650" y="500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="summary-arrow-label" value="&lt;b&gt;With Summary&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontColor=#009900;" parent="1" vertex="1">
+          <mxGeometry x="520" y="500" width="140" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-session-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=3;" parent="1" vertex="1">
+          <mxGeometry x="720" y="440" width="340" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-session-title" value="&lt;b&gt;Rollover with Summary&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontColor=#009900;" parent="1" vertex="1">
+          <mxGeometry x="750" y="450" width="280" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-session-id" value="ghi789.jsonl" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontColor=#666666;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="750" y="478" width="280" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="lineage-summary-box" value="&lt;b&gt;First User Message:&lt;/b&gt;&lt;br&gt;[Parent: &lt;u&gt;abc123.jsonl&lt;/u&gt;] + AI Summary" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="740" y="510" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-user-msg" value="User: Continue the work..." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="740" y="580" width="300" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-asst" value="Assistant: Resuming..." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="740" y="628" width="300" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-space" value="Fresh context available..." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#CCCCCC;strokeWidth=1;strokeDashPattern=4 4;fontSize=16;fontColor=#999999;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="740" y="676" width="300" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-meter-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6e6e6;strokeColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="740" y="718" width="300" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-meter-fill" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#82b366;strokeColor=none;" parent="1" vertex="1">
+          <mxGeometry x="740" y="718" width="60" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-meter-label" value="~20% used" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="740" y="742" width="300" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="lineage-quick" value="" style="endArrow=classic;html=1;strokeWidth=3;dashed=1;dashPattern=8 8;strokeColor=#BD7000;curved=1;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="740" y="217" as="sourcePoint" />
+            <mxPoint x="400" y="260" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="560" y="150" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lineage-summary" value="" style="endArrow=classic;html=1;strokeWidth=3;dashed=1;dashPattern=8 8;strokeColor=#BD7000;curved=1;entryX=0.997;entryY=0.66;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" edge="1" target="session1-box">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="740" y="551" as="sourcePoint" />
+            <mxPoint x="410" y="430" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="500" y="634" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lineage-label-main" value="&lt;b&gt;Dashed arrows&lt;/b&gt;: Session &lt;b&gt;Lineage&lt;/b&gt; Chain in first message →&amp;nbsp;&lt;div&gt;Agent/Sub-Agent can read ancestors on demand&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontColor=#BD7000;" parent="1" vertex="1">
+          <mxGeometry x="300" y="780" width="600" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-benefits-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fillOpacity=50;" parent="1" vertex="1">
+          <mxGeometry x="1080" y="140" width="280" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-benefits-title" value="&lt;b&gt;Benefits&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontColor=#0066CC;" parent="1" vertex="1">
+          <mxGeometry x="1080" y="150" width="280" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-b1" value="✓ Quick resume" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="185" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-b2" value="✓ Minimal context used (~10%)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="215" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-b3" value="✓ Full history preserved" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="245" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="quick-b4" value="✓ You control recovery prompt" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="275" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-benefits-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fillOpacity=50;" parent="1" vertex="1">
+          <mxGeometry x="1080" y="480" width="320" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-benefits-title" value="&lt;b&gt;Benefits&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontColor=#009900;" parent="1" vertex="1">
+          <mxGeometry x="1080" y="490" width="280" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-b1" value="✓ Last-task context extracted by agent" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="525" width="290" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-b2" value="✓ Ready to continue immediately" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="555" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-b3" value="✓ Full history preserved" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="585" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-b4" value="✓ More context pre-loaded (~20%)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="615" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="summary-b5" value="○ Slower start" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="650" width="250" height="28" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

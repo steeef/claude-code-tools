@@ -3959,11 +3959,11 @@ fn parse_cli_args() -> CliOptions {
         .or_else(|| get_arg_value("-n"))
         .and_then(|s| s.parse().ok());
 
-    // Subtractive flags: --no-original, --no-trimmed, --no-rollover/--no-continued
+    // Subtractive flags: --no-original, --no-trimmed, --no-rollover
     // By default all types are shown (except sub-agents); these flags exclude types
     let no_original = has_flag("--no-original");
     let no_trimmed = has_flag("--no-trimmed");
-    let no_rollover = has_flag("--no-rollover") || has_flag("--no-continued");
+    let no_rollover = has_flag("--no-rollover");
     // Additive flag: --sub-agent adds sub-agents to defaults
     let include_sub = has_flag("--sub-agent");
 

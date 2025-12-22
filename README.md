@@ -190,7 +190,7 @@ aichat search --sub-agent --no-rollover  # Add sub-agents, exclude rollovers
 ```
 
 **Subtractive flags** (exclude from defaults): `--no-original`, `--no-trimmed`,
-`--no-rollover` (or `--no-continued`)
+`--no-rollover`
 
 **Additive flag** (add to defaults): `--sub-agent`
 
@@ -246,7 +246,9 @@ aichat search "langroid agent"
 
 When context fills up, you have three strategies. All create a new session,
 (a clone for the trim strategies, and a fresh session in case of the
-rollover strategy), and inject **session lineage** into the first user message - a chain of links back to the original session that the agent can reference at any time.
+rollover strategy), and inject **session lineage** into the first user message - a 
+chain of links back to the original session that the agent 
+(preferably sub-agents if available) can reference at any time.
 
 **1. Trim + Resume**
 
@@ -261,8 +263,10 @@ longer without having to do (necessarily lossy) compaction.
 
 **2. Smart Trim + Resume**
 
-Uses an AI agent to analyze the session and strategically identify what can
-be safely truncated. More intelligent but adds processing time.
+Uses headless (i.e. non-interactive) Claude/Codex agent to analyze the session and 
+strategically identify what can be safely truncated without affecting the last task 
+being worked on (the exact criteria are user-customizable in the TUI). Slower than the 
+above deterministic trim.
 
 **3. Rollover**
 
