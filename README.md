@@ -226,10 +226,14 @@ aichat resume                # Auto-find latest for this project
 
 ---
 
-All resume strategies create a new session with **lineage** — links back to
-parent sessions that the agent can reference at any time.
 
-### Three Strategies
+### Three Resume Strategies
+
+When you access the resume menu using any of the above 3 mechanisms, you will 
+be presented with 3 resume strategies, as described below. 
+All strategies create a new session with **lineage** — links back to
+parent sessions that the agent (or preferable a sub-agent if available) 
+can reference at any time.
 
 **1. Trim + Resume**
 
