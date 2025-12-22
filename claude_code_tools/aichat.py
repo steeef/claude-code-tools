@@ -1786,7 +1786,7 @@ def index_stats(index, cwd, claude_home, codex_home):
 @click.option('--no-original', is_flag=True, help='Exclude original sessions')
 @click.option('--sub-agent', is_flag=True, help='Include sub-agent sessions (additive)')
 @click.option('--no-trimmed', is_flag=True, help='Exclude trimmed sessions')
-@click.option('--no-rollover', '--no-continued', is_flag=True, help='Exclude rollover sessions')
+@click.option('--no-rollover', is_flag=True, help='Exclude rollover sessions')
 @click.option('--min-lines', type=int, default=None,
               help='Only show sessions with at least N lines')
 @click.option('--after', metavar='DATE',
