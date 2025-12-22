@@ -148,7 +148,7 @@ aichat search --json -g "error"    # JSONL output for AI agents
 - **CLI options:** All search options are available as command-line arguments. Run
   `aichat search --help` for details.
 - **JSON mode for Agents:** Use `--json` for JSONL output that AI agents can process with
-  `jq` or other tools. 
+  `jq` or other tools. See [Session-Searcher sub-agent](#agent-access-to-history-the-session-searcher-sub-agent) below.
 
 **Session type filters:**
 
@@ -203,28 +203,29 @@ After selecting a session, the action menu offers:
 
 You have several ways to access the resume functionality:
 
-**1. Search TUI** — Run `aichat search`, select a session, then choose a resume
+**1. In-session trigger** — The is likely to be used the most frequenlty: while already in a Claude Code session, type:
+
+```bash
+>resume # or >continue, >handoff; MUST include the ">" at the start
+```
+
+This triggers a `UserPromptSubmit` hook that copies the current session ID to your 
+clipboard and shows instructions to quit Claude Code and run `aichat resume <paste>`. A 
+quick escape hatch when context is filling up — no need to manually find the session ID.
+
+*Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
+for installation.*
+
+**2. Search TUI** — Run `aichat search`, select a session, then choose a resume
 action from the menu.
 
-**2. Direct CLI** — Use these commands directly:
+**3. Direct CLI** — Use these commands directly:
 
 ```bash
 aichat resume abc123         # Resume specific session
 aichat resume                # Auto-find latest for this project
 ```
 
-**3. In-session trigger** — Probably the most frequent use: while already in a Claude Code session, type:
-
-```bash
->resume # or >continue, >handoff
-```
-
-This copies the current session ID to your clipboard and shows instructions to
-quit Claude Code and run `aichat resume <paste>`. A quick escape hatch when context is
-filling up — no need to manually find the session ID.
-
-*Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
-for installation.*
 
 ---
 
@@ -374,7 +375,7 @@ Original Session (abc123)
          (using session-search skill or session-searcher sub-agent)
 ```
 
-### Agent Access to History
+### Agent Access to History; the Session-Searcher sub-agent
 
 Your agent can search across all historical sessions using the JSON output
 mode:
@@ -391,6 +392,11 @@ to search past sessions.
 This enables agents to find and retrieve context from any past session in the
 lineage, either on their own initiative or when you prompt them to look up
 historical context.
+
+Installing the `aichat` plugin mentioned above creates a `Session-Searcher` sub-agent 
+(for Claude-Code) that has instructions to either directly search a known session jsonl 
+file if clear from context, or use `aichat search ... --json` to search past sessions
+for user-specified work.
 
 ---
 
