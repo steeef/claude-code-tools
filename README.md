@@ -250,8 +250,6 @@ The TUI lets you specify:
 - Length threshold in characters (default: 500)
 - How many assistant messages to truncate (first N, or all except last N)
 
-![Trim options](demos/trim.png)
-
 Same options available via CLI: `aichat trim --help`
 
 **2. Smart Trim + Resume**
@@ -268,8 +266,6 @@ The TUI lets you specify:
 - Minimum content threshold for extraction (default: 200 chars)
 - Custom instructions for what to prioritize when truncating
 
-![Smart trim options](demos/smart-trim.png)
-
 Same options available via CLI: `aichat smart-trim --help`
 
 **3. Rollover**
@@ -281,8 +277,6 @@ session with a summary of the current task. The new session starts with maximum
 context available while maintaining full access to the parent session's details.
 
 Two rollover modes:
-
-![Rollover options](demos/rollover-types.png)
 
 - **Quick rollover** — Just preserves lineage pointers, no context extraction.
   Fast, but you'll need to ask the agent to look up prior work as needed.
