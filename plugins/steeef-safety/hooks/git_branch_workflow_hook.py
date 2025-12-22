@@ -29,17 +29,35 @@ STASH_STORE_SUBCOMMANDS = {'push', 'save', ''}  # empty string = bare 'git stash
 STASH_RETRIEVE_SUBCOMMANDS = {'pop', 'apply', 'list', 'drop', 'clear', 'show', 'branch'}
 
 
-def get_current_branch() -> Optional[str]:
-    """Get current git branch name."""
+def get_current_branch(cwd: Optional[str] = None) -> Optional[str]:
+    """Get current git branch name, optionally in a specific directory."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
+            cwd=cwd
         )
         if result.returncode == 0:
             return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def extract_cd_target(command: str) -> Optional[str]:
+    """
+    Extract the target directory from a cd command.
+    Returns expanded path or None if not a cd command.
+    """
+    import os
+    try:
+        parts = shlex.split(command)
+        if parts and parts[0] == 'cd' and len(parts) >= 2:
+            target = parts[1]
+            # Expand ~ to home directory
+            return os.path.expanduser(target)
     except Exception:
         pass
     return None
@@ -84,7 +102,7 @@ def extract_new_branch_name(command: str) -> Optional[str]:
     return None
 
 
-def _check_single_subcommand(subcmd: str) -> Tuple[str, Optional[str]]:
+def _check_single_subcommand(subcmd: str, cwd: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """
     Check a single subcommand for git workflow rules.
     Returns (decision, reason) where decision is "allow", "ask", or "block".
@@ -93,7 +111,7 @@ def _check_single_subcommand(subcmd: str) -> Tuple[str, Optional[str]]:
 
     # Check for git commit
     if normalized.startswith('git commit'):
-        branch = get_current_branch()
+        branch = get_current_branch(cwd=cwd)
         if branch is None:
             # Can't determine branch, allow and let git handle it
             return ("allow", None)
@@ -169,12 +187,22 @@ def check_git_branch_workflow(command: str) -> Tuple[str, Optional[str]]:
 
     Checks ALL subcommands in compound commands and applies priority:
     block > ask > allow
+
+    Tracks working directory context from cd commands to correctly
+    determine branch in worktrees.
     """
     block_reasons = []
     ask_reasons = []
+    current_cwd = None  # Track working directory from cd commands
 
     for subcmd in extract_subcommands(command):
-        decision, reason = _check_single_subcommand(subcmd)
+        # Check if this is a cd command and update context
+        cd_target = extract_cd_target(subcmd)
+        if cd_target:
+            current_cwd = cd_target
+            continue  # cd itself doesn't need workflow checks
+
+        decision, reason = _check_single_subcommand(subcmd, cwd=current_cwd)
         if decision == "block":
             block_reasons.append(reason)
         elif decision == "ask":
