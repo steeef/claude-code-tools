@@ -2332,6 +2332,9 @@ function App() {
         if (value === 'suppress_resume') {
           setTrimSource('trim_menu');
           switchScreen('trim');
+        } else if (value === 'smart_trim_resume') {
+          setTrimSource('trim_menu');
+          switchScreen('smart_trim_form');
         } else finish(value);
       },
       clearScreen,

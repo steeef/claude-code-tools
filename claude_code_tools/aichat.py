@@ -539,6 +539,8 @@ def trim(session, tools, threshold, trim_assistant, output_dir, agent, claude_ho
 
 @main.command("smart-trim")
 @click.argument("session", required=False)
+@click.option("--instructions", "-i",
+              help="Custom instructions for what to prioritize when trimming")
 @click.option("--exclude-types", "-e",
               help="Comma-separated message types to never trim (default: user)")
 @click.option("--preserve-recent", "-p", type=int, default=10,
@@ -550,7 +552,7 @@ def trim(session, tools, threshold, trim_assistant, output_dir, agent, claude_ho
 @click.option("--dry-run", "-n", is_flag=True,
               help="Show what would be trimmed without doing it")
 @click.option("--claude-home", help="Path to Claude home directory")
-def smart_trim(session, exclude_types, preserve_recent, content_threshold,
+def smart_trim(session, instructions, exclude_types, preserve_recent, content_threshold,
                output_dir, dry_run, claude_home):
     """Smart trim using Claude SDK agents (EXPERIMENTAL).
 
@@ -567,17 +569,55 @@ def smart_trim(session, exclude_types, preserve_recent, content_threshold,
         aichat smart-trim abc123 --dry-run    # Preview what would be trimmed
         aichat smart-trim abc123 -p 20        # Preserve last 20 messages
         aichat smart-trim abc123 -e user,system  # Never trim user or system msgs
+        aichat smart-trim abc123 -i "preserve auth-related messages"
 
     \b
     Options:
+        --instructions, -i     Custom instructions for what to prioritize
         --exclude-types, -e    Message types to never trim
         --preserve-recent, -p  Keep last N messages untouched (default: 10)
         --content-threshold, -c  Min chars for extraction (default: 200)
         --dry-run, -n          Preview only, don't actually trim
     """
     import sys
+    from pathlib import Path
 
-    # If any direct CLI options specified, use the CLI directly
+    from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
+
+    # If --instructions provided, use the handler function (same as TUI)
+    if instructions and session:
+        input_path = Path(session).expanduser()
+        if input_path.exists() and input_path.is_file():
+            session_file = input_path
+            detected_agent = detect_agent_from_path(session_file)
+            session_id = session_file.stem
+            project_path = str(session_file.parent)
+        else:
+            result = find_session_file(session)
+            if not result:
+                print(f"Error: Session not found: {session}", file=sys.stderr)
+                sys.exit(1)
+            detected_agent, session_file, project_path, _ = result
+            session_id = session_file.stem
+
+        # Use the handler function which supports custom_instructions
+        if detected_agent == "claude":
+            from claude_code_tools.find_claude_session import handle_smart_trim_resume_claude
+            handle_smart_trim_resume_claude(
+                session_id, project_path, claude_home,
+                custom_instructions=instructions,
+            )
+        else:
+            from claude_code_tools.find_codex_session import handle_smart_trim_resume_codex
+            from claude_code_tools.session_utils import get_codex_home
+            handle_smart_trim_resume_codex(
+                {"file_path": str(session_file), "cwd": project_path, "session_id": session_id},
+                Path(get_codex_home(cli_arg=None)),
+                custom_instructions=instructions,
+            )
+        return
+
+    # If any direct CLI options specified (but not instructions), use smart_trim.py
     if exclude_types or preserve_recent != 10 or content_threshold != 200 or output_dir or dry_run:
         if not session:
             print("Error: Direct smart-trim options require a session ID", file=sys.stderr)
@@ -604,21 +644,15 @@ def smart_trim(session, exclude_types, preserve_recent, content_threshold,
         smart_trim_main()
         return
 
-    if session:
-        # Session provided but no special options - run with defaults
-        sys.argv = [sys.argv[0].replace('aichat', 'smart-trim'), session]
-        from claude_code_tools.smart_trim import main as smart_trim_main
-        smart_trim_main()
-    else:
-        # Find latest session and show interactive UI
-        _find_and_run_session_ui(
-            session_id=None,
-            agent_constraint='both',
-            start_screen='trim_menu',
-            select_target='trim_menu',
-            results_title=' Which session to smart-trim? ',
-            direct_action='smart_trim_resume',
-        )
+    # Show interactive UI for entering instructions
+    # (whether session provided or not - find latest if not)
+    _find_and_run_session_ui(
+        session_id=session,
+        agent_constraint='both',
+        start_screen='smart_trim_form',
+        select_target='smart_trim_form',
+        results_title=' Which session to smart-trim? ',
+    )
 
 
 @main.command("export", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
