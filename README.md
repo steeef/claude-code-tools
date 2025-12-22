@@ -131,7 +131,7 @@ Here's what it looks like:
 aichat search                      # Interactive TUI for current project
 aichat search "langroid MCP"       # Pre-fill search query
 aichat search -g                   # Global search (all projects)
-aichat search --json -g "error"    # JSONL output for AI agents
+aichat search --json -g "error"    # JSONL output for CLI-agents
 ```
 
 **How it works:**
@@ -141,7 +141,7 @@ aichat search --json -g "error"    # JSONL output for AI agents
 - **Self-explanatory TUI for humans:** Filter by session type, agent, date range, and more. All options are visible in the UI.
 - **CLI options:** All search options are available as command-line arguments. Run
   `aichat search --help` for details.
-- **JSON mode for Agents:** Use `--json` for JSONL output that AI agents can process with
+- **JSON mode for Agents:** Use `--json` for JSONL output that CLI-agents can process with
   `jq` or other tools. See [Session-Searcher sub-agent](#agent-access-to-history-the-session-searcher-sub-agent), which is available
 when you install the `aichat` plugin mentioned above.
 
@@ -189,7 +189,7 @@ running `aichat <session-id>` or `aichat menu <session-id>` directly.
 After selecting a session, the action menu offers:
 
 - **Show path / Copy / Export** — File operations
-- **Query** — Ask questions about the session using an AI agent
+- **Query** — Ask questions about the session using a headless Claude-Code/Codex agent
 - **Resume options** — Various strategies for continuing work (see below)
 
 ---
