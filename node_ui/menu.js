@@ -2280,6 +2280,9 @@ function App() {
         if (value === 'suppress_resume') {
           setTrimSource('resume');
           switchScreen('trim');
+        } else if (value === 'smart_trim_resume') {
+          setTrimSource('resume');
+          switchScreen('smart_trim_form');
         } else if (value === 'continue') switchScreen('lineage');
         else finish(value);
       },
