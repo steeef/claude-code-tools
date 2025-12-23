@@ -625,7 +625,7 @@ For complete documentation, see [hooks/README.md](hooks/README.md).
 ## 🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers
 
 You can use Claude Code with alternative LLMs served via Anthropic-compatible
-APIs, e.g. Kimi-k2, GLM4.5 (from zai), Deepseek-v3.1, MiniMax-M2.1.
+APIs, e.g. Kimi-k2, GLM4.5 (from zai), Deepseek-v3.1, [MiniMax-M2.1](https://platform.minimax.io/docs/guides/text-ai-coding-tools).
 Add these functions to your shell config (.bashrc/.zshrc):
 
 ```bash
