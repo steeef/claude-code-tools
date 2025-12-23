@@ -1,0 +1,324 @@
+<mxfile host="app.diagrams.net" agent="Claude" version="26.0.0">
+  <diagram name="Smart Trim" id="smart-trim-diagram">
+    <mxGraphModel dx="1300" dy="950" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1250" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="&lt;b&gt;Smart Trim&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=42;" parent="1" vertex="1">
+          <mxGeometry x="480" y="10" width="260" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Original Session -->
+        <mxCell id="s1-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="30" y="90" width="300" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-label" value="original" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=24;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="30" y="100" width="300" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="s1-file" value="abc123.jsonl" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#999999;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="30" y="132" width="300" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Row 1: User -->
+        <mxCell id="b1" value="" style="rounded=0;html=1;fillColor=#90CAF9;strokeColor=#64B5F6;" parent="1" vertex="1">
+          <mxGeometry x="85" y="170" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="b1-lbl" value="U" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#1976D2;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="170" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 2: BLOATED Tool -->
+        <mxCell id="b2" value="" style="rounded=0;html=1;fillColor=#FF9800;strokeColor=#E65100;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="85" y="210" width="215" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="b2-lbl" value="T" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#E65100;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="229" width="36" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="b2-line" value="L2" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#E65100;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="302" y="229" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 3: Important Asst (KEPT) -->
+        <mxCell id="b3" value="✓" style="rounded=0;html=1;fillColor=#FFCC80;strokeColor=#FF9800;strokeWidth=1;fontColor=#E65100;fontSize=20;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="85" y="288" width="215" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="b3-lbl" value="A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#388E3C;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="294" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 4: User -->
+        <mxCell id="b4" value="" style="rounded=0;html=1;fillColor=#90CAF9;strokeColor=#64B5F6;" parent="1" vertex="1">
+          <mxGeometry x="85" y="340" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="b4-lbl" value="U" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#1976D2;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="340" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 5: BLOATED Tool -->
+        <mxCell id="b5" value="" style="rounded=0;html=1;fillColor=#FF9800;strokeColor=#E65100;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="85" y="380" width="215" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="b5-lbl" value="T" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#E65100;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="396" width="36" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="b5-line" value="L5" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#E65100;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="302" y="396" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 6: Important Asst (KEPT) -->
+        <mxCell id="b6" value="✓" style="rounded=0;html=1;fillColor=#FFCC80;strokeColor=#FF9800;strokeWidth=1;fontColor=#E65100;fontSize=20;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="85" y="453" width="215" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b6-lbl" value="A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#388E3C;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="457" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 7: Asst -->
+        <mxCell id="b7" value="" style="rounded=0;html=1;fillColor=#A5D6A7;strokeColor=#81C784;" parent="1" vertex="1">
+          <mxGeometry x="85" y="501" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="b7-lbl" value="A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#388E3C;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="501" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 8: BLOATED Tool -->
+        <mxCell id="b8" value="" style="rounded=0;html=1;fillColor=#FF9800;strokeColor=#E65100;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="85" y="541" width="215" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="b8-lbl" value="T" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#E65100;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="45" y="553" width="36" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="b8-line" value="L8" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#E65100;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="302" y="553" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Context meter -->
+        <mxCell id="m1-bg" value="" style="rounded=1;html=1;fillColor=#eeeeee;strokeColor=#cccccc;" parent="1" vertex="1">
+          <mxGeometry x="50" y="615" width="260" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="m1-fill" value="" style="rounded=1;html=1;fillColor=#ef5350;strokeColor=none;" parent="1" vertex="1">
+          <mxGeometry x="50" y="615" width="234" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="m1-pct" value="90%" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#c62828;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="50" y="640" width="260" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- AI Brain -->
+        <mxCell id="ai-circle" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#9C27B0;strokeWidth=3;" parent="1" vertex="1">
+          <mxGeometry x="380" y="320" width="130" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-icon" value="🤖" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=52;" parent="1" vertex="1">
+          <mxGeometry x="395" y="350" width="100" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-label" value="headless agent analysis" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=13;fontColor=#7B1FA2;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="355" y="455" width="180" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows to/from AI -->
+        <mxCell id="arr-in" value="" style="shape=flexArrow;endArrow=classic;html=1;strokeColor=none;fillColor=#CE93D8;width=16;endSize=8;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="385" as="sourcePoint" />
+            <mxPoint x="380" y="385" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arr-out" value="" style="shape=flexArrow;endArrow=classic;html=1;strokeColor=none;fillColor=#CE93D8;width=16;endSize=8;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="510" y="385" as="sourcePoint" />
+            <mxPoint x="550" y="385" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Trimmed Session -->
+        <mxCell id="s2-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="560" y="90" width="300" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-label" value="smart trimmed" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=24;fontColor=#2E7D32;" parent="1" vertex="1">
+          <mxGeometry x="560" y="100" width="300" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="s2-file" value="def456.jsonl" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#999999;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="560" y="132" width="300" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Parent link -->
+        <mxCell id="parent-link" value="↩ abc123" style="text;html=1;strokeColor=#d6b656;fillColor=#fff2cc;align=center;verticalAlign=middle;rounded=1;fontSize=14;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="778" y="102" width="76" height="26" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from parent link to original session -->
+        <mxCell id="parent-arrow" value="" style="endArrow=classic;html=1;strokeWidth=2;dashed=1;strokeColor=#66BB6A;curved=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="778" y="115" as="sourcePoint" />
+            <mxPoint x="330" y="108" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="530" y="55" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Row 1: User (aligned Y=170) -->
+        <mxCell id="t1" value="" style="rounded=0;html=1;fillColor=#90CAF9;strokeColor=#64B5F6;" parent="1" vertex="1">
+          <mxGeometry x="615" y="170" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t1-lbl" value="U" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#1976D2;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="170" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 2: TRIMMED Tool (aligned Y=210) -->
+        <mxCell id="t2" value="" style="rounded=0;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="615" y="210" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t2-lbl" value="T" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="210" width="36" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t2-ref" value="→L2" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="832" y="210" width="40" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 3: KEPT Asst (aligned Y=288) -->
+        <mxCell id="t3" value="✓" style="rounded=0;html=1;fillColor=#FFCC80;strokeColor=#FF9800;strokeWidth=1;fontColor=#E65100;fontSize=20;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="615" y="288" width="215" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="t3-lbl" value="A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#388E3C;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="294" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 4: User (aligned Y=340) -->
+        <mxCell id="t4" value="" style="rounded=0;html=1;fillColor=#90CAF9;strokeColor=#64B5F6;" parent="1" vertex="1">
+          <mxGeometry x="615" y="340" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t4-lbl" value="U" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#1976D2;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="340" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 5: TRIMMED Tool (aligned Y=380) -->
+        <mxCell id="t5" value="" style="rounded=0;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="615" y="380" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t5-lbl" value="T" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="380" width="36" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t5-ref" value="→L5" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="832" y="380" width="40" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 6: KEPT Asst (aligned Y=453) -->
+        <mxCell id="t6" value="✓" style="rounded=0;html=1;fillColor=#FFCC80;strokeColor=#FF9800;strokeWidth=1;fontColor=#E65100;fontSize=20;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="615" y="453" width="215" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="t6-lbl" value="A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#388E3C;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="457" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 7: Asst (aligned Y=501) -->
+        <mxCell id="t7" value="" style="rounded=0;html=1;fillColor=#A5D6A7;strokeColor=#81C784;" parent="1" vertex="1">
+          <mxGeometry x="615" y="501" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t7-lbl" value="A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#388E3C;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="501" width="36" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Row 8: TRIMMED Tool (aligned Y=541) -->
+        <mxCell id="t8" value="" style="rounded=0;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="615" y="541" width="215" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t8-lbl" value="T" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="575" y="541" width="36" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="t8-ref" value="→L8" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=16;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="832" y="541" width="40" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- Context meter -->
+        <mxCell id="m2-bg" value="" style="rounded=1;html=1;fillColor=#eeeeee;strokeColor=#cccccc;" parent="1" vertex="1">
+          <mxGeometry x="580" y="615" width="260" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="m2-fill" value="" style="rounded=1;html=1;fillColor=#66BB6A;strokeColor=none;" parent="1" vertex="1">
+          <mxGeometry x="580" y="615" width="104" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="m2-pct" value="40%" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#2E7D32;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="580" y="640" width="260" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Horizontal ref arrows -->
+        <mxCell id="ref1" value="" style="endArrow=classic;html=1;strokeWidth=2;dashed=1;strokeColor=#66BB6A;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="615" y="226" as="sourcePoint" />
+            <mxPoint x="300" y="226" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ref2" value="" style="endArrow=classic;html=1;strokeWidth=2;dashed=1;strokeColor=#66BB6A;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="615" y="396" as="sourcePoint" />
+            <mxPoint x="300" y="396" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ref3" value="" style="endArrow=classic;html=1;strokeWidth=2;dashed=1;strokeColor=#66BB6A;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="615" y="557" as="sourcePoint" />
+            <mxPoint x="300" y="557" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="leg-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=22;fontColor=#333333;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="930" y="140" width="100" height="36" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-u" value="U" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#1976D2;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="930" y="190" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-ut" value="user" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="966" y="190" width="80" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-a" value="A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#388E3C;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="930" y="230" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-at" value="assistant" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="966" y="230" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-t" value="T" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#E65100;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="930" y="270" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-tt" value="tool output" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="966" y="270" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg1" value="" style="rounded=0;html=1;fillColor=#FF9800;strokeColor=#E65100;" parent="1" vertex="1">
+          <mxGeometry x="930" y="320" width="32" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1t" value="bloated" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="970" y="316" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg2" value="" style="rounded=0;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;" parent="1" vertex="1">
+          <mxGeometry x="930" y="360" width="32" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2t" value="truncated w/ back-link" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="970" y="356" width="220" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg3" value="✓" style="rounded=0;html=1;fillColor=#FFCC80;strokeColor=#FF9800;fontColor=#E65100;fontSize=16;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="930" y="400" width="32" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3t" value="kept (AI preserved)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="970" y="396" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg4-line" value="" style="endArrow=classic;html=1;strokeWidth=2;dashed=1;strokeColor=#66BB6A;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="962" y="455" as="sourcePoint" />
+            <mxPoint x="930" y="455" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg4t" value="link to orig session/msg" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontSize=18;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="970" y="440" width="230" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

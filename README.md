@@ -40,6 +40,36 @@ Four commands are installed:
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
 
+### Claude Code Plugins
+
+This repo also provides plugins for the
+[Claude Code marketplace](https://github.com/anthropics/claude-code-plugins):
+
+| Plugin | Description |
+|--------|-------------|
+| `aichat` | Session management: hooks (`>resume`), commands, skills, agents |
+| `tmux-cli` | Terminal automation skill for controlling other tmux panes |
+| `workflow` | Work logging and code walk-through skills |
+| `safety-hooks` | Prevent destructive git/docker/rm commands |
+
+**Install the plugins:**
+
+Add the marketplace via the `claude plugin` CLI:
+```bash
+claude plugin marketplace add pchalasani/claude-code-tools
+```
+This creates the `cctools-plugins` plugin group. From this, you can add the following 
+plugins:
+```bash
+claude plugin install "aichat@cctools-plugins"
+claude plugin install "tmux-cli@cctools-plugins"
+claude plugin install "workflow@cctools-plugins"
+claude plugin install "safety-hooks@cctools-plugins"
+```
+
+These can also be installed via the built-in `/plugin` command which launches a TUI.
+
+
 ---
 
 ## ⚠️ Breaking Change (v1.0)
@@ -55,6 +85,7 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 - [💬 aichat — Session Management](#aichat-session-management)
 - [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
+- [📊 Status Line](#status-line)
 - [🔐 Utilities](#utilities)
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
 - [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
@@ -67,48 +98,18 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 <a id="aichat-session-management"></a>
 # 💬 aichat — Session Management
 
-### The Problem: Running Out of Context
+`aichat` is your unified CLI for managing Claude Code and Codex sessions.
+Two main capabilities:
 
-You're deep into a Claude Code or Codex session, making good progress, when you
-see the dreaded warning about the context window getting full. What do you do?
-
-**Compaction is lossy.** The built-in compaction summarizes your conversation to
-free up space, but it **loses detailed information permanently**—code snippets,
-debugging steps, design decisions—gone with no way to recover them
-(You could *fork* the session and *then* compact, but this new session still has no link
-to the original session).
-
-### The Solution: Manage Context with Lineage
-
-`aichat` gives you three strategies for managing context—**trim**, **smart
-trim**, and **rollover**—all of which preserve a **lineage chain** linking back
-to parent sessions. Unlike compaction, nothing is lost:
-
-- **Full parent session preserved** — complete history remains accessible, since 
-parent session file paths are added at the end of the first user message in the session.
-- **Lineage chain** — file paths of all ancestor sessions (jsonl files).
-- **On-demand retrieval** — the agent can look up any past session in the lineage chain 
-to recover  specific details when needed, or when prompted by the user, e.g. "in the linked prior chats, look up how we figured out the node-ui to Python communication".
+1. **Search** — Full-text search across all sessions with a fast Rust/Tantivy-based TUI
+2. **Resume with lineage** — Continue sessions when context fills up, preserving
+   links to parent sessions (unlike lossy compaction)
 
 ```bash
-aichat resume          # Find latest session and choose a strategy
-aichat search "topic"  # Or search first, then pick resume action
+aichat search "topic"          # Find sessions by keyword
+aichat resume <session_id>     # Resume specific session with trim/rollover options
+aichat resume                  # Resume latest session with trim/rollover options
 ```
-
-See [Resume Options](#resume-options--managing-context) for details on each
-strategy.
-
----
-
-The `aichat` command is your unified interface for managing Claude Code and Codex
-sessions. Search, resume, export, and navigate your AI conversation history.
-
-**Key principles:**
-
-- **Session ID optional:** Commands find the latest sessions for your current
-  project/branch when no ID is provided.
-- **No extra API costs:** Features using AI agents (smart-trim, query, rollover)
-  use your existing Claude or Codex subscription.
 
 ```bash
 aichat --help              # See all subcommands
@@ -122,42 +123,45 @@ aichat <subcommand> --help # Help for specific subcommand
 The primary entry point for session management. Uses Tantivy (Rust full-text
 search) to provide fast search across all your Claude and Codex sessions.
 
+Here's what it looks like:
+
+![aichat search demo](demos/aichat-search-asciinema.gif)
+
 ```bash
 aichat search                      # Interactive TUI for current project
 aichat search "langroid MCP"       # Pre-fill search query
 aichat search -g                   # Global search (all projects)
-aichat search --json -g "error"    # JSONL output for AI agents
+aichat search --json -g "error"    # JSONL output for CLI-agents
 ```
 
 **How it works:**
 
 - **Auto-indexing:** Sessions are automatically indexed on startup—no manual
   export or build steps needed.
-- **Self-explanatory TUI:** Filter by session type, agent, date range, and more.
-  All options are visible in the UI.
+- **Self-explanatory TUI for humans:** Filter by session type, agent, date range, and more. All options are visible in the UI.
 - **CLI options:** All search options are available as command-line arguments. Run
   `aichat search --help` for details.
-- **JSON mode:** Use `--json` for JSONL output that AI agents can process with
-  `jq` or other tools. Add `--by-time` to sort by last-modified time instead of
-  relevance.
+- **JSON mode for Agents:** Use `--json` for JSONL output that CLI-agents can process with
+  `jq` or other tools. See [Session-Searcher sub-agent](#agent-access-to-history-the-session-searcher-sub-agent), which is available
+when you install the `aichat` plugin mentioned above.
 
 **Session type filters:**
 
 By default, search includes original, trimmed, and rollover sessions (but not
-sub-agents). Use flags to include only specific types:
+sub-agents). Use flags to customize:
 
 ```bash
-aichat search                           # Default: original + trimmed + rollover
-aichat search --sub-agent               # Only sub-agents
-aichat search --original                # Only original sessions
-aichat search --original --sub-agent    # Only originals and sub-agents
-aichat search --trimmed --rollover      # Only trimmed and rollover
+aichat search                       # Default: original + trimmed + rollover
+aichat search --sub-agent           # Add sub-agents to defaults
+aichat search --no-original         # Exclude originals (show trimmed + rollover)
+aichat search --no-trimmed          # Exclude trimmed (show original + rollover)
+aichat search --sub-agent --no-rollover  # Add sub-agents, exclude rollovers
 ```
 
-The flags are: `--original`, `--trimmed`, `--rollover`, `--sub-agent`
+**Subtractive flags** (exclude from defaults): `--no-original`, `--no-trimmed`,
+`--no-rollover`
 
-When ANY type flag is specified, ONLY those types are included. When no type
-flags are specified, defaults apply (original + trimmed + rollover).
+**Additive flag** (add to defaults): `--sub-agent`
 
 ---
 
@@ -185,59 +189,111 @@ running `aichat <session-id>` or `aichat menu <session-id>` directly.
 After selecting a session, the action menu offers:
 
 - **Show path / Copy / Export** — File operations
-- **Query** — Ask questions about the session using an AI agent
+- **Query** — Ask questions about the session using a headless Claude-Code/Codex agent
 - **Resume options** — Various strategies for continuing work (see below)
 
 ---
 
 ## Resume Options — Managing Context
 
-### Finding Your Session
+You have several ways to access the resume functionality:
 
-Three ways to get to the resume menu:
+**1. In-session trigger** — The is likely to be used the most frequenlty: while already in a Claude Code session, when you're close to filling up the context limit, type:
 
 ```bash
-# 1. You know the session ID (from /status in your chat)
-aichat resume abc123-def456
-
-# 2. You don't know the ID - auto-find latest for this project
-aichat resume
-
-# 3. You need to search - find by keywords, then pick resume action
-aichat search "langroid agent"
+>resume # or >continue, >handoff; MUST include the ">" at the start
 ```
 
-### Running Out of Context
+This triggers a `UserPromptSubmit` hook that blocks handling by Claude-Code 
+(hence no further tokens consumed), copies the current session ID to your 
+clipboard, and shows instructions to quit Claude Code and run `aichat resume <paste>`. 
+This is a quick escape hatch when context is filling up — no need to manually find the 
+session ID.
 
-When context fills up, you have three strategies. All preserve **session
-lineage** - a chain of links back to the original session that the agent can
-reference at any time.
+*Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
+for installation.*
+
+**2. Search TUI** — Run `aichat search`, select a session, then choose a resume
+action from the menu.
+
+**3. Direct CLI** — Use these commands directly:
+
+```bash
+aichat resume abc123         # Resume specific session
+aichat resume                # Auto-find latest for this project
+```
+
+
+---
+
+
+### Three Resume Strategies
+
+When you access the resume menu using any of the above 3 mechanisms, you will 
+be presented with 3 resume strategies, as described below. 
+All strategies create a new session with **lineage** — links back to
+parent sessions that the agent (or preferable a sub-agent if available) 
+can reference at any time.
 
 **1. Trim + Resume**
 
 Truncates large tool call results and assistant messages to free up space.
-Quick and deterministic - you control what gets cut.
+Quick and deterministic — you control what gets cut. The default is to trim
+all tool results longer than 500 characters, and no assistant messages. This can
+often free up 30-50% of context when applied the first time to a normal session
+(depending on what's in the session). A quick way to extend a session a bit
+longer without lossy compaction.
+
+The TUI lets you specify:
+
+- Which tool types to truncate (e.g., bash, read, edit, or all)
+- Length threshold in characters (default: 500)
+- How many assistant messages to truncate (first N, or all except last N)
+
+Same options available via CLI: `aichat trim --help`
 
 **2. Smart Trim + Resume**
 
-Uses an AI agent to analyze the session and strategically identify what can
-be safely truncated. More intelligent but adds processing time.
+Uses headless (non-interactive) Claude/Codex agent to analyze the session and
+strategically identify what can be safely truncated without affecting the last
+task being worked on. Slower than deterministic trim, but smarter and more
+selective.
+
+The TUI lets you specify:
+
+- Message types to never trim (default: user messages)
+- How many recent messages to always preserve (default: 10)
+- Minimum content threshold for extraction (default: 200 chars)
+- Custom instructions for what to prioritize when truncating
+
+Same options available via CLI: `aichat smart-trim --help`
 
 **3. Rollover**
 
-Hands off work to a fresh session with a summary of the current task. The new
-session starts with maximum context available while maintaining full access
-to the parent session's details.
+The trim strategies work well once or twice but eventually stop freeing much
+context. Rollover is a better alternative after a couple of trim iterations,
+or directly from a normal session. This strategy hands off work to a fresh
+session with a summary of the current task. The new session starts with maximum
+context available while maintaining full access to the parent session's details.
 
-### Why Lineage Matters
+Two rollover modes:
 
-Unlike built-in compaction (which permanently loses information), all three
-strategies preserve the complete parent session. The new/resumed session
-receives:
+- **Quick rollover** — Just preserves lineage pointers, no context extraction.
+  Fast, but you'll need to ask the agent to look up prior work as needed.
+- **Rollover with context** — Extracts a summary of current work into the new
+  session's prompt. The TUI lets you specify custom instructions for what
+  context to extract (e.g., "focus on the authentication changes").
 
-- **Lineage chain** — file paths of all ancestor sessions back to the original
-- **On-demand retrieval** — the agent can look up any past session to recover
-  specific details when needed
+Same options available via CLI: `aichat rollover --help` (use `--quick` for
+quick mode, `-p "prompt"` for custom extraction instructions)
+
+### Lineage: Nothing Is Lost
+
+Unlike compaction (which permanently loses information), all strategies preserve
+the complete parent session:
+
+- **Lineage chain** — file paths of all ancestor sessions
+- **On-demand retrieval** — agent can read any past session when needed
 
 ```
 Original Session (abc123)
@@ -246,7 +302,9 @@ Original Session (abc123)
            └─► ... chain continues
 ```
 
-### Agent Access to History
+See [here](docs/rollover-details.md) for details on how rollover works.
+
+### Agent Access to History; the Session-Searcher sub-agent
 
 Your agent can search across all historical sessions using the JSON output
 mode:
@@ -255,31 +313,56 @@ mode:
 aichat search --json -g "error handling"  # Returns JSONL for programmatic use
 aichat search --json --by-time            # Sort by last-modified time
 ```
-<!--CLAUDE - mention that there is a plugin `session-search` that provides a skill
-called `session-search` that shows Claude Code how to use `aichat search`
-to search past sessions.
--->
 
 This enables agents to find and retrieve context from any past session in the
 lineage, either on their own initiative or when you prompt them to look up
 historical context.
 
+Installing the `aichat` plugin mentioned above creates a `Session-Searcher` sub-agent 
+(for Claude-Code) that has instructions to either directly search a known session jsonl 
+file if clear from context, or use `aichat search --json` to search past sessions. 
+E.g. in Claude Code you can say:
+
+> From past sessions, recover details of our work on task-termination specification in Langroid agents/taks configuration.
+
+This will trigger the `Session-Searcher` sub-agent to search past sessions for the specified query.
+
 ---
 
-## Other Commands
-
-Direct commands that skip the menu:
+## All Subcommands
 
 | Command | Description |
 |---------|-------------|
-| `aichat` | Action menu for latest session(s) |
-| `aichat <session-id>` | Action menu for specific session |
+| `aichat search [query]` | Full-text search TUI across all sessions |
+| `aichat menu [session]` | Interactive action menu for a session |
+| `aichat resume [session]` | Resume options (resume, clone, trim, rollover) |
+| `aichat info [session]` | Show session metadata, path, and lineage |
 | `aichat export [session]` | Export session to text |
+| `aichat copy [session]` | Copy session file to new location |
+| `aichat query [session] [question]` | Query session with AI |
+| `aichat clone [session]` | Clone session and resume the clone |
+| `aichat rollover [session]` | Hand off to fresh session with lineage |
+| `aichat lineage [session]` | Show parent lineage chain |
 | `aichat trim [session]` | Trim large tool outputs |
 | `aichat smart-trim [session]` | AI-powered trimming (EXPERIMENTAL) |
 | `aichat delete [session]` | Delete with confirmation |
 | `aichat find-original [session]` | Trace back to original session |
 | `aichat find-derived [session]` | Find all derived sessions |
+
+**Index management:**
+
+| Command | Description |
+|---------|-------------|
+| `aichat build-index` | Manually rebuild the search index |
+| `aichat clear-index` | Clear the index for a fresh rebuild |
+| `aichat index-stats` | Show index statistics and reconciliation |
+
+The search index is powered by [Tantivy](https://github.com/quickwit-oss/tantivy)
+(Rust full-text search). You typically don't need to manage it manually:
+
+- **Auto-updates**: Index updates incrementally on every `aichat` command
+- **Version rebuilds**: Index rebuilds automatically when the tool version changes
+- **Manual rebuild**: Use `aichat clear-index && aichat build-index` if needed
 
 Run `aichat <command> --help` for options
 
@@ -399,6 +482,39 @@ cp target/release/lmsh ~/.cargo/bin/
 
 See [docs/lmsh.md](docs/lmsh.md) for details.
 
+<a id="status-line"></a>
+## 📊 Status Line
+
+A custom status line script for Claude Code is available at
+[`scripts/statusline.sh`](scripts/statusline.sh). It displays model name,
+project directory, git branch, git status indicators, and a context window
+progress bar that changes color as you approach the limit.
+
+![green](demos/statusline-green.png)
+![yellow](demos/statusline-yellow.png)
+![orange](demos/statusline-orange.png)
+![red](demos/statusline-red.png)
+
+To use it, copy the script and configure Claude Code:
+
+```bash
+cp scripts/statusline.sh ~/.claude/
+chmod +x ~/.claude/statusline.sh
+```
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  }
+}
+```
+
+Requires `jq` and a [Nerd Font](https://www.nerdfonts.com/) for powerline symbols.
+
 <a id="utilities"></a>
 # 🔐 Utilities
 
@@ -509,7 +625,7 @@ For complete documentation, see [hooks/README.md](hooks/README.md).
 ## 🤖 Using Claude Code with Open-weight Anthropic API-compatible LLM Providers
 
 You can use Claude Code with alternative LLMs served via Anthropic-compatible
-APIs, e.g. Kimi-k2, GLM4.5 (from zai), Deepseek-v3.1. 
+APIs, e.g. Kimi-k2, GLM4.5 (from zai), Deepseek-v3.1, [MiniMax-M2.1](https://platform.minimax.io/docs/guides/text-ai-coding-tools).
 Add these functions to your shell config (.bashrc/.zshrc):
 
 ```bash
@@ -534,7 +650,22 @@ dseek() {
         export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
         export ANTHROPIC_AUTH_TOKEN=${DEEPSEEK_API_KEY}
         export ANTHROPIC_MODEL=deepseek-chat
-        export ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat        
+        export ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat
+        claude "$@"
+    )
+}
+
+ccmm() {
+    (
+        export ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
+        export ANTHROPIC_AUTH_TOKEN=$MINIMAX_API_KEY
+        export API_TIMEOUT_MS=3000000
+        export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+        export ANTHROPIC_MODEL=MiniMax-M2.1
+        export ANTHROPIC_SMALL_FAST_MODEL=MiniMax-M2.1
+        export ANTHROPIC_DEFAULT_SONNET_MODEL=MiniMax-M2.1
+        export ANTHROPIC_DEFAULT_OPUS_MODEL=MiniMax-M2.1
+        export ANTHROPIC_DEFAULT_HAIKU_MODEL=MiniMax-M2.1
         claude "$@"
     )
 }
@@ -542,14 +673,29 @@ dseek() {
 
 After adding these functions:
 - Set your API keys: `export KIMI_API_KEY=your-kimi-key`,
-  `export Z_API_KEY=your-z-key`, `export DEEPSEEK_API_KEY=your-deepseek-key`
+  `export Z_API_KEY=your-z-key`, `export DEEPSEEK_API_KEY=your-deepseek-key`,
+  `export MINIMAX_API_KEY=your-minimax-key`
 - Run `kimi` to use Claude Code with the Kimi K2 LLM
 - Run `zai` to use Claude Code with the GLM-4.5 model
 - Run `dseek` to use Claude Code with the DeepSeek model
+- Run `ccmm` to use Claude Code with the MiniMax M2.1 model
 
-The functions use subshells to ensure the environment variables don't affect 
+The functions use subshells to ensure the environment variables don't affect
 your main shell session, so you could be running multiple instances of Claude Code,
 each using a different LLM.
+
+### Using Claude Code and Codex with Local LLMs
+
+You can run **Claude Code** and **OpenAI Codex CLI** with local models using
+[llama.cpp](https://github.com/ggml-org/llama.cpp)'s server for fully offline usage.
+
+- **Claude Code** uses the Anthropic-compatible `/v1/messages` endpoint with models
+  like GPT-OSS-20B, Qwen3-Coder-30B, Qwen3-Next-80B, and Nemotron-3-Nano
+- **Codex CLI** uses the OpenAI-compatible `/v1/chat/completions` endpoint with GPT-OSS
+
+For complete setup instructions including llama-server commands, config files, and
+command-line options for switching models, see
+**[docs/local-llm-setup.md](docs/local-llm-setup.md)**.
 
 <a id="documentation"></a>
 ## 📚 Documentation

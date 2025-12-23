@@ -115,6 +115,7 @@ struct Session {
     derivation_type: String,  // "trimmed", "continued", or ""
     is_sidechain: bool,       // Sub-agent session
     claude_home: String,      // Source Claude home directory
+    custom_title: String,     // User-assigned session name (from /rename)
 }
 
 impl Session {
@@ -714,24 +715,13 @@ impl App {
             index_path,
             search_snippets: HashMap::new(),
             // Filter state from CLI
-            // If ANY type flag is specified, use explicit mode (only include what's specified)
-            // If NO type flags are specified, use defaults (original + trimmed + continued, no sub-agents)
-            include_original: if cli.any_type_flag_specified() {
-                cli.include_original
-            } else {
-                true  // default: include
-            },
-            include_sub: cli.include_sub,  // always explicit (default false)
-            include_trimmed: if cli.any_type_flag_specified() {
-                cli.include_trimmed
-            } else {
-                true  // default: include
-            },
-            include_continued: if cli.any_type_flag_specified() {
-                cli.include_continued
-            } else {
-                true  // default: include
-            },
+            // Defaults: show original + trimmed + continued (not sub-agents)
+            // Subtractive flags (--no-*) exclude types from defaults
+            // Additive flag (--sub-agent) adds sub-agents to defaults
+            include_original: !cli.no_original,
+            include_sub: cli.include_sub,
+            include_trimmed: !cli.no_trimmed,
+            include_continued: !cli.no_rollover,
             filter_agent: cli.agent_filter.clone(),
             filter_min_lines: cli.min_lines,
             filter_after_date: after_date,
@@ -1918,25 +1908,49 @@ fn render_session_list(frame: &mut Frame, app: &mut App, t: &Theme, area: Rect) 
             let indent = " ".repeat(row_num_width + 1);
             let snippet_width = available_width.saturating_sub(row_num_width + 1);
 
+            // Build custom title prefix if present
+            let title_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+            let (title_prefix, title_len) = if !s.custom_title.is_empty() {
+                let prefix = format!("[{}] ", s.custom_title);
+                let len = prefix.len();
+                (Some(prefix), len)
+            } else {
+                (None, 0)
+            };
+            let effective_snippet_width = snippet_width.saturating_sub(title_len);
+
             let snippet_line = if app.query.is_empty() {
                 // No query: show last message content
-                let snippet = truncate(&s.last_msg_content, snippet_width);
-                Line::from(Span::styled(format!("{}...{}", indent, snippet), snippet_style))
+                let snippet = truncate(&s.last_msg_content, effective_snippet_width);
+                let mut spans = vec![Span::styled(indent.clone(), snippet_style)];
+                if let Some(ref tp) = title_prefix {
+                    spans.push(Span::styled(tp.clone(), title_style));
+                }
+                spans.push(Span::styled(format!("...{}", snippet), snippet_style));
+                Line::from(spans)
             } else {
                 // With query: use Tantivy snippet with HTML tags for highlighting
                 if let Some(snippet_html) = app.search_snippets.get(&s.session_id) {
                     // Truncate the plain text version but render with HTML tags
                     let snippet_plain = strip_html_tags(snippet_html);
-                    let truncated_plain = truncate(&snippet_plain, snippet_width);
+                    let truncated_plain = truncate(&snippet_plain, effective_snippet_width);
                     // Find how much of the HTML snippet to use based on plain text length
-                    let mut spans = vec![Span::styled(indent, snippet_style)];
+                    let mut spans = vec![Span::styled(indent.clone(), snippet_style)];
+                    if let Some(ref tp) = title_prefix {
+                        spans.push(Span::styled(tp.clone(), title_style));
+                    }
                     // Truncate HTML snippet approximately (allow extra for tags)
-                    let html_truncated: String = snippet_html.chars().take(snippet_width + 50).collect();
+                    let html_truncated: String = snippet_html.chars().take(effective_snippet_width + 50).collect();
                     spans.extend(render_snippet_with_html_tags(&html_truncated, snippet_style, highlight_style));
                     Line::from(spans)
                 } else {
-                    let snippet = truncate(&s.first_msg_content, snippet_width);
-                    Line::from(Span::styled(format!("{}...{}", indent, snippet), snippet_style))
+                    let snippet = truncate(&s.first_msg_content, effective_snippet_width);
+                    let mut spans = vec![Span::styled(indent.clone(), snippet_style)];
+                    if let Some(ref tp) = title_prefix {
+                        spans.push(Span::styled(tp.clone(), title_style));
+                    }
+                    spans.push(Span::styled(format!("...{}", snippet), snippet_style));
+                    Line::from(spans)
                 }
             };
 
@@ -3121,6 +3135,8 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
     let is_sidechain_field = schema.get_field("is_sidechain").context("missing is_sidechain")?;
     // claude_home may not exist in older indexes, so make it optional
     let claude_home_field = schema.get_field("claude_home").ok();
+    // custom_title may not exist in older indexes, so make it optional
+    let custom_title_field = schema.get_field("custom_title").ok();
 
     let reader = index
         .reader_builder()
@@ -3161,6 +3177,11 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
             .map(|f| get_text(f))
             .unwrap_or_default();
 
+        // Get custom_title if field exists, otherwise empty string
+        let custom_title = custom_title_field
+            .map(|f| get_text(f))
+            .unwrap_or_default();
+
         sessions.push(Session {
             session_id: get_text(session_id_field),
             agent: get_text(agent_field),
@@ -3179,6 +3200,7 @@ fn load_sessions(index_path: &str, limit: usize) -> Result<Vec<Session>> {
             derivation_type: get_text(derivation_type_field),
             is_sidechain: is_sidechain_str == "true",
             claude_home,
+            custom_title,
         });
     }
 
@@ -3855,6 +3877,7 @@ fn output_json(app: &App, limit: Option<usize>) -> Result<()> {
             "file_path": s.export_path,
             "derivation_type": s.derivation_type,
             "is_sidechain": s.is_sidechain,
+            "custom_title": s.custom_title,
             "snippet": app.search_snippets.get(&s.session_id).map(|s| strip_html_tags(s)),
         });
         println!("{}", serde_json::to_string(&obj)?);
@@ -3872,10 +3895,12 @@ struct CliOptions {
     global_search: bool,
     filter_dir: Option<String>, // --dir: filter to specific directory (overrides -g)
     num_results: Option<usize>,
-    include_original: bool,
+    // Subtractive flags: --no-original, --no-trimmed, --no-rollover exclude types from defaults
+    no_original: bool,
+    no_trimmed: bool,
+    no_rollover: bool,
+    // Additive flag: --sub-agent adds sub-agents to defaults
     include_sub: bool,
-    include_trimmed: bool,
-    include_continued: bool,
     min_lines: Option<i64>,
     after_date: Option<String>,
     before_date: Option<String>,
@@ -3887,14 +3912,6 @@ struct CliOptions {
     // Scroll/selection state restoration
     selected: Option<usize>,    // --selected: restore selected row index
     list_scroll: Option<usize>, // --scroll: restore scroll offset
-}
-
-impl CliOptions {
-    /// Check if any session type filter flag was explicitly specified on CLI.
-    /// Used to distinguish between "no flags = use defaults" vs "explicit flags = use only those".
-    fn any_type_flag_specified(&self) -> bool {
-        self.include_original || self.include_sub || self.include_trimmed || self.include_continued
-    }
 }
 
 fn parse_cli_args() -> CliOptions {
@@ -3976,12 +3993,13 @@ fn parse_cli_args() -> CliOptions {
         .or_else(|| get_arg_value("-n"))
         .and_then(|s| s.parse().ok());
 
-    // Filter inclusion flags (if specified, include that type)
-    // Note: --rollover is the user-facing name for internally "continued" sessions
-    let include_original = has_flag("--original");
+    // Subtractive flags: --no-original, --no-trimmed, --no-rollover
+    // By default all types are shown (except sub-agents); these flags exclude types
+    let no_original = has_flag("--no-original");
+    let no_trimmed = has_flag("--no-trimmed");
+    let no_rollover = has_flag("--no-rollover");
+    // Additive flag: --sub-agent adds sub-agents to defaults
     let include_sub = has_flag("--sub-agent");
-    let include_trimmed = has_flag("--trimmed");
-    let include_continued = has_flag("--rollover");
 
     let min_lines = get_arg_value("--min-lines")
         .and_then(|s| s.parse().ok());
@@ -4012,10 +4030,10 @@ fn parse_cli_args() -> CliOptions {
         global_search,
         filter_dir,
         num_results,
-        include_original,
+        no_original,
+        no_trimmed,
+        no_rollover,
         include_sub,
-        include_trimmed,
-        include_continued,
         min_lines,
         after_date,
         before_date,

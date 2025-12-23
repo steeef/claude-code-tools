@@ -459,22 +459,71 @@ def menu(ctx):
 
 @main.command("trim")
 @click.argument("session", required=False)
-@click.option("--simple-ui", is_flag=True, help="Use simple CLI trim instead of Node UI")
-def trim(session, simple_ui):
-    """Trim/resume session - shows menu of trim options.
+@click.option("--tools", "-t",
+              help="Comma-separated tools to trim (e.g., 'bash,read,edit'). "
+                   "Default: all tools.")
+@click.option("--len", "-l", "threshold", type=int, default=500,
+              help="Minimum length threshold in chars for trimming (default: 500)")
+@click.option("--trim-assistant", "-a", "trim_assistant", type=int,
+              help="Trim assistant messages: positive N trims first N over threshold, "
+                   "negative N trims all except last |N| over threshold")
+@click.option("--output-dir", "-o",
+              help="Output directory (default: same as input file)")
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False),
+              help="Force agent type (auto-detected if not specified)")
+@click.option("--claude-home", help="Path to Claude home directory")
+@click.option("--simple-ui", is_flag=True,
+              help="Use simple CLI trim instead of Node UI (requires session ID)")
+def trim(session, tools, threshold, trim_assistant, output_dir, agent, claude_home, simple_ui):
+    """Trim session to reduce size by truncating large tool outputs.
 
-    If no session ID provided, finds latest session for current project/branch.
-    Opens Node UI with trim/resume options (trim+resume, smart-trim).
-    Use --simple-ui for direct CLI trim.
+    Trims tool call results and optionally assistant messages that exceed
+    the length threshold. Creates a new trimmed session file with lineage
+    metadata linking back to the original.
+
+    If no session ID provided, finds latest session for current project/branch
+    and opens the interactive trim menu.
+
+    \b
+    Examples:
+        aichat trim                          # Interactive menu for latest session
+        aichat trim abc123                   # Interactive menu for specific session
+        aichat trim abc123 --simple-ui       # Direct CLI trim with defaults
+        aichat trim abc123 -t bash,read -l 1000   # Trim specific tools, custom threshold
+        aichat trim abc123 -a 5              # Also trim first 5 long assistant msgs
+
+    \b
+    Options:
+        --tools, -t    Which tool outputs to trim (default: all)
+        --len, -l      Character threshold for trimming (default: 500)
+        --trim-assistant, -a   Trim assistant messages too
+        --output-dir, -o       Where to write trimmed file
     """
     import sys
 
-    if simple_ui:
+    if simple_ui or tools or trim_assistant or output_dir:
+        # Direct CLI mode - need a session
         if not session:
-            print("Error: --simple-ui requires a session ID", file=sys.stderr)
+            print("Error: Direct trim options require a session ID", file=sys.stderr)
+            print("Use 'aichat trim' without options for interactive mode", file=sys.stderr)
             sys.exit(1)
-        # Fall back to old trim-session CLI
-        sys.argv = [sys.argv[0].replace('aichat', 'trim-session'), session]
+
+        # Build args for trim-session CLI
+        args = [session]
+        if tools:
+            args.extend(["--tools", tools])
+        if threshold != 500:
+            args.extend(["--len", str(threshold)])
+        if trim_assistant is not None:
+            args.extend(["--trim-assistant-messages", str(trim_assistant)])
+        if output_dir:
+            args.extend(["--output-dir", output_dir])
+        if agent:
+            args.extend(["--agent", agent])
+        if claude_home:
+            args.extend(["--claude-home", claude_home])
+
+        sys.argv = [sys.argv[0].replace('aichat', 'trim-session')] + args
         from claude_code_tools.trim_session import main as trim_main
         trim_main()
         return
@@ -488,32 +537,122 @@ def trim(session, simple_ui):
     )
 
 
-@main.command("smart-trim", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
-@click.pass_context
-def smart_trim(ctx):
+@main.command("smart-trim")
+@click.argument("session", required=False)
+@click.option("--instructions", "-i",
+              help="Custom instructions for what to prioritize when trimming")
+@click.option("--exclude-types", "-e",
+              help="Comma-separated message types to never trim (default: user)")
+@click.option("--preserve-recent", "-p", type=int, default=10,
+              help="Always preserve last N messages (default: 10)")
+@click.option("--len", "-l", "content_threshold", type=int, default=200,
+              help="Minimum chars for content extraction (default: 200)")
+@click.option("--output-dir", "-o",
+              help="Output directory (default: same as input)")
+@click.option("--dry-run", "-n", is_flag=True,
+              help="Show what would be trimmed without doing it")
+@click.option("--claude-home", help="Path to Claude home directory")
+def smart_trim(session, instructions, exclude_types, preserve_recent, content_threshold,
+               output_dir, dry_run, claude_home):
     """Smart trim using Claude SDK agents (EXPERIMENTAL).
 
+    Uses an LLM to intelligently analyze the session and decide what can
+    be safely trimmed while preserving important context. Creates a new
+    trimmed session with lineage metadata.
+
     If no session ID provided, finds latest session for current project/branch.
+
+    \b
+    Examples:
+        aichat smart-trim                     # Interactive for latest session
+        aichat smart-trim abc123              # Smart trim specific session
+        aichat smart-trim abc123 --dry-run    # Preview what would be trimmed
+        aichat smart-trim abc123 -p 20        # Preserve last 20 messages
+        aichat smart-trim abc123 -e user,system  # Never trim user or system msgs
+        aichat smart-trim abc123 -i "preserve auth-related messages"
+
+    \b
+    Options:
+        --instructions, -i     Custom instructions for what to prioritize
+        --exclude-types, -e    Message types to EXCLUDE from trimming
+        --preserve-recent, -p  Keep last N messages untouched (default: 10)
+        --len, -l              Min chars for content extraction (default: 200)
+        --dry-run, -n          Preview only, don't actually trim
     """
     import sys
-    args = ctx.args
-    session_id = args[0] if args and not args[0].startswith('-') else None
+    from pathlib import Path
 
-    if session_id:
-        # Pass to existing smart_trim CLI
+    from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
+
+    # If --instructions provided, use the handler function (same as TUI)
+    if instructions and session:
+        input_path = Path(session).expanduser()
+        if input_path.exists() and input_path.is_file():
+            session_file = input_path
+            detected_agent = detect_agent_from_path(session_file)
+            session_id = session_file.stem
+            project_path = str(session_file.parent)
+        else:
+            result = find_session_file(session)
+            if not result:
+                print(f"Error: Session not found: {session}", file=sys.stderr)
+                sys.exit(1)
+            detected_agent, session_file, project_path, _ = result
+            session_id = session_file.stem
+
+        # Use the handler function which supports custom_instructions
+        if detected_agent == "claude":
+            from claude_code_tools.find_claude_session import handle_smart_trim_resume_claude
+            handle_smart_trim_resume_claude(
+                session_id, project_path, claude_home,
+                custom_instructions=instructions,
+            )
+        else:
+            from claude_code_tools.find_codex_session import handle_smart_trim_resume_codex
+            from claude_code_tools.session_utils import get_codex_home
+            handle_smart_trim_resume_codex(
+                {"file_path": str(session_file), "cwd": project_path, "session_id": session_id},
+                Path(get_codex_home(cli_arg=None)),
+                custom_instructions=instructions,
+            )
+        return
+
+    # If any direct CLI options specified (but not instructions), use smart_trim.py
+    if exclude_types or preserve_recent != 10 or content_threshold != 200 or output_dir or dry_run:
+        if not session:
+            print("Error: Direct smart-trim options require a session ID", file=sys.stderr)
+            print("Use 'aichat smart-trim' without options for interactive mode", file=sys.stderr)
+            sys.exit(1)
+
+        # Build args for smart-trim CLI
+        args = [session]
+        if exclude_types:
+            args.extend(["--exclude-types", exclude_types])
+        if preserve_recent != 10:
+            args.extend(["--preserve-recent", str(preserve_recent)])
+        if content_threshold != 200:
+            args.extend(["--content-threshold", str(content_threshold)])
+        if output_dir:
+            args.extend(["--output-dir", output_dir])
+        if dry_run:
+            args.append("--dry-run")
+        if claude_home:
+            args.extend(["--claude-home", claude_home])
+
         sys.argv = [sys.argv[0].replace('aichat', 'smart-trim')] + args
         from claude_code_tools.smart_trim import main as smart_trim_main
         smart_trim_main()
-    else:
-        # Find latest session and execute smart_trim_resume directly
-        _find_and_run_session_ui(
-            session_id=None,
-            agent_constraint='both',
-            start_screen='trim_menu',  # Fallback if multiple sessions
-            select_target='trim_menu',
-            results_title=' Which session to smart-trim? ',
-            direct_action='smart_trim_resume',
-        )
+        return
+
+    # Show interactive UI for entering instructions
+    # (whether session provided or not - find latest if not)
+    _find_and_run_session_ui(
+        session_id=session,
+        agent_constraint='both',
+        start_screen='smart_trim_form',
+        select_target='smart_trim_form',
+        results_title=' Which session to smart-trim? ',
+    )
 
 
 @main.command("export", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
@@ -658,6 +797,488 @@ def delete(ctx):
     sys.argv = [sys.argv[0].replace('aichat', 'delete-session')] + ctx.args
     from claude_code_tools.delete_session import main as delete_main
     delete_main()
+
+
+@main.command("info")
+@click.argument("session", required=False)
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False),
+              help="Force agent type (auto-detected if not specified)")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def info(session, agent, json_output):
+    """Show information about a session.
+
+    Displays session metadata including file path, agent type, project,
+    branch, timestamps, message counts, and lineage (parent sessions).
+
+    If no session ID provided, shows info for latest session in current
+    project/branch.
+
+    \b
+    Examples:
+        aichat info                     # Info for latest session
+        aichat info abc123-def456       # Info for specific session
+        aichat info --json abc123       # Output as JSON
+    """
+    import json as json_lib
+    import sys
+    from pathlib import Path
+    from datetime import datetime
+
+    from claude_code_tools.session_utils import (
+        find_session_file,
+        detect_agent_from_path,
+        extract_cwd_from_session,
+        count_user_messages,
+        default_export_path,
+    )
+    from claude_code_tools.session_lineage import get_continuation_lineage
+
+    # Find session file
+    if session:
+        input_path = Path(session).expanduser()
+        if input_path.exists() and input_path.is_file():
+            session_file = input_path
+            detected_agent = agent or detect_agent_from_path(session_file)
+        else:
+            result = find_session_file(session)
+            if not result:
+                print(f"Error: Session not found: {session}", file=sys.stderr)
+                sys.exit(1)
+            detected_agent, session_file, _, _ = result
+            if agent:
+                detected_agent = agent
+    else:
+        # No session provided - find latest
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='action',
+            direct_action='path',  # Just show path for now
+        )
+        return
+
+    # Gather session info
+    session_id = session_file.stem
+    mod_time = datetime.fromtimestamp(session_file.stat().st_mtime)
+    create_time = datetime.fromtimestamp(session_file.stat().st_ctime)
+    file_size = session_file.stat().st_size
+    line_count = sum(1 for _ in open(session_file))
+
+    # Extract metadata from session
+    from claude_code_tools.export_session import extract_session_metadata
+    metadata = extract_session_metadata(session_file, detected_agent)
+    cwd = metadata.get("cwd") or extract_cwd_from_session(session_file)
+    project = Path(cwd).name if cwd else "unknown"
+    custom_title = metadata.get("customTitle", "")
+    user_msg_count = count_user_messages(session_file, detected_agent)
+
+    # Get lineage
+    lineage = get_continuation_lineage(session_file, export_missing=False)
+    lineage_info = []
+    for node in lineage:
+        lineage_info.append({
+            "file": str(node.session_file),
+            "type": node.derivation_type or "original",
+        })
+
+    info_data = {
+        "session_id": session_id,
+        "agent": detected_agent,
+        "custom_title": custom_title,
+        "file_path": str(session_file),
+        "project": project,
+        "cwd": cwd,
+        "created": create_time.isoformat(),
+        "modified": mod_time.isoformat(),
+        "file_size_bytes": file_size,
+        "line_count": line_count,
+        "user_message_count": user_msg_count,
+        "export_path": str(default_export_path(session_file, detected_agent)),
+        "lineage": lineage_info,
+    }
+
+    if json_output:
+        print(json_lib.dumps(info_data, indent=2))
+    else:
+        print(f"\n{'='*60}")
+        print(f"Session: {session_id}")
+        if custom_title:
+            print(f"Title:   {custom_title}")
+        print(f"{'='*60}")
+        print(f"Agent:      {detected_agent}")
+        print(f"Project:    {project}")
+        print(f"CWD:        {cwd}")
+        print(f"File:       {session_file}")
+        print(f"Created:    {create_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Modified:   {mod_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Size:       {file_size:,} bytes")
+        print(f"Lines:      {line_count:,}")
+        print(f"User msgs:  {user_msg_count}")
+        if lineage_info:
+            print(f"\nLineage ({len(lineage_info)} sessions):")
+            for i, node in enumerate(lineage_info):
+                prefix = "  └─" if i == len(lineage_info) - 1 else "  ├─"
+                fname = Path(node["file"]).name
+                print(f"{prefix} {fname} ({node['type']})")
+
+
+@main.command("copy")
+@click.argument("session", required=False)
+@click.option("--dest", "-d", help="Destination path (default: prompted)")
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False),
+              help="Force agent type (auto-detected if not specified)")
+def copy_session(session, dest, agent):
+    """Copy a session file to a new location.
+
+    If no session ID provided, finds latest session for current project/branch.
+
+    \b
+    Examples:
+        aichat copy abc123-def456              # Copy with prompted destination
+        aichat copy abc123 -d ~/backups/       # Copy to specific directory
+        aichat copy abc123 -d ./my-session.jsonl  # Copy with specific filename
+    """
+    import sys
+    from pathlib import Path
+
+    from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
+
+    if not session:
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='action',
+            direct_action='copy',
+        )
+        return
+
+    # Find session file
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = agent or detect_agent_from_path(session_file)
+    else:
+        result = find_session_file(session)
+        if not result:
+            print(f"Error: Session not found: {session}", file=sys.stderr)
+            sys.exit(1)
+        detected_agent, session_file, _, _ = result
+        if agent:
+            detected_agent = agent
+
+    # Import agent-specific copy function
+    if detected_agent == "claude":
+        from claude_code_tools.find_claude_session import copy_session_file
+    else:
+        from claude_code_tools.find_codex_session import copy_session_file
+
+    copy_session_file(str(session_file), dest)
+
+
+@main.command("query")
+@click.argument("session", required=False)
+@click.argument("question", required=False)
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False),
+              help="Force agent type (auto-detected if not specified)")
+def query_session(session, question, agent):
+    """Query a session with a question using an AI agent.
+
+    Exports the session and uses Claude to answer questions about its content.
+    If no question provided, opens interactive query mode.
+
+    \b
+    Examples:
+        aichat query abc123 "What was the main bug fixed?"
+        aichat query abc123 "Summarize the changes made"
+        aichat query                           # Interactive mode for latest session
+    """
+    import sys
+    from pathlib import Path
+
+    from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
+
+    if not session:
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='query',
+            direct_action='query',
+        )
+        return
+
+    # Find session file
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = agent or detect_agent_from_path(session_file)
+    else:
+        result = find_session_file(session)
+        if not result:
+            print(f"Error: Session not found: {session}", file=sys.stderr)
+            sys.exit(1)
+        detected_agent, session_file, cwd, _ = result
+        if agent:
+            detected_agent = agent
+
+    # If no question, show interactive query UI
+    if not question:
+        from claude_code_tools.node_menu_ui import run_node_menu_ui
+        from claude_code_tools.session_menu_cli import execute_action
+
+        rpc_path = str(Path(__file__).parent / "action_rpc.py")
+        session_data = {
+            "session_id": session_file.stem,
+            "agent": detected_agent,
+            "file_path": str(session_file),
+            "cwd": str(session_file.parent),
+        }
+
+        def handler(sess, action, kwargs=None):
+            return execute_action(
+                action, sess["agent"], Path(sess["file_path"]),
+                sess["cwd"], action_kwargs=kwargs
+            )
+
+        run_node_menu_ui(
+            [session_data], [], handler,
+            start_screen="query",
+            rpc_path=rpc_path,
+        )
+        return
+
+    # Direct query with provided question
+    from claude_code_tools.session_utils import default_export_path
+
+    # Export session first
+    if detected_agent == "claude":
+        from claude_code_tools.find_claude_session import handle_export_session
+    else:
+        from claude_code_tools.find_codex_session import handle_export_session
+
+    export_path = default_export_path(session_file, detected_agent)
+    handle_export_session(str(session_file))
+
+    # Query using Claude
+    import subprocess
+    prompt = f"Read the session transcript at {export_path} and answer: {question}"
+    subprocess.run(["claude", "-p", prompt])
+
+
+@main.command("clone")
+@click.argument("session", required=False)
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False),
+              help="Force agent type (auto-detected if not specified)")
+def clone_session_cmd(session, agent):
+    """Clone a session and resume the clone.
+
+    Creates a copy of the session with a new ID and resumes it,
+    leaving the original session untouched.
+
+    If no session ID provided, finds latest session for current project/branch.
+
+    \b
+    Examples:
+        aichat clone abc123-def456    # Clone specific session
+        aichat clone                  # Clone latest session
+    """
+    import sys
+    from pathlib import Path
+
+    from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
+
+    if not session:
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='resume',
+            direct_action='clone',
+        )
+        return
+
+    # Find session file
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = agent or detect_agent_from_path(session_file)
+        cwd = str(session_file.parent)
+    else:
+        result = find_session_file(session)
+        if not result:
+            print(f"Error: Session not found: {session}", file=sys.stderr)
+            sys.exit(1)
+        detected_agent, session_file, cwd, _ = result
+        if agent:
+            detected_agent = agent
+
+    session_id = session_file.stem
+
+    # Execute clone
+    if detected_agent == "claude":
+        from claude_code_tools.find_claude_session import clone_session
+        clone_session(session_id, cwd, shell_mode=False)
+    else:
+        from claude_code_tools.find_codex_session import clone_session
+        clone_session(str(session_file), session_id, cwd, shell_mode=False)
+
+
+@main.command("rollover")
+@click.argument("session", required=False)
+@click.option("--quick", is_flag=True,
+              help="Quick rollover without context extraction (just preserve lineage)")
+@click.option("--prompt", "-p", help="Custom prompt for context extraction")
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False),
+              help="Force agent type (auto-detected if not specified)")
+def rollover(session, quick, prompt, agent):
+    """Rollover: hand off work to a fresh session with preserved lineage.
+
+    Creates a new session with a summary of the current work and links back
+    to the parent session. The new session starts with full context available
+    while the parent session is preserved intact.
+
+    \b
+    Options:
+        --quick    Skip context extraction, just preserve lineage pointers
+        --prompt   Custom instructions for what context to extract
+
+    \b
+    Examples:
+        aichat rollover abc123              # Rollover with context extraction
+        aichat rollover abc123 --quick      # Quick rollover (lineage only)
+        aichat rollover abc123 -p "Focus on the auth changes"
+        aichat rollover                     # Rollover latest session
+    """
+    import sys
+    from pathlib import Path
+
+    from claude_code_tools.session_utils import (
+        find_session_file,
+        detect_agent_from_path,
+        continue_with_options,
+    )
+
+    if not session:
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='continue_form',
+            direct_action='continue',
+            action_kwargs={"rollover_type": "quick" if quick else "context"},
+        )
+        return
+
+    # Find session file
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = agent or detect_agent_from_path(session_file)
+    else:
+        result = find_session_file(session)
+        if not result:
+            print(f"Error: Session not found: {session}", file=sys.stderr)
+            sys.exit(1)
+        detected_agent, session_file, _, _ = result
+        if agent:
+            detected_agent = agent
+
+    # Execute rollover
+    rollover_type = "quick" if quick else "context"
+    continue_with_options(
+        str(session_file),
+        detected_agent,
+        preset_prompt=prompt,
+        rollover_type=rollover_type,
+    )
+
+
+@main.command("lineage")
+@click.argument("session", required=False)
+@click.option("--agent", type=click.Choice(["claude", "codex"], case_sensitive=False),
+              help="Force agent type (auto-detected if not specified)")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def lineage(session, agent, json_output):
+    """Show the parent lineage chain of a session.
+
+    Traces back through continue_metadata and trim_metadata to find
+    all ancestor sessions, from the current session back to the original.
+
+    \b
+    Examples:
+        aichat lineage abc123-def456    # Show lineage for specific session
+        aichat lineage                  # Show lineage for latest session
+        aichat lineage abc123 --json    # Output as JSON
+    """
+    import json as json_lib
+    import sys
+    from pathlib import Path
+    from datetime import datetime
+
+    from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
+    from claude_code_tools.session_lineage import get_continuation_lineage
+
+    if not session:
+        _find_and_run_session_ui(
+            session_id=None,
+            agent_constraint='both',
+            start_screen='lineage',
+        )
+        return
+
+    # Find session file
+    input_path = Path(session).expanduser()
+    if input_path.exists() and input_path.is_file():
+        session_file = input_path
+        detected_agent = agent or detect_agent_from_path(session_file)
+    else:
+        result = find_session_file(session)
+        if not result:
+            print(f"Error: Session not found: {session}", file=sys.stderr)
+            sys.exit(1)
+        detected_agent, session_file, _, _ = result
+        if agent:
+            detected_agent = agent
+
+    # Get lineage
+    lineage_chain = get_continuation_lineage(session_file, export_missing=False)
+
+    if not lineage_chain:
+        print("No lineage found (this is an original session).")
+        return
+
+    lineage_data = []
+    for node in lineage_chain:
+        mod_time = datetime.fromtimestamp(node.session_file.stat().st_mtime)
+        lineage_data.append({
+            "session_id": node.session_file.stem,
+            "file_path": str(node.session_file),
+            "derivation_type": node.derivation_type or "original",
+            "modified": mod_time.isoformat(),
+            "exported_file": str(node.exported_file) if node.exported_file else None,
+        })
+
+    if json_output:
+        print(json_lib.dumps(lineage_data, indent=2))
+    else:
+        print(f"\nLineage for: {session_file.stem}")
+        print(f"{'='*60}")
+        print(f"Chain has {len(lineage_data)} session(s):\n")
+
+        for i, node in enumerate(lineage_data):
+            # Current session or ancestor
+            if i == 0:
+                marker = "► "
+            else:
+                marker = "  "
+
+            dtype = node["derivation_type"]
+            fname = Path(node["file_path"]).name
+            mod = node["modified"][:10]
+
+            if i == len(lineage_data) - 1:
+                prefix = f"{marker}└─"
+            else:
+                prefix = f"{marker}├─"
+
+            print(f"{prefix} [{dtype:10}] {fname}  ({mod})")
 
 
 @main.command("resume", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
@@ -1202,10 +1823,10 @@ def index_stats(index, cwd, claude_home, codex_home):
               help='Filter to specific git branch (only effective when not global)')
 @click.option('-n', '--num-results', type=int, default=None,
               help='Limit number of results displayed')
-@click.option('--original', is_flag=True, help='Include original sessions')
-@click.option('--sub-agent', is_flag=True, help='Include sub-agent sessions')
-@click.option('--trimmed', is_flag=True, help='Include trimmed sessions')
-@click.option('--rollover', is_flag=True, help='Include rollover sessions')
+@click.option('--no-original', is_flag=True, help='Exclude original sessions')
+@click.option('--sub-agent', is_flag=True, help='Include sub-agent sessions (additive)')
+@click.option('--no-trimmed', is_flag=True, help='Exclude trimmed sessions')
+@click.option('--no-rollover', is_flag=True, help='Exclude rollover sessions')
 @click.option('--min-lines', type=int, default=None,
               help='Only show sessions with at least N lines')
 @click.option('--after', metavar='DATE',
@@ -1224,7 +1845,7 @@ def index_stats(index, cwd, claude_home, codex_home):
 @click.argument('query', required=False)
 def search(
     claude_home_arg, codex_home_arg, global_search, filter_dir, filter_branch,
-    num_results, original, sub_agent, trimmed, rollover, min_lines,
+    num_results, no_original, sub_agent, no_trimmed, no_rollover, min_lines,
     after, before, agent, json_output, by_time, query
 ):
     """Launch interactive TUI for full-text session search.
@@ -1317,14 +1938,14 @@ def search(
         rust_args.extend(["--branch", filter_branch])
     if num_results:
         rust_args.extend(["--num-results", str(num_results)])
-    if original:
-        rust_args.append("--original")
+    if no_original:
+        rust_args.append("--no-original")
     if sub_agent:
         rust_args.append("--sub-agent")
-    if trimmed:
-        rust_args.append("--trimmed")
-    if rollover:
-        rust_args.append("--rollover")
+    if no_trimmed:
+        rust_args.append("--no-trimmed")
+    if no_rollover:
+        rust_args.append("--no-rollover")
     if min_lines:
         rust_args.extend(["--min-lines", str(min_lines)])
     if after:
@@ -1490,15 +2111,17 @@ def search(
             if filter_state.get("filter_branch"):
                 rust_args.extend(["--branch", filter_state["filter_branch"]])
 
-            # Session type filters (only add if true)
-            if filter_state.get("include_original"):
-                rust_args.append("--original")
+            # Session type filters
+            # Subtractive: add --no-* when type is excluded
+            # Additive: add --sub-agent when sub-agents are included
+            if not filter_state.get("include_original", True):
+                rust_args.append("--no-original")
             if filter_state.get("include_sub"):
                 rust_args.append("--sub-agent")
-            if filter_state.get("include_trimmed"):
-                rust_args.append("--trimmed")
-            if filter_state.get("include_continued"):
-                rust_args.append("--rollover")
+            if not filter_state.get("include_trimmed", True):
+                rust_args.append("--no-trimmed")
+            if not filter_state.get("include_continued", True):
+                rust_args.append("--no-rollover")
 
             # Other filters
             if filter_state.get("filter_min_lines"):

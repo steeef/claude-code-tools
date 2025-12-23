@@ -1,18 +1,30 @@
-# session-search
+# aichat
 
-Adds the `session-search` skill so Claude Code can search past sessions using the
-`aichat search` command.
+Provides session search capability for CLI coding agents using the `aichat search`
+command.
 
 ## What it does
 
-This skill enables Claude Code to search through previous code-agent session JSONL
-files (from Claude Code or Codex CLI) to find details of specific work done in past
-sessions.
+This plugin enables searching through previous code-agent session JSONL files (from
+Claude Code or Codex CLI) to find details of specific work done in past sessions.
+
+- **Claude Code**: Uses the `session-searcher` subagent (auto-invoked, returns concise
+  summaries without polluting main context)
+- **Codex CLI and other agents**: Uses the `session-search` skill (instructions
+  injected into context)
 
 ## Usage
 
-The skill uses the `aichat search` command with the `--json` flag to return
-JSONL-formatted results that can be queried with `jq`.
+Just ask naturally:
+- "What did we work on yesterday?"
+- "Find sessions where we discussed authentication"
+- "What design decisions did we make for the API?"
+
+Claude will automatically invoke the `session-searcher` subagent.
+
+### Manual CLI usage
+
+The `aichat search` command with `--json` flag returns JSONL-formatted results:
 
 Example - find and examine the top matching session:
 ```bash
@@ -39,7 +51,7 @@ When using `--json`, each result line contains:
 
 ## Installation
 
-This skill requires the `claude-code-tools` and `aichat-search` packages:
+This plugin requires the `claude-code-tools` and `aichat-search` packages:
 
 ```bash
 uv tool install claude-code-tools   # Python package
