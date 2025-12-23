@@ -490,6 +490,11 @@ A custom status line script for Claude Code is available at
 project directory, git branch, git status indicators, and a context window
 progress bar that changes color as you approach the limit.
 
+![green](demos/statusline-green.png)
+![yellow](demos/statusline-yellow.png)
+![orange](demos/statusline-orange.png)
+![red](demos/statusline-red.png)
+
 To use it, copy the script and configure Claude Code:
 
 ```bash
@@ -508,7 +513,7 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-Requires `jq` and a Nerd Font for powerline symbols.
+Requires `jq` and a [Nerd Font](https://www.nerdfonts.com/) for powerline symbols.
 
 <a id="utilities"></a>
 # 🔐 Utilities
