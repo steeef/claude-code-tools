@@ -545,7 +545,7 @@ def trim(session, tools, threshold, trim_assistant, output_dir, agent, claude_ho
               help="Comma-separated message types to never trim (default: user)")
 @click.option("--preserve-recent", "-p", type=int, default=10,
               help="Always preserve last N messages (default: 10)")
-@click.option("--content-threshold", "-c", type=int, default=200,
+@click.option("--len", "-l", "content_threshold", type=int, default=200,
               help="Minimum chars for content extraction (default: 200)")
 @click.option("--output-dir", "-o",
               help="Output directory (default: same as input)")
@@ -574,9 +574,9 @@ def smart_trim(session, instructions, exclude_types, preserve_recent, content_th
     \b
     Options:
         --instructions, -i     Custom instructions for what to prioritize
-        --exclude-types, -e    Message types to never trim
+        --exclude-types, -e    Message types to EXCLUDE from trimming
         --preserve-recent, -p  Keep last N messages untouched (default: 10)
-        --content-threshold, -c  Min chars for extraction (default: 200)
+        --len, -l              Min chars for content extraction (default: 200)
         --dry-run, -n          Preview only, don't actually trim
     """
     import sys
