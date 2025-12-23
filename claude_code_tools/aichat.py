@@ -867,7 +867,7 @@ def info(session, agent, json_output):
     # Extract metadata from session
     cwd = extract_cwd_from_session(session_file)
     project = Path(cwd).name if cwd else "unknown"
-    user_msg_count = count_user_messages(session_file)
+    user_msg_count = count_user_messages(session_file, detected_agent)
 
     # Get lineage
     lineage = get_continuation_lineage(session_file, export_missing=False)
@@ -897,7 +897,7 @@ def info(session, agent, json_output):
         print(json_lib.dumps(info_data, indent=2))
     else:
         print(f"\n{'='*60}")
-        print(f"Session: {session_id[:40]}...")
+        print(f"Session: {session_id}")
         print(f"{'='*60}")
         print(f"Agent:      {detected_agent}")
         print(f"Project:    {project}")
@@ -1252,7 +1252,7 @@ def lineage(session, agent, json_output):
     if json_output:
         print(json_lib.dumps(lineage_data, indent=2))
     else:
-        print(f"\nLineage for: {session_file.stem[:40]}...")
+        print(f"\nLineage for: {session_file.stem}")
         print(f"{'='*60}")
         print(f"Chain has {len(lineage_data)} session(s):\n")
 
@@ -1272,7 +1272,7 @@ def lineage(session, agent, json_output):
             else:
                 prefix = f"{marker}├─"
 
-            print(f"{prefix} [{dtype:10}] {fname[:40]}  ({mod})")
+            print(f"{prefix} [{dtype:10}] {fname}  ({mod})")
 
 
 @main.command("resume", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
