@@ -98,10 +98,11 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 <a id="aichat-session-management"></a>
 # 💬 aichat — Session Management
 
-`aichat` is your unified CLI for managing Claude Code and Codex sessions.
-Two main capabilities:
+`aichat` is your unified CLI command-group for managing Claude Code and Codex sessions.
+Two main capabilities are available:
 
-1. **Search** — Full-text search across all sessions with a fast Rust/Tantivy-based TUI
+1. **Search** — *Full-text search* across all sessions with a fast Rust/Tantivy-based TUI (unlike Claude Code's built-in search which only searches the ad-hoc session titles 
+created by CC).
 2. **Resume with lineage** — Continue sessions when context fills up, preserving
    links to parent sessions (unlike lossy compaction)
 
@@ -111,6 +112,7 @@ aichat resume <session_id>     # Resume specific session with trim/rollover opti
 aichat resume                  # Resume latest session with trim/rollover options
 ```
 
+For detailed CLI options, run:
 ```bash
 aichat --help              # See all subcommands
 aichat <subcommand> --help # Help for specific subcommand
@@ -118,10 +120,134 @@ aichat <subcommand> --help # Help for specific subcommand
 
 ---
 
+## Resume Options — Managing Context
+
+
+You have three ways to access the resume functionality:
+
+**1. In-session trigger** — The is likely to be used the most frequently: while already in a Claude Code session, when you're close to filling up context, type:
+
+```bash
+>resume # or >continue, >handoff; MUST include the ">" at the start
+```
+
+This triggers a `UserPromptSubmit` hook that blocks handling by Claude-Code 
+(hence no further tokens consumed), copies the current session ID to your 
+clipboard, and shows instructions to quit Claude Code and run `aichat resume <paste>`. 
+This is a quick escape hatch when context is filling up — no need to manually find the 
+session ID.
+
+*Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
+for installation.*
+
+https://github.com/user-attachments/assets/96e91b9f-35b7-41af-9a81-67834fd79641
+
+
+**2. [Search TUI](#aichat-search--find-and-select-sessions)** — Run `aichat search`, select a session, then choose a resume
+action from the menu.
+
+**3. Direct CLI** — Use these commands directly:
+
+```bash
+aichat resume abc123         # Resume specific session
+aichat resume                # Auto-find latest for this project
+```
+
+
+---
+
+
+### Three Resume Strategies
+
+When you access the resume menu using any of the above 3 mechanisms, you will 
+be presented with 3 resume strategies, as described below. 
+All strategies create a new session with **lineage** — links back to
+parent sessions that the agent (or preferable a sub-agent if available) 
+can reference at any time.
+
+**1. Trim + Resume**
+
+Truncates large tool call results and assistant messages to free up space.
+Quick and deterministic — you control what gets cut. The default is to trim
+*all* tool results longer than 500 characters, and *none* of the
+assistant messages. This can
+often free up 30-50% of context when applied the first time to a normal session
+(depending on what's in the session). A quick way to extend a session a bit
+longer without lossy compaction.
+
+The TUI lets you specify:
+
+- Which tool types to truncate (e.g., bash, read, edit, or all)
+- Length threshold in characters (default: 500)
+- How many assistant messages to truncate 
+  (N => first N, or -N => all except last N; defaults to 0). 
+  For example to truncate all except the last 10 assistant messages, use `-10`.
+
+Same options available via CLI: `aichat trim --help`
+
+**2. Smart Trim + Resume**
+
+Uses headless (non-interactive) Claude/Codex agent to analyze the session and
+strategically identify what can user/assistant messages or tool results can 
+be safely truncated without affecting the *last* task being worked on. Slower than 
+deterministic trim, but smarter and more selective.
+
+The TUI lets you specify:
+
+- Message types to never trim (default: user messages)
+- How many recent messages to always preserve (default: 10)
+- Minimum content threshold for extraction (default: 200 chars)
+- Custom instructions for what to prioritize when truncating
+
+Same options available via CLI: `aichat smart-trim --help`
+
+**3. Rollover**
+
+The trim strategies work well once or twice but eventually stop freeing much
+context. *Rollover* is a better alternative after a couple of trim iterations,
+or directly from a normal session. This strategy hands off work to a fresh
+session, injecting *session-lineage* pointers and an optional agent-generated summary of the current task. The session lineage pointers are a chronologically ordered
+list of session jsonl file paths, of the parent session, parent's parent, and so on,
+all the way back to the original session.
+The new session typically starts with 15-20% context usage, 
+and the agent or sub-agent can retrieve details from ancestor sessions on demand,
+either if prompted by the user, or on its own when looking up prior work.
+
+
+Two rollover modes:
+
+- **Quick rollover** — Just preserves lineage pointers, no context extraction.
+  Fast, but you'll need to ask the agent to look up prior work as needed.
+  If you install the `aichat` [plugin](#claude-code-plugins), you'll have access to the `/recover-context` slash command.
+- **Rollover with context** — Extracts a summary of current work into the new
+  session's prompt. The TUI lets you specify custom instructions for what
+  context to extract (e.g., "focus on the authentication changes").
+
+Same options available via CLI: `aichat rollover --help` (use `--quick` for
+quick mode, `-p "prompt"` for custom extraction instructions)
+
+### Lineage: Nothing Is Lost
+
+Unlike compaction (which permanently loses information), all strategies preserve
+the complete parent session:
+
+- **Lineage chain** — file paths of all ancestor sessions
+- **On-demand retrieval** — agent can read any past session when needed
+
+```
+Original Session (abc123)
+ └─► Trimmed/Rollover 1 (def456)
+      └─► Trimmed/Rollover 2 (ghi789)
+           └─► ... chain continues
+```
+
+See [here](docs/rollover-details.md) for details on how rollover works.
+
+--- 
+
 ## aichat search — Find and Select Sessions
 
-The primary entry point for session management. Uses Tantivy (Rust full-text
-search) to provide fast search across all your Claude and Codex sessions.
+Uses Tantivy (Rust full-text search) to provide fast search across all your Claude and Codex sessions.
 
 Here's what it looks like:
 
@@ -194,115 +320,6 @@ After selecting a session, the action menu offers:
 
 ---
 
-## Resume Options — Managing Context
-
-You have several ways to access the resume functionality:
-
-**1. In-session trigger** — The is likely to be used the most frequenlty: while already in a Claude Code session, when you're close to filling up the context limit, type:
-
-```bash
->resume # or >continue, >handoff; MUST include the ">" at the start
-```
-
-This triggers a `UserPromptSubmit` hook that blocks handling by Claude-Code 
-(hence no further tokens consumed), copies the current session ID to your 
-clipboard, and shows instructions to quit Claude Code and run `aichat resume <paste>`. 
-This is a quick escape hatch when context is filling up — no need to manually find the 
-session ID.
-
-*Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
-for installation.*
-
-**2. Search TUI** — Run `aichat search`, select a session, then choose a resume
-action from the menu.
-
-**3. Direct CLI** — Use these commands directly:
-
-```bash
-aichat resume abc123         # Resume specific session
-aichat resume                # Auto-find latest for this project
-```
-
-
----
-
-
-### Three Resume Strategies
-
-When you access the resume menu using any of the above 3 mechanisms, you will 
-be presented with 3 resume strategies, as described below. 
-All strategies create a new session with **lineage** — links back to
-parent sessions that the agent (or preferable a sub-agent if available) 
-can reference at any time.
-
-**1. Trim + Resume**
-
-Truncates large tool call results and assistant messages to free up space.
-Quick and deterministic — you control what gets cut. The default is to trim
-all tool results longer than 500 characters, and no assistant messages. This can
-often free up 30-50% of context when applied the first time to a normal session
-(depending on what's in the session). A quick way to extend a session a bit
-longer without lossy compaction.
-
-The TUI lets you specify:
-
-- Which tool types to truncate (e.g., bash, read, edit, or all)
-- Length threshold in characters (default: 500)
-- How many assistant messages to truncate (first N, or all except last N)
-
-Same options available via CLI: `aichat trim --help`
-
-**2. Smart Trim + Resume**
-
-Uses headless (non-interactive) Claude/Codex agent to analyze the session and
-strategically identify what can be safely truncated without affecting the last
-task being worked on. Slower than deterministic trim, but smarter and more
-selective.
-
-The TUI lets you specify:
-
-- Message types to never trim (default: user messages)
-- How many recent messages to always preserve (default: 10)
-- Minimum content threshold for extraction (default: 200 chars)
-- Custom instructions for what to prioritize when truncating
-
-Same options available via CLI: `aichat smart-trim --help`
-
-**3. Rollover**
-
-The trim strategies work well once or twice but eventually stop freeing much
-context. Rollover is a better alternative after a couple of trim iterations,
-or directly from a normal session. This strategy hands off work to a fresh
-session with a summary of the current task. The new session starts with maximum
-context available while maintaining full access to the parent session's details.
-
-Two rollover modes:
-
-- **Quick rollover** — Just preserves lineage pointers, no context extraction.
-  Fast, but you'll need to ask the agent to look up prior work as needed.
-- **Rollover with context** — Extracts a summary of current work into the new
-  session's prompt. The TUI lets you specify custom instructions for what
-  context to extract (e.g., "focus on the authentication changes").
-
-Same options available via CLI: `aichat rollover --help` (use `--quick` for
-quick mode, `-p "prompt"` for custom extraction instructions)
-
-### Lineage: Nothing Is Lost
-
-Unlike compaction (which permanently loses information), all strategies preserve
-the complete parent session:
-
-- **Lineage chain** — file paths of all ancestor sessions
-- **On-demand retrieval** — agent can read any past session when needed
-
-```
-Original Session (abc123)
- └─► Trimmed/Rollover 1 (def456)
-      └─► Trimmed/Rollover 2 (ghi789)
-           └─► ... chain continues
-```
-
-See [here](docs/rollover-details.md) for details on how rollover works.
 
 ### Agent Access to History; the Session-Searcher sub-agent
 
