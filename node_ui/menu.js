@@ -1448,71 +1448,32 @@ function ContinueForm({onSubmit, onBack, clearScreen, session}) {
 // Smart Trim form - instructions for what to trim
 function SmartTrimForm({onSubmit, onBack, clearScreen, session}) {
   const defaultPrompt = 'trim messages that are not relevant to the last task being worked on in this session';
-  const [field, setField] = useState('agent');
-  const [agent, setAgent] = useState(session.agent || 'claude');
   const [prompt, setPrompt] = useState('');
   const [hasTyped, setHasTyped] = useState(false);
-
-  // Fields order: agent -> prompt
-  const getNextField = (current) => {
-    if (current === 'agent') return 'prompt';
-    if (current === 'prompt') return null;
-    return null;
-  };
-  const getPrevField = (current) => {
-    if (current === 'prompt') return 'agent';
-    if (current === 'agent') return 'prompt'; // Wrap around
-    return null;
-  };
 
   useInput((input, key) => {
     if (key.escape) {
       clearScreen();
       return onBack();
     }
-    // Down arrow: cycle through fields (wrap around)
-    if (key.downArrow) {
-      const next = getNextField(field);
-      if (next) setField(next);
-      else setField('agent'); // Wrap to top
-      return;
-    }
-    // Up arrow: cycle through fields (wrap around)
-    if (key.upArrow) {
-      const prev = getPrevField(field);
-      if (prev) setField(prev);
-      return;
-    }
-    // Enter: advance to next field, or submit on last field
     if (key.return) {
-      const next = getNextField(field);
-      if (next) {
-        setField(next);
-      } else {
-        // Submit custom prompt if typed, otherwise use default
-        onSubmit({agent, prompt: hasTyped ? prompt : defaultPrompt});
-      }
+      // Submit custom prompt if typed, otherwise use default
+      onSubmit({prompt: hasTyped ? prompt : defaultPrompt});
       return;
     }
     if (key.backspace || key.delete) {
-      if (field === 'agent') return; // Can't backspace on selection
-      if (field === 'prompt' && hasTyped) {
+      if (hasTyped) {
         setPrompt((t) => t.slice(0, -1));
       }
       return;
     }
     if (input) {
-      if (field === 'agent') {
-        if (input === '1') setAgent('claude');
-        else if (input === '2') setAgent('codex');
-      } else if (field === 'prompt') {
-        if (!hasTyped) {
-          // First character typed - start fresh, don't append to default
-          setHasTyped(true);
-          setPrompt(input);
-        } else {
-          setPrompt((t) => t + input);
-        }
+      if (!hasTyped) {
+        // First character typed - start fresh, don't append to default
+        setHasTyped(true);
+        setPrompt(input);
+      } else {
+        setPrompt((t) => t + input);
       }
     }
   });
@@ -1539,27 +1500,15 @@ function SmartTrimForm({onSubmit, onBack, clearScreen, session}) {
       renderPreview(session.preview)
     ),
     h(Box, {marginBottom: 1}),
-    h(Text, {dimColor: true}, 'Esc: back | ↑↓: navigate | 1/2: select | Enter: submit'),
+    h(Text, {dimColor: true}, 'Enter: submit | Esc: back'),
     h(Box, {marginBottom: 1}),
-    // Agent field - compact horizontal with [1]/[2] labels
-    h(
-      Text,
-      null,
-      field === 'agent' ? chalk.cyan(figures.pointer) : ' ',
-      ' Agent: ',
-      h(Text, {color: agent === 'claude' ? 'yellow' : 'white'}, agent === 'claude' ? '[1] Claude' : ' 1  Claude'),
-      '   ',
-      h(Text, {color: agent === 'codex' ? 'yellow' : 'white'}, agent === 'codex' ? '[2] Codex' : ' 2  Codex')
-    ),
-    h(Text, {dimColor: true}, '─'.repeat(60)),
-    h(Box, {marginTop: 1}),
     h(
       Box,
       {flexDirection: 'column'},
       h(
         Text,
         null,
-        field === 'prompt' ? chalk.cyan(figures.pointer) : ' ',
+        chalk.cyan(figures.pointer),
         ' Trim instructions'
       ),
       h(Text, {dimColor: true}, '    Tell the agent what to look for when trimming'),
