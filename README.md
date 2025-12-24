@@ -140,7 +140,7 @@ session ID.
 *Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
 for installation.*
 
-![resume trigger demo](demos/resume-trigger-small.mp4)
+<video src="demos/resume-trigger-small.mp4" autoplay loop muted playsinline width="600"></video>
 
 **2. [Search TUI](#aichat-search--find-and-select-sessions)** — Run `aichat search`, select a session, then choose a resume
 action from the menu.
