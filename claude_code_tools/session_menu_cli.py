@@ -184,9 +184,11 @@ def execute_action(
             return result
 
     elif action == "smart_trim_resume":
-        # Get custom instructions from kwargs (from Node UI form)
+        # Get custom instructions and agent override from kwargs (from Node UI form)
         custom_instructions = action_kwargs.get("prompt") if action_kwargs else None
-        if agent == "claude":
+        # Allow overriding the agent used for smart trim (user can choose Claude or Codex)
+        selected_agent = action_kwargs.get("agent", agent) if action_kwargs else agent
+        if selected_agent == "claude":
             from claude_code_tools.find_claude_session import (
                 handle_smart_trim_resume_claude,
             )

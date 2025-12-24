@@ -159,11 +159,15 @@ aichat resume                # Auto-find latest for this project
 
 ### Three Resume Strategies
 
-When you access the resume menu using any of the above 3 mechanisms, you will 
-be presented with 3 resume strategies, as described below. 
+When you access the resume menu using any of the above 3 mechanisms, you will
+be presented with 3 resume strategies, as described below.
 All strategies create a new session with **lineage** — links back to
-parent sessions that the agent (or preferable a sub-agent if available) 
+parent sessions that the agent (or preferable a sub-agent if available)
 can reference at any time.
+
+**Agent Selection**: For Smart Trim and Rollover strategies, the TUI also lets
+you choose which agent (Claude or Codex) to use for the operation. This is useful
+when you want to use a different agent than the one that created the original session.
 
 **1. Trim + Resume**
 
