@@ -2248,8 +2248,8 @@ function App() {
       clearScreen,
     });
   } else if (screen === 'smart_trim_form') {
-    // If directAction is set, back exits to Rust search; otherwise quit
-    const smartTrimBack = directAction ? quit : quit;
+    // If trimSource is 'direct', back exits to Rust search; otherwise go to trimSource screen
+    const smartTrimBack = trimSource === 'direct' ? quit : () => switchScreen(trimSource || 'resume');
     view = h(SmartTrimForm, {
       onBack: smartTrimBack,
       onSubmit: (opts) => finish('smart_trim_resume', opts),
