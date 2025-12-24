@@ -159,10 +159,10 @@ aichat resume                # Auto-find latest for this project
 
 ### Three Resume Strategies
 
-When you access the resume menu using any of the above 3 mechanisms, you will 
-be presented with 3 resume strategies, as described below. 
+When you access the resume menu using any of the above 3 mechanisms, you will
+be presented with 3 resume strategies, as described below.
 All strategies create a new session with **lineage** — links back to
-parent sessions that the agent (or preferable a sub-agent if available) 
+parent sessions that the agent (or preferable a sub-agent if available)
 can reference at any time.
 
 **1. Trim + Resume**
@@ -214,14 +214,18 @@ and the agent or sub-agent can retrieve details from ancestor sessions on demand
 either if prompted by the user, or on its own when looking up prior work.
 
 
-Two rollover modes:
+The TUI lets you specify:
 
-- **Quick rollover** — Just preserves lineage pointers, no context extraction.
-  Fast, but you'll need to ask the agent to look up prior work as needed.
-  If you install the `aichat` [plugin](#claude-code-plugins), you'll have access to the `/recover-context` slash command.
-- **Rollover with context** — Extracts a summary of current work into the new
-  session's prompt. The TUI lets you specify custom instructions for what
-  context to extract (e.g., "focus on the authentication changes").
+- Which agent (Claude or Codex) to resume with — useful for handing off work
+  to a different agent than the one that created the original session
+- Rollover type:
+  - **Quick rollover** — Just preserves lineage pointers, no context extraction.
+    Fast, but you'll need to ask the agent to look up prior work as needed.
+    If you install the `aichat` [plugin](#claude-code-plugins), you'll have access to the `/recover-context` slash command.
+  - **Rollover with context** — Extracts a summary of current work into the new
+    session's prompt.
+- Custom context recovery instructions (e.g., "focus on the authentication changes")
+  — only available when using "Rollover with context"
 
 Same options available via CLI: `aichat rollover --help` (use `--quick` for
 quick mode, `-p "prompt"` for custom extraction instructions)
