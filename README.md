@@ -111,15 +111,21 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 `aichat` is your unified CLI command-group for managing Claude Code and Codex sessions.
 Two main capabilities are available:
 
-1. **Search** — *Full-text search* across all sessions with a fast Rust/Tantivy-based TUI (unlike Claude Code's built-in search which only searches the ad-hoc session titles 
-created by CC).
-2. **Resume with lineage** — Continue sessions when context fills up, preserving
+1. **Resume with lineage** — Continue sessions when context fills up, preserving
    links to parent sessions (unlike lossy compaction)
 
+2. **Search** — *Full-text search* across all sessions with a fast Rust/Tantivy-based 
+TUI for humans and CLI (with `--json` flag for jsonl output) for Codex or Claude (sub) 
+Agent to search for past work. (Note that Claude Code's built-in search is not full-text
+; it only searches the ad-hoc session titles created by CC, or renamed sessions). 
+
+Examples:
+
 ```bash
-aichat search "topic"          # Find sessions by keyword
 aichat resume <session_id>     # Resume specific session with trim/rollover options
 aichat resume                  # Resume latest session with trim/rollover options
+aichat search "topic"          # Find sessions by keyword: for humans
+aichat search "langroid mcp" --json # fast full-text search with jsonl output for agents
 ```
 
 For detailed CLI options, run:
