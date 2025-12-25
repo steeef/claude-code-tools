@@ -173,8 +173,8 @@ def main() -> None:
                 _ok(f"Exported to {dest}", dest)
 
         elif action == "lineage":
-            # Get continuation lineage for a session
-            from claude_code_tools.session_lineage import get_continuation_lineage
+            # Get full lineage for a session (includes both trimmed and continued)
+            from claude_code_tools.session_lineage import get_full_lineage_chain
 
             # Prefer file_path if provided, otherwise compute for claude
             if file_path:
@@ -189,14 +189,18 @@ def main() -> None:
                 _error("Missing file_path")
 
             try:
-                lineage = get_continuation_lineage(session_path, export_missing=False)
+                # get_full_lineage_chain returns List[Tuple[Path, str]]
+                # Format: (session_path, derivation_type) newest-first
+                chain = get_full_lineage_chain(session_path)
                 lineage_data = []
-                for node in lineage:
-                    lineage_data.append({
-                        "session_file": str(node.session_file.name),
-                        "derivation_type": node.derivation_type,
-                        "exported_file": str(node.exported_file) if node.exported_file else None,
-                    })
+                # Skip if only original session (no actual lineage)
+                if not (len(chain) == 1 and chain[0][1] == "original"):
+                    for path, derivation_type in chain:
+                        lineage_data.append({
+                            "session_file": path.name,
+                            "derivation_type": derivation_type,
+                            "exported_file": None,  # Not available from get_full_lineage_chain
+                        })
                 # Return lineage as JSON in message field
                 payload = {"status": "ok", "message": "Lineage retrieved", "lineage": lineage_data}
                 sys.stdout.write(json.dumps(payload) + "\n")
