@@ -1312,8 +1312,12 @@ def create_action_handler(claude_home: Optional[str] = None, nonlaunch_flag: Opt
     """
     def handle_session_action(
         session: Tuple, action: str, kwargs: Optional[dict] = None
-    ) -> None:
-        """Handle actions for a selected session."""
+    ) -> str | None:
+        """Handle actions for a selected session.
+
+        Returns:
+            'back' if the action wants to return to resume menu, None otherwise.
+        """
         kwargs = kwargs or {}
 
         if isinstance(session, dict):
@@ -1332,13 +1336,13 @@ def create_action_handler(claude_home: Optional[str] = None, nonlaunch_flag: Opt
             if tools is None and threshold is None and trim_assistant is None:
                 options = prompt_suppress_options()
                 if not options:
-                    return
+                    return None
                 tools, threshold, trim_assistant = options
-            handle_suppress_resume_claude(
+            return handle_suppress_resume_claude(
                 session_id, project_path, tools, threshold or 500, trim_assistant, claude_home
             )
         elif action == "smart_trim_resume":
-            handle_smart_trim_resume_claude(session_id, project_path, claude_home)
+            return handle_smart_trim_resume_claude(session_id, project_path, claude_home)
         elif action == "path":
             # handled in Node UI via RPC
             if nonlaunch_flag is not None:

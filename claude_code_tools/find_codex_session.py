@@ -996,8 +996,12 @@ def resume_session(
 
 def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] = None, nonlaunch_flag: Optional[dict] = None):
     """Create an action handler for the TUI."""
-    def action_handler(session, action: str, kwargs: Optional[dict] = None) -> None:
-        """Handle actions from the TUI - session can be tuple or dict."""
+    def action_handler(session, action: str, kwargs: Optional[dict] = None) -> str | None:
+        """Handle actions from the TUI - session can be tuple or dict.
+
+        Returns:
+            'back' if the action wants to return to resume menu, None otherwise.
+        """
         kwargs = kwargs or {}
         # Ensure session is a dict
         if not isinstance(session, dict):
@@ -1018,14 +1022,14 @@ def create_action_handler(shell_mode: bool = False, codex_home: Optional[Path] =
             if tools is None and threshold is None and trim_assistant is None:
                 options = prompt_suppress_options()
                 if not options:
-                    return
+                    return None
                 tools, threshold, trim_assistant = options
-            handle_suppress_resume_codex(
+            return handle_suppress_resume_codex(
                 session, tools, threshold or 500, trim_assistant, codex_home
             )
         elif action == "smart_trim_resume":
             # Smart trim using parallel agents
-            handle_smart_trim_resume_codex(session, codex_home)
+            return handle_smart_trim_resume_codex(session, codex_home)
         elif action == "path":
             if nonlaunch_flag is not None:
                 nonlaunch_flag["done"] = True

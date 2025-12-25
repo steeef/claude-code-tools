@@ -424,7 +424,7 @@ Examples:
         }
 
         def handler(session_dict_in, action, kwargs=None):
-            execute_action(
+            return execute_action(
                 action,
                 agent,
                 session_file,
