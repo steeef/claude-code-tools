@@ -125,7 +125,7 @@ Two main capabilities are available:
    links to parent sessions (unlike lossy compaction)
 
 2. **Search** — *Full-text search* across all sessions with a fast Rust/Tantivy-based 
-TUI for humans and CLI (with `--json` flag for jsonl output) for Codex or Claude (sub) 
+TUI for humans, and CLI (with `--json` flag for jsonl output) for Codex or Claude (sub) 
 Agent to search for past work. (Note that Claude Code's built-in search is not full-text
 ; it only searches the ad-hoc session titles created by CC, or renamed sessions). 
 
@@ -151,7 +151,7 @@ aichat <subcommand> --help # Help for specific subcommand
 
 You have three ways to access the resume functionality:
 
-**1. In-session trigger** — The is likely to be used the most frequently: while already in a Claude Code session, when you're close to filling up context, type:
+**1. In-session trigger** — This is likely to be used the most frequently: while already in a Claude Code session, when you're close to filling up context, type:
 
 ```bash
 >resume # or >continue, >handoff; MUST include the ">" at the start
