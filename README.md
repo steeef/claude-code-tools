@@ -43,7 +43,7 @@ Four commands are installed:
 ### Claude Code Plugins
 
 This repo also provides plugins for the
-[Claude Code marketplace](https://github.com/anthropics/claude-code-plugins):
+[Claude Code marketplace](https://code.claude.com/docs/en/discover-plugins):
 
 | Plugin | Description |
 |--------|-------------|
@@ -611,23 +611,10 @@ Code's behavior and prevent dangerous operations.
 - **Command Enhancement** - Enforces ripgrep (`rg`) over grep for better
   performance
 
-### Quick Setup
+### Installation
 
-1. Copy the hooks configuration from `hooks/settings.sample.json` 
-
-2. Add the hooks to your global Claude settings at `~/.claude/settings.json`:
-   - If the file doesn't exist, create it
-   - Copy the "hooks" section from settings.sample.json
-   - Replace `/path/to/claude-code-tools` with your actual path to this repository
-   
-   Example ~/.claude/settings.json:
-   ```json
-   {
-     "hooks": {
-       // ... hooks configuration from settings.sample.json ...
-     }
-   }
-   ```
+Install the `safety-hooks` plugin as described in
+[Claude Code Plugins](#claude-code-plugins).
 
 ### Available Hooks
 
