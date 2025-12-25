@@ -49,7 +49,7 @@ This repo also provides plugins for the
 |--------|-------------|
 | `aichat` | Session management: hooks (`>resume`), commands, skills, agents |
 | `tmux-cli` | Terminal automation skill for controlling other tmux panes |
-| `workflow` | Work logging and code walk-through skills |
+| `workflow` | Work logging, code walk-through, issue specs, UI testing |
 | `safety-hooks` | Prevent destructive git/docker/rm commands |
 
 **Install the plugins:**
@@ -79,6 +79,16 @@ claude plugin install "safety-hooks@cctools-plugins"
 
 You can also use `/plugin` without arguments to launch a TUI for browsing and installing.
 
+#### Workflow Plugin Details
+
+The `workflow` plugin provides:
+
+| Skill/Agent | What it does |
+|-------------|--------------|
+| `/code-walk-thru` | Walk through files in your editor to explain code or show changes |
+| `/log-work` | Log work progress to `WORKLOG/YYYYMMDD.md` |
+| `/make-issue-spec` | Create task specs at `issues/YYYYMMDD-topic.md` |
+| `ui-tester` agent | Browser-based UI testing via Chrome DevTools MCP |
 
 ---
 
@@ -231,14 +241,16 @@ either if prompted by the user, or on its own when looking up prior work.
 
 The TUI lets you specify:
 
-- Which agent (Claude or Codex) to resume with — useful for handing off work
-  to a different agent than the one that created the original session
+- Which agent (Claude or Codex) to resume with — start in Claude Code, hand off
+  to Codex for heavy refactoring, then back to Claude Code for finishing touches
 - Rollover type:
   - **Quick rollover** — Just preserves lineage pointers, no context extraction.
     Fast, but you'll need to ask the agent to look up prior work as needed.
-    If you install the `aichat` [plugin](#claude-code-plugins), you'll have access to the `/recover-context` slash command.
-  - **Rollover with context** — Extracts a summary of current work into the new
-    session's prompt.
+    If you install the `aichat` [plugin](#claude-code-plugins), you'll have access
+    to the `/recover-context` command — the agent reads parent sessions and pulls
+    relevant context into the current conversation.
+  - **Rollover with context** — Uses a headless Claude/Codex agent to extract summary   
+     of current work into the new session.
 - Custom context recovery instructions (e.g., "focus on the authentication changes")
   — only available when using "Rollover with context"
 
