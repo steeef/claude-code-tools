@@ -156,8 +156,7 @@ session ID.
 *Requires the `aichat` plugin. See [Claude Code Plugins](#claude-code-plugins)
 for installation.*
 
-https://github.com/user-attachments/assets/96e91b9f-35b7-41af-9a81-67834fd79641
-
+https://github.com/user-attachments/assets/00785e4d-98ae-4344-98d4-5921678d3348
 
 **2. [Search TUI](#aichat-search--find-and-select-sessions)** — Run `aichat search`, select a session, then choose a resume
 action from the menu.
