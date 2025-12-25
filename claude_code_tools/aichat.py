@@ -1156,37 +1156,47 @@ def rollover(session, quick, prompt, agent):
         continue_with_options,
     )
 
-    if not session:
-        _find_and_run_session_ui(
-            session_id=None,
-            agent_constraint='both',
-            start_screen='continue_form',
-            direct_action='continue',
-            action_kwargs={"rollover_type": "quick" if quick else "context"},
+    # If CLI options provided, use direct handler (backward compatible)
+    if quick or prompt or agent:
+        if not session:
+            print("Error: --quick, --prompt, or --agent require a session ID",
+                  file=sys.stderr)
+            print("Use 'aichat rollover' without options for interactive mode",
+                  file=sys.stderr)
+            sys.exit(1)
+
+        # Find session file
+        input_path = Path(session).expanduser()
+        if input_path.exists() and input_path.is_file():
+            session_file = input_path
+            detected_agent = agent or detect_agent_from_path(session_file)
+        else:
+            result = find_session_file(session)
+            if not result:
+                print(f"Error: Session not found: {session}", file=sys.stderr)
+                sys.exit(1)
+            detected_agent, session_file, _, _ = result
+            if agent:
+                detected_agent = agent
+
+        # Execute rollover directly
+        rollover_type = "quick" if quick else "context"
+        continue_with_options(
+            str(session_file),
+            detected_agent,
+            preset_prompt=prompt,
+            rollover_type=rollover_type,
         )
         return
 
-    # Find session file
-    input_path = Path(session).expanduser()
-    if input_path.exists() and input_path.is_file():
-        session_file = input_path
-        detected_agent = agent or detect_agent_from_path(session_file)
-    else:
-        result = find_session_file(session)
-        if not result:
-            print(f"Error: Session not found: {session}", file=sys.stderr)
-            sys.exit(1)
-        detected_agent, session_file, _, _ = result
-        if agent:
-            detected_agent = agent
-
-    # Execute rollover
-    rollover_type = "quick" if quick else "context"
-    continue_with_options(
-        str(session_file),
-        detected_agent,
-        preset_prompt=prompt,
-        rollover_type=rollover_type,
+    # Show interactive Node UI for rollover options
+    # (whether session provided or not - find latest if not)
+    _find_and_run_session_ui(
+        session_id=session,
+        agent_constraint='both',
+        start_screen='continue_form',
+        select_target='continue_form',
+        results_title=' Which session to rollover? ',
     )
 
 
