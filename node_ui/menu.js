@@ -2231,16 +2231,22 @@ function App() {
       clearScreen,
     });
   } else if (screen === 'lineage') {
+    // If directAction is set, back exits to shell; otherwise go to lineageBackTarget
+    const lineageBack = directAction ? quit : () => switchScreen(lineageBackTarget);
     view = h(LineageView, {
       session,
       rpcPath,
       onContinue: () => switchScreen('continue_form'),
-      onBack: () => switchScreen(lineageBackTarget),
+      onBack: lineageBack,
       clearScreen,
     });
   } else if (screen === 'continue_form') {
-    // If directAction is set, back exits to Rust search; otherwise go to lineage
-    const continueBack = directAction ? quit : () => switchScreen('lineage');
+    // Back behavior depends on how we got here:
+    // - If we started at lineage (rollover cmd), go back to lineage
+    // - If directAction set and we started at continue_form (Rust search), exit to shell
+    const continueBack = (directAction && startScreen !== 'lineage')
+      ? quit
+      : () => switchScreen('lineage');
     view = h(ContinueForm, {
       onBack: continueBack,
       onSubmit: (opts) => finish('continue', opts),
