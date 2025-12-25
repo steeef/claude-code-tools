@@ -54,20 +54,30 @@ This repo also provides plugins for the
 
 **Install the plugins:**
 
-Add the marketplace via the `claude plugin` CLI:
+First, add the marketplace (from terminal or within a Claude Code session):
+
 ```bash
-claude plugin marketplace add pchalasani/claude-code-tools
+claude plugin marketplace add pchalasani/claude-code-tools   # CLI
+/plugin marketplace add pchalasani/claude-code-tools         # in-session
 ```
-This creates the `cctools-plugins` plugin group. From this, you can add the following 
-plugins:
+
+This creates the `cctools-plugins` plugin group. Then install plugins from it:
+
 ```bash
+# CLI
 claude plugin install "aichat@cctools-plugins"
 claude plugin install "tmux-cli@cctools-plugins"
 claude plugin install "workflow@cctools-plugins"
 claude plugin install "safety-hooks@cctools-plugins"
+
+# Or in-session
+/plugin install aichat@cctools-plugins
+/plugin install tmux-cli@cctools-plugins
+/plugin install workflow@cctools-plugins
+/plugin install safety-hooks@cctools-plugins
 ```
 
-These can also be installed via the built-in `/plugin` command which launches a TUI.
+You can also use `/plugin` without arguments to launch a TUI for browsing and installing.
 
 
 ---
