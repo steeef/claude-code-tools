@@ -1293,7 +1293,7 @@ def lineage(session, agent, json_output):
     from datetime import datetime
 
     from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
-    from claude_code_tools.session_lineage import get_continuation_lineage
+    from claude_code_tools.session_lineage import get_full_lineage_chain
 
     if not session:
         _find_and_run_session_ui(
@@ -1317,22 +1317,22 @@ def lineage(session, agent, json_output):
         if agent:
             detected_agent = agent
 
-    # Get lineage
-    lineage_chain = get_continuation_lineage(session_file, export_missing=False)
+    # Get lineage (returns newest-first, ending with original)
+    lineage_chain = get_full_lineage_chain(session_file)
 
-    if not lineage_chain:
+    # Check if this is an original session (only one item with type "original")
+    if len(lineage_chain) == 1 and lineage_chain[0][1] == "original":
         print("No lineage found (this is an original session).")
         return
 
     lineage_data = []
-    for node in lineage_chain:
-        mod_time = datetime.fromtimestamp(node.session_file.stat().st_mtime)
+    for path, derivation_type in lineage_chain:
+        mod_time = datetime.fromtimestamp(path.stat().st_mtime)
         lineage_data.append({
-            "session_id": node.session_file.stem,
-            "file_path": str(node.session_file),
-            "derivation_type": node.derivation_type or "original",
+            "session_id": path.stem,
+            "file_path": str(path),
+            "derivation_type": derivation_type,
             "modified": mod_time.isoformat(),
-            "exported_file": str(node.exported_file) if node.exported_file else None,
         })
 
     if json_output:
