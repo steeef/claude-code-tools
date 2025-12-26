@@ -275,31 +275,35 @@ class TmuxCLIController:
         """
         # Get the current window ID to ensure pane is created in this window
         current_window_id = self.get_current_window_id()
-        
-        cmd = ['split-window']
-        
+
+        # Build base command
+        base_cmd = ['split-window']
+
         # Target the specific window where tmux-cli was called from
         if current_window_id:
-            cmd.extend(['-t', current_window_id])
-        
+            base_cmd.extend(['-t', current_window_id])
+
         if vertical:
-            cmd.append('-h')
+            base_cmd.append('-h')
         else:
-            cmd.append('-v')
-        
-        if size:
-            cmd.extend(['-p', str(size)])
-        
-        cmd.extend(['-P', '-F', '#{pane_id}'])
-        
-        if start_command:
-            cmd.append(start_command)
-        
-        output, code = self._run_tmux_command(cmd)
-        
-        if code == 0:
-            self.target_pane = output
-            return output
+            base_cmd.append('-v')
+
+        # Try -l first (tmux 3.4+), fall back to -p (older versions)
+        # tmux 3.4 removed -p, but 3.5+ has both; older versions only have -p
+        for size_flag in (['-l', f'{size}%'], ['-p', str(size)]) if size else [[]]:
+            cmd = base_cmd.copy()
+            if size_flag:
+                cmd.extend(size_flag)
+            cmd.extend(['-P', '-F', '#{pane_id}'])
+            if start_command:
+                cmd.append(start_command)
+
+            output, code = self._run_tmux_command(cmd)
+
+            if code == 0:
+                self.target_pane = output
+                return output
+
         return None
     
     def select_pane(self, pane_id: Optional[str] = None, pane_index: Optional[int] = None):

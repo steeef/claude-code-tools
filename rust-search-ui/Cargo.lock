@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "aichat-search"
-version = "0.1.15"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "arboard",

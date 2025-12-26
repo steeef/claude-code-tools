@@ -157,7 +157,75 @@ def _find_and_run_session_ui(
     from claude_code_tools.session_utils import default_export_path
 
     if session_id:
-        # Route to session_menu_cli with appropriate start screen
+        if direct_action:
+            # Direct action mode: bypass session_menu_cli for proper context
+            # This allows direct_action to be passed to Node UI for correct
+            # escape behavior (exit to shell vs. go to resume menu)
+            from claude_code_tools.session_utils import (
+                find_session_file,
+                default_export_path,
+                detect_agent_from_path,
+            )
+
+            # Find session file
+            input_path = Path(session_id).expanduser()
+            if input_path.exists() and input_path.is_file():
+                session_file = input_path
+                agent = detect_agent_from_path(session_file)
+                project_path = str(session_file.parent)
+                git_branch = None
+            else:
+                result = find_session_file(session_id)
+                if not result:
+                    print(f"Error: Session not found: {session_id}", file=sys.stderr)
+                    sys.exit(1)
+                agent, session_file, project_path, git_branch = result
+
+            # Build session dict for Node UI
+            session_dict = {
+                "agent": agent,
+                "agent_display": "Claude" if agent == "claude" else "Codex",
+                "session_id": session_file.stem,
+                "mod_time": session_file.stat().st_mtime,
+                "create_time": session_file.stat().st_ctime,
+                "lines": 0,  # Not needed for direct action
+                "project": Path(project_path).name,
+                "preview": "",
+                "cwd": project_path,
+                "branch": git_branch or "",
+                "file_path": str(session_file),
+                "default_export_path": str(default_export_path(session_file, agent)),
+                "is_trimmed": False,
+                "derivation_type": None,
+                "is_sidechain": False,
+            }
+
+            # Handler for actions
+            def handler(sess, action, kwargs=None):
+                merged_kwargs = {**(action_kwargs or {}), **(kwargs or {})}
+                return execute_action(
+                    action,
+                    sess["agent"],
+                    Path(sess["file_path"]),
+                    sess["cwd"],
+                    action_kwargs=merged_kwargs if merged_kwargs else None,
+                    session_id=sess.get("session_id"),
+                )
+
+            rpc_path = str(Path(__file__).parent / "action_rpc.py")
+
+            # Run Node UI directly with direct_action for proper escape behavior
+            run_node_menu_ui(
+                [session_dict],
+                [],
+                handler,
+                start_screen=start_screen,
+                rpc_path=rpc_path,
+                direct_action=direct_action,
+            )
+            return
+
+        # Normal mode (no direct_action): route through session_menu_cli
         sys.argv = [
             sys.argv[0].replace('aichat', 'session-menu'),
             '--start-screen', start_screen,
@@ -1156,37 +1224,49 @@ def rollover(session, quick, prompt, agent):
         continue_with_options,
     )
 
-    if not session:
-        _find_and_run_session_ui(
-            session_id=None,
-            agent_constraint='both',
-            start_screen='continue_form',
-            direct_action='continue',
-            action_kwargs={"rollover_type": "quick" if quick else "context"},
+    # If CLI options provided, use direct handler (backward compatible)
+    if quick or prompt or agent:
+        if not session:
+            print("Error: --quick, --prompt, or --agent require a session ID",
+                  file=sys.stderr)
+            print("Use 'aichat rollover' without options for interactive mode",
+                  file=sys.stderr)
+            sys.exit(1)
+
+        # Find session file
+        input_path = Path(session).expanduser()
+        if input_path.exists() and input_path.is_file():
+            session_file = input_path
+            detected_agent = agent or detect_agent_from_path(session_file)
+        else:
+            result = find_session_file(session)
+            if not result:
+                print(f"Error: Session not found: {session}", file=sys.stderr)
+                sys.exit(1)
+            detected_agent, session_file, _, _ = result
+            if agent:
+                detected_agent = agent
+
+        # Execute rollover directly
+        rollover_type = "quick" if quick else "context"
+        continue_with_options(
+            str(session_file),
+            detected_agent,
+            preset_prompt=prompt,
+            rollover_type=rollover_type,
         )
         return
 
-    # Find session file
-    input_path = Path(session).expanduser()
-    if input_path.exists() and input_path.is_file():
-        session_file = input_path
-        detected_agent = agent or detect_agent_from_path(session_file)
-    else:
-        result = find_session_file(session)
-        if not result:
-            print(f"Error: Session not found: {session}", file=sys.stderr)
-            sys.exit(1)
-        detected_agent, session_file, _, _ = result
-        if agent:
-            detected_agent = agent
-
-    # Execute rollover
-    rollover_type = "quick" if quick else "context"
-    continue_with_options(
-        str(session_file),
-        detected_agent,
-        preset_prompt=prompt,
-        rollover_type=rollover_type,
+    # Show interactive Node UI for rollover options
+    # (whether session provided or not - find latest if not)
+    # Start at lineage screen, with direct_action for proper escape behavior
+    _find_and_run_session_ui(
+        session_id=session,
+        agent_constraint='both',
+        start_screen='lineage',
+        select_target='lineage',
+        results_title=' Which session to rollover? ',
+        direct_action='continue',
     )
 
 
@@ -1213,7 +1293,7 @@ def lineage(session, agent, json_output):
     from datetime import datetime
 
     from claude_code_tools.session_utils import find_session_file, detect_agent_from_path
-    from claude_code_tools.session_lineage import get_continuation_lineage
+    from claude_code_tools.session_lineage import get_full_lineage_chain
 
     if not session:
         _find_and_run_session_ui(
@@ -1237,22 +1317,22 @@ def lineage(session, agent, json_output):
         if agent:
             detected_agent = agent
 
-    # Get lineage
-    lineage_chain = get_continuation_lineage(session_file, export_missing=False)
+    # Get lineage (returns newest-first, ending with original)
+    lineage_chain = get_full_lineage_chain(session_file)
 
-    if not lineage_chain:
+    # Check if this is an original session (only one item with type "original")
+    if len(lineage_chain) == 1 and lineage_chain[0][1] == "original":
         print("No lineage found (this is an original session).")
         return
 
     lineage_data = []
-    for node in lineage_chain:
-        mod_time = datetime.fromtimestamp(node.session_file.stat().st_mtime)
+    for path, derivation_type in lineage_chain:
+        mod_time = datetime.fromtimestamp(path.stat().st_mtime)
         lineage_data.append({
-            "session_id": node.session_file.stem,
-            "file_path": str(node.session_file),
-            "derivation_type": node.derivation_type or "original",
+            "session_id": path.stem,
+            "file_path": str(path),
+            "derivation_type": derivation_type,
             "modified": mod_time.isoformat(),
-            "exported_file": str(node.exported_file) if node.exported_file else None,
         })
 
     if json_output:

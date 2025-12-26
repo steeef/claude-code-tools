@@ -637,8 +637,12 @@ def create_action_handler(
 ):
     """Create an action handler for the TUI or Node UI."""
 
-    def action_handler(session, action: str, kwargs: Optional[dict] = None) -> None:
-        """Handle actions from the UI - session can be tuple or dict."""
+    def action_handler(session, action: str, kwargs: Optional[dict] = None) -> str | None:
+        """Handle actions from the UI - session can be tuple or dict.
+
+        Returns:
+            'back' if the action wants to return to resume menu, None otherwise.
+        """
         # Convert session to dict if it's a tuple or dict-like
         if isinstance(session, dict):
             session_dict = session
@@ -646,7 +650,7 @@ def create_action_handler(
             # Shouldn't happen in unified find, but handle gracefully
             session_dict = {"session_id": str(session), "agent": "unknown"}
 
-        handle_action(
+        result = handle_action(
             session_dict, action, shell_mode=shell_mode, action_kwargs=kwargs or {}
         )
 
@@ -654,13 +658,19 @@ def create_action_handler(
             nonlaunch_flag["done"] = True
             nonlaunch_flag["session_id"] = session_dict.get("session_id")
 
+        return result
+
     return action_handler
 
 
 def handle_action(
     session: dict, action: str, shell_mode: bool = False, action_kwargs: Optional[dict] = None
-) -> None:
-    """Handle the selected action based on agent type."""
+) -> str | None:
+    """Handle the selected action based on agent type.
+
+    Returns:
+        'back' if the action wants to return to resume menu, None otherwise.
+    """
     agent = session["agent"]
     action_kwargs = action_kwargs or {}
 
@@ -687,14 +697,14 @@ def handle_action(
             if options:
                 tools, threshold, trim_assistant = options
             else:
-                return
+                return None
         handle_suppress_resume(
             session, tools, threshold or 500, trim_assistant, shell_mode
         )
 
     elif action == "smart_trim_resume":
         if agent == "claude":
-            handle_smart_trim_resume_claude(
+            return handle_smart_trim_resume_claude(
                 session["session_id"],
                 session["cwd"],
                 session.get("claude_home"),
@@ -702,7 +712,7 @@ def handle_action(
         elif agent == "codex":
             # Get file path for codex
             file_path = session.get("file_path", "")
-            handle_smart_trim_resume_codex(file_path)
+            return handle_smart_trim_resume_codex(file_path)
 
     elif action == "path":
         if agent == "claude":
