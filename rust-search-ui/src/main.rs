@@ -2162,10 +2162,13 @@ fn render_status_bar(frame: &mut Frame, app: &App, t: &Theme, area: Rect, show_l
         // Normal mode - single line with all shortcuts
         let has_selection = !app.filtered.is_empty();
 
-        // Navigation group: [↑/↓ PgUp/Dn Home/End] Nav
+        // Navigation group: [↑/↓ PgUp/Dn Home/End] Nav + C-g goto
         nav_spans.extend([
             Span::styled(" ↑/↓ PgUp/Dn Home/End ", keycap),
             Span::styled(" nav ", label),
+            Span::styled("│ ", dim),
+            Span::styled(" C-g ", keycap),
+            Span::styled(" goto ", label),
         ]);
 
         if has_selection {
