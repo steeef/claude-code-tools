@@ -88,12 +88,6 @@ The `workflow` plugin provides:
 | `/make-issue-spec` | Create task specs at `issues/YYYYMMDD-topic.md` |
 | `ui-tester` agent | Browser-based UI testing via Chrome DevTools MCP |
 
----
-
-## ⚠️ Breaking Change (v1.0)
-
-All session tools are now under `aichat`. Use `aichat search` instead of
-`find-claude-session`/`find-codex-session`, and similarly for other commands.
 
 ---
 
