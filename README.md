@@ -35,7 +35,7 @@ Four commands are installed:
 
 | Command | Description |
 |---------|-------------|
-| [`aichat`](#aichat-session-management) | Session management for Claude Code and Codex (find, resume, export, trim, query) |
+| [`aichat`](#aichat-session-management) | Continue work with session lineage and truncation, avoiding compaction; fast (Rust/Tantivy) full-text session search TUI for humans, CLI for agents;  |
 | [`tmux-cli`](#tmux-cli-terminal-automation) | Terminal automation for AI agents ("Playwright for terminals") |
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
@@ -47,8 +47,8 @@ This repo also provides plugins for the
 
 | Plugin | Description |
 |--------|-------------|
-| `aichat` | Session management: hooks (`>resume`), commands, skills, agents |
-| `tmux-cli` | Terminal automation skill for controlling other tmux panes |
+| `aichat` | hooks (`>resume`), commands, skills, agents for continuing session work and fast full-text search of sessions|
+| `tmux-cli` | Terminal automation skill for interacting with other tmux panes |
 | `workflow` | Work logging, code walk-through, issue specs, UI testing |
 | `safety-hooks` | Prevent destructive git/docker/rm commands |
 
