@@ -119,12 +119,11 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 # 💬 aichat — Session Continuation and Search
 
 ## A bit of history
-<!--CLAUDE - where I say "jump to overview", make it a hyperlink to the Overview sub-section.-->
 
 This probably belongs in a blog post or reddit post, but I think it helps understand
 why this was built and what it does. And for those wondering, this section is one
 of the few parts of the entire repo that is 100% hand-crafted since I just cannot
-trust today's LLMs to write just the way I want. You can skip this history and jump to the overview if you want. So, here's how this all started. Session compaction is 
+trust today's LLMs to write just the way I want. You can skip this history and [jump to the overview](#overview) if you want. So, here's how this all started. Session compaction is 
 **lossy:** there are very often situations where compaction loses important details, e.g., I am at 90% context usage, and I wish I can go on a bit longer to finish the current work-phase. So I thought, 
 > I wish I could just **truncate** some irrelevant long messages (e.g. tool calls/results for file writes/reads, long assistant responses, etc) and clear out some space to continue my work.
 
@@ -156,9 +155,7 @@ seamless to pick any of the 3 task continuation modes, when inside a Claude Code
 copies the current session id into the clipboard and tells the user to run
 `aichat resume <pasted-session-id>` to launch a TUI that offers options to choose
 one of the above [session resumption modes](#three-resume-strategies).
-<!--CLAUDE - "demo video" should link to the point near the demo video , the one where
-the URL contains "assets".-->
-See the demo video below.
+See the [demo video](#resume-demo-video) below.
 
 
 The above session resumption methods are useful to contine your work from the
@@ -173,8 +170,7 @@ Users can launch the TUI using [`aichat search ...`](#aichat-search--find-and-se
 search ... --json` and get results in JSONL format for quick analysis and filtering
 using `jq` which of course CLI agents are great at using. There is a corresponding
 *skill* called `session-search` and a *sub-agent* called `session-searcher`, both
-available via the `aichat` plugin. 
-<!--CLAUDE - the "plugin" should link to the aichat plugin-->
+available via the `aichat` [plugin](#claude-code-plugins).
 For example in Claude Code, 
 users can recover context of some older work by simply saying something like:
 
@@ -234,7 +230,7 @@ session ID.
 for installation.*
 
 
-
+<a id="resume-demo-video"></a>
 https://github.com/user-attachments/assets/310dfa5b-a13b-4a2b-aef8-f73954ef8fe9
 
 
