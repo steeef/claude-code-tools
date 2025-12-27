@@ -33,7 +33,7 @@ Four commands are installed:
 
 | Command | Description |
 |---------|-------------|
-| [`aichat`](#aichat-session-management) | Continue work with session lineage and truncation, avoiding compaction; fast (Rust/Tantivy) full-text session search TUI for humans, CLI for agents  |
+| [`aichat`](#aichat-session-management) | Continue work with session lineage and truncation, avoiding compaction;<br>fast (Rust/Tantivy) full-text session search TUI for humans, CLI for agents  |
 | [`tmux-cli`](#tmux-cli-terminal-automation) | Terminal automation for AI agents ("Playwright for terminals") |
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
@@ -251,6 +251,10 @@ aichat resume                # Auto-find latest for this project
 
 ### Three Resume Strategies
 
+> **Tip:** It's highly recommended to turn off auto-compaction when using `aichat resume`.
+> - **Claude Code:** Use the `/config` command to disable auto-compaction
+> - **Codex CLI:** Set `model_auto_compact_token_limit = 0` in `~/.codex/config.toml`
+
 When you access the resume menu using any of the above 3 mechanisms, you will
 be presented with 3 resume strategies, as described below.
 All strategies create a new session with **lineage** — links back to
@@ -433,14 +437,17 @@ This enables agents to find and retrieve context from any past session in the
 lineage, either on their own initiative or when you prompt them to look up
 historical context.
 
-Installing the `aichat` plugin mentioned above creates a `Session-Searcher` sub-agent 
-(for Claude-Code) that has instructions to either directly search a known session jsonl 
-file if clear from context, or use `aichat search --json` to search past sessions. 
-E.g. in Claude Code you can say:
+Installing the `aichat` plugin mentioned above provides two ways to search past sessions:
 
-> From past sessions, recover details of our work on task-termination specification in Langroid agents/taks configuration.
+- **`Session-Searcher` sub-agent** (Claude Code) — A sub-agent with instructions to
+  search a known session file if clear from context, or use `aichat search --json`
+  to search past sessions. E.g. in Claude Code you can say:
+  > From past sessions, recover details of our work on task-termination specification.
 
-This will trigger the `Session-Searcher` sub-agent to search past sessions for the specified query.
+- **`session-search` skill** (Claude Code, Codex CLI) — A skill that invokes the same
+  search functionality. Useful for CLI agents like Codex that don't yet support sub-agents.
+  E.g. you can say:
+  > Use your session-search skill to find our work on error handling.
 
 ---
 
@@ -679,7 +686,7 @@ env-safe --help                  # See all options
 
 ### Why env-safe?
 
-Claude Code is completely blocked from directly accessing .env files - no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
+The [`safety-hooks` plugin](#claude-code-safety-hooks) in this repo blocks Claude Code from directly accessing .env files — no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
 
 <a id="claude-code-safety-hooks"></a>
 ## 🛡️ Claude Code Safety Hooks
