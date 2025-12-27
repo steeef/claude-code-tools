@@ -166,10 +166,11 @@ The above session resumption methods are useful to contine your work from the
 Codex-CLI, with a pleasant self-explanatory TUI for humans, and a CLI mode for Agents
 to find past work.
 
-Users can launch the TUI using [`aichat search ...`](#aichat-search--find-and-select-sessions) and (sub-) agents can run `aichat
-search ... --json` and get results in JSONL format for quick analysis and filtering
-using `jq` which of course CLI agents are great at using. There is a corresponding
-*skill* called `session-search` and a *sub-agent* called `session-searcher`, both
+Users can launch the TUI using [`aichat search ...`](#aichat-search--find-and-select-sessions) and (sub-) 
+[agents can run](#agent-access-to-history-the-session-searcher-sub-agent)
+`aichat search ... --json` and get results in JSONL format
+for quick analysis and filtering using `jq` which of course CLI agents are 
+great at using. There is a corresponding *skill* called `session-search` and a *sub-agent* called `session-searcher`, both
 available via the `aichat` [plugin](#claude-code-plugins).
 For example in Claude Code, 
 users can recover context of some older work by simply saying something like:
