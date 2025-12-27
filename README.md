@@ -35,7 +35,7 @@ Four commands are installed:
 
 | Command | Description |
 |---------|-------------|
-| [`aichat`](#aichat-session-management) | Continue work with session lineage and truncation, avoiding compaction; fast (Rust/Tantivy) full-text session search TUI for humans, CLI for agents;  |
+| [`aichat`](#aichat-session-management) | Continue work with session lineage and truncation, avoiding compaction; fast (Rust/Tantivy) full-text session search TUI for humans, CLI for agents  |
 | [`tmux-cli`](#tmux-cli-terminal-automation) | Terminal automation for AI agents ("Playwright for terminals") |
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
@@ -116,13 +116,80 @@ All session tools are now under `aichat`. Use `aichat search` instead of
 
 
 <a id="aichat-session-management"></a>
-# 💬 aichat — Session Management
+# 💬 aichat — Session Continuation and Search
+
+## A bit of history
+<!--CLAUDE - where I say "jump to overview", make it a hyperlink to the Overview sub-section.-->
+
+This probably belongs in a blog post or reddit post, but I think it helps understand
+why this was built and what it does. And for those wondering, this section is one
+of the few parts of the entire repo that is 100% hand-crafted since I just cannot
+trust today's LLMs to write just the way I want. You can skip this history and jump to the overview if you want. So, here's how this all started. Session compaction is 
+**lossy:** there are very often situations where compaction loses important details, e.g., I am at 90% context usage, and I wish I can go on a bit longer to finish the current work-phase. So I thought, 
+> I wish I could just **truncate** some irrelevant long messages (e.g. tool calls/results for file writes/reads, long assistant responses, etc) and clear out some space to continue my work.
+
+This lead to the [`aichat trim`](#three-resume-strategies) utility. It provides two variants:
+
+- a "blind" [`trim`](#three-resume-strategies) mode that truncates all messages longer 
+than a threshold (default 500 chars), and optionally all-but-recent assistant messages 
+-- all user-configurable. This can free up 40-60% context, depending on what's been going on in the session.
+
+- a [`smart-trim`](#three-resume-strategies) mode that uses a headless CLI-agent 
+(Claude-Code or Codex-CLI depending on which agent the user has) to determine which 
+messages can be safely truncated in order to continue the current work. The precise 
+truncation criteria can be customized (e.g. the user may want to continue some 
+prior work rather than the current task).
+
+Both of these modes *clone* the current session before truncation, and inject two
+types of [*lineage*](#lineage-nothing-is-lost):
+- *Session-lineage* is injected into the first user message: a chronological listing
+of sessions from which the current session was derived.
+- Each truncated message also carries a pointer to the specific message index in the parent session so full details can always be looked up if needed.
+
+Session trimming can be a quick way to clear out context in order to continue the current task for a bit longer, but after a couple of trims, does not yield as much benefit. But the lineage-tracking lead to a different idea to avoid compaction:
+
+> Create a fresh session, inject parent-session lineage into the first user message, along with instructions to extract (using sub-agents if available) context of the latest
+task, or skip context extraction and leave it to the user to extract context once the session starts. 
+
+This is the idea behind the [`aichat rollover`](#three-resume-strategies) functionality. I wanted to make it
+seamless to pick any of the 3 task continuation modes, when inside a Claude Code session, so I set up a `UserPromptSubmit` hook that lets the user type `>resume` (or `>continue` or `>handoff`) when close to full context usage. This
+copies the current session id into the clipboard and tells the user to run
+`aichat resume <pasted-session-id>` to launch a TUI that offers options to choose
+one of the above [session resumption modes](#three-resume-strategies).
+<!--CLAUDE - "demo video" should link to the point near the demo video , the one where
+the URL contains "assets".-->
+See the demo video below.
+
+
+The above session resumption methods are useful to contine your work from the
+*current* session, but often you want to continue work that was done in an
+*older* Claude-Code/Codex-CLI session. This is why I added this:
+
+> Super-fast Rust/Tantivy-based [full-text search](#aichat-search--find-and-select-sessions) of all sessions across Claude-Code and
+Codex-CLI, with a pleasant self-explanatory TUI for humans, and a CLI mode for Agents
+to find past work.
+
+Users can launch the TUI using [`aichat search ...`](#aichat-search--find-and-select-sessions) and (sub-) agents can run `aichat
+search ... --json` and get results in JSONL format for quick analysis and filtering
+using `jq` which of course CLI agents are great at using. There is a corresponding
+*skill* called `session-search` and a *sub-agent* called `session-searcher`, both
+available via the `aichat` plugin. 
+<!--CLAUDE - the "plugin" should link to the aichat plugin-->
+For example in Claude Code, 
+users can recover context of some older work by simply saying something like:
+
+> Use your session-searcher sub-agent to recover the context of how we worked on
+connecting the Rust search TUI with the node-based Resume Action menus.
+
+
+## Overview
+
 
 `aichat` is your unified CLI command-group for managing Claude Code and Codex sessions.
 Two main capabilities are available:
 
 1. **Resume with lineage** — Continue sessions when context fills up, preserving
-   links to parent sessions (unlike lossy compaction)
+   links to parent sessions, avoiding lossy compaction.
 
 2. **Search** — *Full-text search* across all sessions with a fast Rust/Tantivy-based 
 TUI for humans, and CLI (with `--json` flag for jsonl output) for Codex or Claude (sub) 
@@ -146,7 +213,7 @@ aichat <subcommand> --help # Help for specific subcommand
 
 ---
 
-## Resume Options — Managing Context
+## Resume Options — Continuing work in a trimmed or fresh session, with lineage.
 
 
 You have three ways to access the resume functionality:
