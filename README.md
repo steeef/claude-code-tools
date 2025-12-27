@@ -206,6 +206,11 @@ aichat --help              # See all subcommands
 aichat <subcommand> --help # Help for specific subcommand
 ```
 
+> [!NOTE]
+> Most `aichat` commands accept `--claude-home` and `--codex-home` to override
+> the default session directories (`~/.claude` and `~/.codex`). You can also set
+> the `CLAUDE_CONFIG_DIR` and `CODEX_HOME` environment variables.
+
 ---
 
 ## Resume Options — Continuing work in a trimmed or fresh session, with lineage.
@@ -251,7 +256,8 @@ aichat resume                # Auto-find latest for this project
 
 ### Three Resume Strategies
 
-> **Tip:** It's highly recommended to turn off auto-compaction when using `aichat resume`.
+> [!TIP]
+> It's highly recommended to turn off auto-compaction when using `aichat resume`.
 > - **Claude Code:** Use the `/config` command to disable auto-compaction
 > - **Codex CLI:** Set `model_auto_compact_token_limit = 0` in `~/.codex/config.toml`
 
