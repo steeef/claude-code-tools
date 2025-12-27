@@ -9,25 +9,23 @@ and other CLI coding agents.
 <a id="quick-start"></a>
 ## 🚀 Quick Start
 
+**Prerequisites:** Node.js 16+ (required for action menus)
+
+**Step 1:** Install the Python package (includes Node.js UI components):
 ```bash
-uv tool install claude-code-tools   # Python package (includes Node.js UI)
+uv tool install claude-code-tools
 ```
 
-**Install the search TUI** (one of these):
+**Step 2:** Install the Rust-based search engine (powers both human TUI and agent search).
+Choose **one** of these methods:
 
 - **Homebrew** (macOS/Linux): `brew install pchalasani/tap/aichat-search`
-- **Cargo**: `cargo install aichat-search` (compiles from source, takes ~5-6 min)
+- **Cargo**: `cargo install aichat-search` (compiles from source, ~5 min)
 - **Pre-built binary**: Download from [Releases](https://github.com/pchalasani/claude-code-tools/releases) (look for `rust-v*` releases)
 
-**Prerequisites:**
+That's it! No `npm install` needed — the Python package includes pre-installed Node.js dependencies.
 
-- **Node.js 16+** — Required for `aichat` action menus (resume, export, etc.)
-
-That's it! The Python package includes pre-installed Node.js dependencies, so no
-`npm install` is needed.
-
-Without `aichat-search`, the search command won't be available, but other
-`aichat` commands still work.
+Without `aichat-search`, search won't work, but other `aichat` commands (resume, trim, rollover, etc.) still function.
 
 ### What You Get
 
