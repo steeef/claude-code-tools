@@ -77,6 +77,39 @@ claude plugin install "safety-hooks@cctools-plugins"
 
 You can also use `/plugin` without arguments to launch a TUI for browsing and installing.
 
+<a id="aichat-plugin-details"></a>
+#### aichat Plugin Details
+
+The `aichat` plugin provides:
+
+| Type | Name | What it does |
+|------|------|--------------|
+| Hook | `>resume` | Type `>resume` (or `>continue`, `>handoff`) to trigger session handoff flow |
+| Skill | `/session-search` | Search past sessions (for agents without sub-agent support, e.g. Codex) |
+| Skill | `/recover-context` | Extract context from parent sessions into current conversation |
+| Agent | `session-searcher` | Sub-agent to search/retrieve context from past sessions |
+
+#### tmux-cli Plugin Details
+
+The `tmux-cli` plugin provides:
+
+| Type | Name | What it does |
+|------|------|--------------|
+| Skill | `/tmux-cli` | Interact with CLI apps/agents in other tmux panes |
+
+#### safety-hooks Plugin Details
+
+The `safety-hooks` plugin provides hooks that block or require approval for dangerous operations:
+
+| Hook | What it blocks/modifies |
+|------|------------------------|
+| `rm` protection | Blocks `rm -rf` on critical paths, requires approval for others |
+| `git add` protection | Blocks `git add -A`, requires approval for modified files |
+| `git checkout` protection | Warns before discarding uncommitted changes |
+| `git commit` protection | Blocks commits without user review |
+| `.env` protection | Blocks all read/write/edit of `.env` files; suggests `env-safe` CLI |
+| File length limit | Blocks reading files >500 lines to prevent context bloat |
+
 #### Workflow Plugin Details
 
 The `workflow` plugin provides:
@@ -94,7 +127,7 @@ The `workflow` plugin provides:
 ## Table of Contents
 
 - [🚀 Quick Start](#quick-start)
-- [💬 aichat — Session Management](#aichat-session-management)
+- [💬 aichat — Search sessions, resume without compaction](#aichat-session-management)
 - [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
 - [📊 Status Line](#status-line)
@@ -108,7 +141,7 @@ The `workflow` plugin provides:
 
 
 <a id="aichat-session-management"></a>
-# 💬 aichat — Session Continuation and Search
+# 💬 aichat — Session Search, and Continuation without Compaction
 
 ## Why I built this
 
@@ -164,7 +197,8 @@ in the [demo video](#resume-demo-video) below.
 
 #### A hook to simplify continuing work from a session
 
-I wanted to make it seamless to pick any of the 3 task continuation modes, when inside a Claude Code session, so I set up a `UserPromptSubmit` hook that lets the user type `>resume` (or `>continue` or `>handoff`) when close to full context usage. This
+I wanted to make it seamless to pick any of the 3 task continuation modes, when inside
+a Claude Code session, so I set up a `UserPromptSubmit` [hook](#aichat-plugin-details) (via the `aichat` plugin) that lets the user type `>resume` (or `>continue` or `>handoff`) when close to full context usage. This
 copies the current session id into the clipboard and tells the user to run
 `aichat resume <pasted-session-id>` to launch a TUI that offers options to choose
 one of the above [session resumption modes](#three-resume-strategies).
