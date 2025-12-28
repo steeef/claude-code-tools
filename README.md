@@ -574,6 +574,15 @@ everything automatically—just describe what you want.
 
 **Works anywhere**: Automatically handles both local tmux panes and remote sessions.
 
+### Why tmux-cli instead of vanilla tmux?
+
+Vanilla tmux can do everything tmux-cli does. The problem is that LLMs frequently make
+mistakes with raw tmux: forgetting the Enter key, not adding delays between text and
+Enter (causing race conditions with fast CLI apps), or incorrect escaping. `tmux-cli`
+bakes in defaults that address these: Enter is sent automatically with a 1-second delay
+(configurable), pane targeting accepts simple numbers instead of `session:window.pane`,
+and there's built-in `wait_idle` to detect when a CLI is ready for input.
+
 <a id="tmux-cli-deep-dive"></a>
 ## 🎮 tmux-cli Deep Dive
 
