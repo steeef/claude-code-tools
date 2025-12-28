@@ -161,18 +161,17 @@ trust today's LLMs to write just the way I want.)
 <details>
 <summary>📖 <b>Click to expand the full background</b></summary>
 
-#### Compaction is lossy: clone the session and truncate long messages
+#### Compaction is lossy: clone the session and truncate long tool-results and older assistant messages
 
 So, here's how this all started. Session compaction is
 **lossy:** there are very often situations where compaction loses important details,
 so I wanted to find ways to continue my work without compaction.
 A typical scenario is this -- I am at 90% context usage, and I wish I can go on a bit longer to finish the current work-phase. So I thought,
-> I wish I could **truncate** some long messages (e.g. tool calls/results for file writes/reads, long assistant responses, etc) and clear out some space to continue my work.
+> I wish I could **truncate** some long tool results (e.g. file reads or API results) or older assistant messages (can include write/edit tool-calls) and clear out some context to continue my work.
 
 This lead to the [`aichat trim`](#three-resume-strategies) utility. It provides two variants:
 
-- a "blind" [`trim`](#three-resume-strategies) mode that truncates all messages longer
-than a threshold (default 500 chars), and optionally all-but-recent assistant messages
+- a "blind" [`trim`](#three-resume-strategies) mode that truncates all tool-results longer than a threshold (default 500 chars), and optionally all-but-recent assistant messages (which may include long write/edit tool-calls)
 -- all user-configurable. This can free up 40-60% context, depending on what's been going on in the session.
 
 - a [`smart-trim`](#three-resume-strategies) mode that uses a headless Claude/Codex 
