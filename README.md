@@ -157,7 +157,6 @@ This probably belongs in a blog post or reddit post, but I think knowing the tho
 (For those wondering, this section is one
 of the few parts of the entire repo that is 100% hand-crafted since I just cannot
 trust today's LLMs to write just the way I want.)
-You can skip this and [jump to the overview](#overview) if you want.
 
 <details>
 <summary>📖 <b>Click to expand the full background</b></summary>
