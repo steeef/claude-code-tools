@@ -38,7 +38,8 @@ Four commands are installed:
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
 
-### Claude Code Plugins
+<details>
+<summary><strong>Claude Code Plugins</strong> (click to expand)</summary>
 
 This repo also provides plugins for the
 [Claude Code marketplace](https://code.claude.com/docs/en/discover-plugins):
@@ -78,6 +79,7 @@ claude plugin install "safety-hooks@cctools-plugins"
 You can also use `/plugin` without arguments to launch a TUI for browsing and installing.
 
 <a id="aichat-plugin-details"></a>
+
 #### aichat Plugin Details
 
 The `aichat` plugin provides:
@@ -121,6 +123,7 @@ The `workflow` plugin provides:
 | `/make-issue-spec` | Create task specs at `issues/YYYYMMDD-topic.md` |
 | `ui-tester` agent | Browser-based UI testing via Chrome DevTools MCP |
 
+</details>
 
 ---
 
