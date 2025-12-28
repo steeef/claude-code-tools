@@ -202,7 +202,7 @@ in the [demo video](#resume-demo-video) below.
 #### A hook to simplify continuing work from a session
 
 I wanted to make it seamless to pick any of the 3 task continuation modes, when inside
-a Claude Code session, so I set up a `UserPromptSubmit` [hook](#aichat-plugin-details) (via the `aichat` plugin) that lets the user type `>resume` (or `>continue` or `>handoff`) when close to full context usage. This
+a Claude Code session, so I set up a `UserPromptSubmit` [hook](#claude-code-plugins) (via the `aichat` plugin) that lets the user type `>resume` (or `>continue` or `>handoff`) when close to full context usage. This
 copies the current session id into the clipboard and tells the user to run
 `aichat resume <pasted-session-id>` to launch a TUI that offers options to choose
 one of the above [session resumption modes](#three-resume-strategies).
