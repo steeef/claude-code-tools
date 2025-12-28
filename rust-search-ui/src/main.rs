@@ -2558,6 +2558,16 @@ fn render_full_conversation(frame: &mut Frame, app: &mut App, t: &Theme) {
 // ============================================================================
 
 fn truncate(s: &str, max: usize) -> String {
+    // Guard against edge cases that would cause underflow or empty results
+    if max == 0 {
+        return String::new();
+    }
+    if max == 1 {
+        // Only room for ellipsis if string needs truncation
+        let chars: Vec<char> = s.chars().collect();
+        return if chars.len() > 1 { "…".to_string() } else { s.to_string() };
+    }
+
     let chars: Vec<char> = s.chars().collect();
     if chars.len() > max {
         format!("{}…", chars[..max - 1].iter().collect::<String>())
@@ -4831,4 +4841,63 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_truncate_with_max_zero() {
+        // Issue #25: max=0 causes usize underflow in truncate()
+        // When max=0, the expression max-1 wraps to usize::MAX
+        let result = truncate("hello world", 0);
+        assert_eq!(result, "", "truncate with max=0 should return empty string");
+    }
+
+    #[test]
+    fn test_truncate_with_max_one() {
+        // Edge case: max=1 should just show the ellipsis
+        let result = truncate("hello world", 1);
+        assert_eq!(result, "…", "truncate with max=1 should return just ellipsis");
+    }
+
+    #[test]
+    fn test_truncate_normal_case() {
+        // Normal case: string longer than max
+        let result = truncate("hello world", 6);
+        assert_eq!(result, "hello…", "truncate should cut and add ellipsis");
+    }
+
+    #[test]
+    fn test_truncate_short_string() {
+        // String shorter than max should be returned as-is
+        let result = truncate("hi", 10);
+        assert_eq!(result, "hi", "short strings should not be truncated");
+    }
+
+    #[test]
+    fn test_truncate_exact_length() {
+        // String exactly at max length
+        let result = truncate("hello", 5);
+        assert_eq!(result, "hello", "string at exact max length should not be truncated");
+    }
+
+    #[test]
+    fn test_truncate_empty_string() {
+        // Empty string with any max
+        let result = truncate("", 10);
+        assert_eq!(result, "", "empty string should remain empty");
+    }
+
+    #[test]
+    fn test_truncate_empty_string_zero_max() {
+        // Empty string with max=0
+        let result = truncate("", 0);
+        assert_eq!(result, "", "empty string with max=0 should remain empty");
+    }
 }
