@@ -56,8 +56,11 @@ Four commands are installed:
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
 
 <a id="claude-code-plugins"></a>
+
+### Claude Code Plugins
+
 <details>
-<summary><h3>Claude Code Plugins</h3></summary>
+<summary>📦 <b>Click to expand plugin details</b></summary>
 
 This repo also provides plugins for the
 [Claude Code marketplace](https://code.claude.com/docs/en/discover-plugins):
