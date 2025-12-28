@@ -38,6 +38,7 @@ Four commands are installed:
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
 
+<a id="claude-code-plugins"></a>
 <details>
 <summary><strong>Claude Code Plugins</strong> (click to expand)</summary>
 
