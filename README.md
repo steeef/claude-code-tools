@@ -6,6 +6,23 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
+## Table of Contents
+
+- [🚀 Quick Start](#quick-start)
+- [💬 aichat — Search sessions, resume without compaction](#aichat-session-management)
+- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
+- [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
+- [📊 Status Line](#status-line)
+- [🔐 Utilities](#utilities)
+- [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
+- [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
+- [📚 Documentation](#documentation)
+- [📋 Requirements](#requirements)
+- [🛠️ Development](#development)
+- [📄 License](#license)
+
+---
+
 <a id="quick-start"></a>
 ## 🚀 Quick Start
 
@@ -40,7 +57,7 @@ Four commands are installed:
 
 <a id="claude-code-plugins"></a>
 <details>
-<summary><strong>Claude Code Plugins</strong> (click to expand)</summary>
+<summary><h3>Claude Code Plugins</h3></summary>
 
 This repo also provides plugins for the
 [Claude Code marketplace](https://code.claude.com/docs/en/discover-plugins):
@@ -127,22 +144,6 @@ The `workflow` plugin provides:
 </details>
 
 ---
-
-## Table of Contents
-
-- [🚀 Quick Start](#quick-start)
-- [💬 aichat — Search sessions, resume without compaction](#aichat-session-management)
-- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
-- [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
-- [📊 Status Line](#status-line)
-- [🔐 Utilities](#utilities)
-- [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
-- [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
-- [📚 Documentation](#documentation)
-- [📋 Requirements](#requirements)
-- [🛠️ Development](#development)
-- [📄 License](#license)
-
 
 <a id="aichat-session-management"></a>
 # 💬 aichat — Session Search, and Continuation without Compaction
