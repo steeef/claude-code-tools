@@ -153,31 +153,34 @@ The `workflow` plugin provides:
 
 ## Why I built this
 
+<details>
+<summary>📖 <b>Click to expand motivation and background</b></summary>
+
 This probably belongs in a blog post or reddit post, but I think knowing the
-motivation helps understand what the `aichat` command-group does and why it might be useful to you. 
+motivation helps understand what the `aichat` command-group does and why it might be useful to you.
 (For those wondering, this section is one
 of the few parts of the entire repo that is 100% hand-crafted since I just cannot
-trust today's LLMs to write just the way I want.) 
-You can skip this history and [jump to the overview](#overview) if you want. 
+trust today's LLMs to write just the way I want.)
+You can skip this history and [jump to the overview](#overview) if you want.
 
 #### Compaction is lossy: clone the session and truncate long messages
 
-So, here's how this all started. Session compaction is 
+So, here's how this all started. Session compaction is
 **lossy:** there are very often situations where compaction loses important details,
 so I'd like to find ways to avoid that and still continue my work.
-A typical scenario is this -- I am at 90% context usage, and I wish I can go on a bit longer to finish the current work-phase. So I thought, 
+A typical scenario is this -- I am at 90% context usage, and I wish I can go on a bit longer to finish the current work-phase. So I thought,
 > I wish I could just **truncate** some irrelevant long messages (e.g. tool calls/results for file writes/reads, long assistant responses, etc) and clear out some space to continue my work.
 
 This lead to the [`aichat trim`](#three-resume-strategies) utility. It provides two variants:
 
-- a "blind" [`trim`](#three-resume-strategies) mode that truncates all messages longer 
-than a threshold (default 500 chars), and optionally all-but-recent assistant messages 
+- a "blind" [`trim`](#three-resume-strategies) mode that truncates all messages longer
+than a threshold (default 500 chars), and optionally all-but-recent assistant messages
 -- all user-configurable. This can free up 40-60% context, depending on what's been going on in the session.
 
-- a [`smart-trim`](#three-resume-strategies) mode that uses a headless CLI-agent 
-(Claude-Code or Codex-CLI depending on which agent the user has) to determine which 
-messages can be safely truncated in order to continue the current work. The precise 
-truncation criteria can be customized (e.g. the user may want to continue some 
+- a [`smart-trim`](#three-resume-strategies) mode that uses a headless CLI-agent
+(Claude-Code or Codex-CLI depending on which agent the user has) to determine which
+messages can be safely truncated in order to continue the current work. The precise
+truncation criteria can be customized (e.g. the user may want to continue some
 prior work rather than the current task).
 
 
@@ -194,13 +197,13 @@ or on its own initiative.
 Session trimming can be a quick way to clear out context in order to continue the current task for a bit longer, but after a couple of trims, does not yield as much benefit. But the lineage-injection lead to a different idea to avoid compaction:
 
 > Create a fresh session, inject parent-session lineage into the first user message, along with instructions to extract (using sub-agents if available) context of the latest
-task, or skip context extraction and leave it to the user to extract context once the session starts. 
+task, or skip context extraction and leave it to the user to extract context once the session starts.
 
 This is the idea behind the [`aichat rollover`](#three-resume-strategies) functionality, which is the variant I use the most frequently, and I directly use this
 instead of going through session-trim iterations. I usually choose
 to skip the summarization (this is the `quick` rollover option in the TUI) so that
 the new session starts quickly and I can instruct Claude-Code/Codex-CLI to extract
-needed context (usually from the latest chat session shown in the lineage), as shown 
+needed context (usually from the latest chat session shown in the lineage), as shown
 in the [demo video](#resume-demo-video) below.
 
 #### A hook to simplify continuing work from a session
@@ -222,18 +225,19 @@ The above session resumption methods are useful to continue your work from the
 Codex-CLI, with a pleasant self-explanatory TUI for humans, and a CLI mode for Agents
 to find past work.
 
-Users can launch the search TUI using [`aichat search ...`](#aichat-search--find-and-select-sessions) and (sub-) 
+Users can launch the search TUI using [`aichat search ...`](#aichat-search--find-and-select-sessions) and (sub-)
 [agents can run](#agent-access-to-history-the-session-searcher-sub-agent)
 `aichat search ... --json` and get results in JSONL format
-for quick analysis and filtering using `jq` which of course CLI agents are 
+for quick analysis and filtering using `jq` which of course CLI agents are
 great at using. There is a corresponding *skill* called `session-search` and a *sub-agent* called `session-searcher`, both
 available via the `aichat` [plugin](#claude-code-plugins).
-For example in Claude Code, 
+For example in Claude Code,
 users can recover context of some older work by simply saying something like:
 
 > Use your session-searcher sub-agent to recover the context of how we worked on
 connecting the Rust search TUI with the node-based Resume Action menus.
 
+</details>
 
 ## Overview
 
