@@ -161,7 +161,7 @@ trust today's LLMs to write just the way I want.)
 <details>
 <summary>📖 <b>Click to expand the full background</b></summary>
 
-#### Compaction is lossy: clone the session and truncate long tool-results and older assistant messages
+#### Compaction is lossy: instead, clone the session and truncate long tool-results and older assistant messages
 
 So, here's how this all started. Session compaction is
 **lossy:** there are very often situations where compaction loses important details,
