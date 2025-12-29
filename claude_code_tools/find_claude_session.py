@@ -92,12 +92,6 @@ def prompt_post_action() -> str:
         return "back"
     return "exit"
 
-# Try to import TUI - it's optional
-try:
-    from claude_code_tools.session_tui import run_session_tui
-    TUI_AVAILABLE = True
-except ImportError:
-    TUI_AVAILABLE = False
 from claude_code_tools.smart_trim_core import identify_trimmable_lines_cli
 from claude_code_tools.smart_trim import trim_lines
 from claude_code_tools.session_utils import (
