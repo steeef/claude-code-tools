@@ -145,13 +145,19 @@ class TmuxCLIController:
     
     def format_pane_identifier(self, pane_id: str) -> str:
         """Convert pane ID to session:window.pane format."""
+        # Validate pane_id is not empty
+        if not pane_id:
+            return pane_id
+
         try:
             # Get session, window index, and pane index for this pane
             session_output, session_code = self._run_tmux_command(['display-message', '-t', pane_id, '-p', '#{session_name}'])
             window_output, window_code = self._run_tmux_command(['display-message', '-t', pane_id, '-p', '#{window_index}'])
             pane_output, pane_code = self._run_tmux_command(['display-message', '-t', pane_id, '-p', '#{pane_index}'])
-            
-            if session_code == 0 and window_code == 0 and pane_code == 0:
+
+            # Check both return codes AND that outputs are non-empty
+            if (session_code == 0 and window_code == 0 and pane_code == 0 and
+                session_output and window_output and pane_output):
                 return f"{session_output}:{window_output}.{pane_output}"
             else:
                 # Fallback to pane ID
@@ -300,7 +306,8 @@ class TmuxCLIController:
 
             output, code = self._run_tmux_command(cmd)
 
-            if code == 0:
+            # Validate: code must be 0 and output must be a valid pane ID (starts with %)
+            if code == 0 and output and output.startswith('%'):
                 self.target_pane = output
                 return output
 
