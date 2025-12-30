@@ -1,6 +1,6 @@
 {
   "name": "cctools-plugins",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "owner": {
     "name": "Prasad Chalasani"
   },
@@ -13,7 +13,7 @@
     {
       "name": "aichat",
       "source": "./plugins/aichat",
-      "description": "Adds `aichat`-related capabilities including agent support, reusable skills, hooks, and a slash command for searching and resuming CLI agent sessions"
+      "description": "Adds `aichat`-related capabilities (agent support, reusable skills, hooks, and a slash command) for continuing work in CLI agent sessions without compaction, and for searching sessions"
     },
     {
       "name": "tmux-cli",
