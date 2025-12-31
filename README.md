@@ -8,99 +8,109 @@ and other CLI coding agents.
 
 <div align="center">
 
-### ░▒▓█ TOOL GALLERY █▓▒░
-
 <table>
 <tr>
 <td align="center">
 <a href="#aichat-session-management">
-<img src="https://img.shields.io/badge/-%F0%9F%94%8D-blue?style=for-the-badge" alt="search"/>
+
+```
+🟦🟦🟦 🟦 🟦🟦🟦 🟦 🟦 🟦🟦🟦 🟦🟦🟦
+🟦 🟦 🟦 🟦   🟦🟦🟦 🟦 🟦   🟦
+🟦 🟦 🟦 🟦🟦🟦 🟦 🟦 🟦 🟦   🟦
+```
+
 </a>
-<pre>
-░█▀█░▀█▀░█▀▀░█░█░█▀█░▀█▀
-░█▀█░░█░░█░░░█▀█░█▀█░░█░
-░▀░▀░▀▀▀░▀▀▀░▀░▀░▀░▀░░▀░
-</pre>
-<sub>Session Search & Resume</sub>
+<b>Session Search & Resume</b>
 </td>
 <td align="center">
 <a href="#tmux-cli-terminal-automation">
-<img src="https://img.shields.io/badge/-%F0%9F%96%A5-green?style=for-the-badge" alt="terminal"/>
+
+```
+🟩🟩🟩 🟩🟩 🟩 🟩 🟩 🟩 🟩 🟩
+  🟩   🟩🟩🟩🟩 🟩 🟩  🟩🟩
+  🟩   🟩  🟩 🟩🟩🟩 🟩 🟩
+```
+
 </a>
-<pre>
-░▀█▀░█▄█░█░█░█░█
-░░█░░█░█░█░█░▄▀▄
-░░▀░░▀░▀░▀▀▀░▀░▀
-</pre>
-<sub>Terminal Automation</sub>
+<b>Terminal Automation</b>
 </td>
+</tr>
+<tr>
 <td align="center">
 <a href="#lmsh-experimental">
-<img src="https://img.shields.io/badge/-%F0%9F%9A%80-orange?style=for-the-badge" alt="rocket"/>
+
+```
+🟧 🟧🟧 🟧🟧 🟧🟧🟧 🟧 🟧
+🟧 🟧🟧🟧🟧 🟧   🟧🟧🟧
+🟧🟧 🟧  🟧 🟧🟧🟧 🟧 🟧
+```
+
 </a>
-<pre>
-░█░░░█▄█░█▀▀░█░█
-░█░░░█░█░▀▀█░█▀█
-░▀▀▀░▀░▀░▀▀▀░▀░▀
-</pre>
-<sub>Natural Language Shell</sub>
+<b>Natural Language Shell</b>
 </td>
 <td align="center">
 <a href="#vault">
-<img src="https://img.shields.io/badge/-%F0%9F%94%90-red?style=for-the-badge" alt="lock"/>
+
+```
+🟥 🟥 🟥🟥🟥 🟥 🟥 🟥   🟥🟥🟥
+🟥 🟥 🟥 🟥 🟥 🟥 🟥     🟥
+ 🟥  🟥 🟥 🟥🟥🟥 🟥🟥🟥  🟥
+```
+
 </a>
-<pre>
-░█░█░█▀█░█░█░█░░░▀█▀
-░▀▄▀░█▀█░█░█░█░░░░█░
-░░▀░░▀░▀░▀▀▀░▀▀▀░░▀░
-</pre>
-<sub>Encrypted .env Backup</sub>
+<b>Encrypted .env Backup</b>
 </td>
 </tr>
 <tr>
 <td align="center">
 <a href="#env-safe">
-<img src="https://img.shields.io/badge/-%F0%9F%91%81-purple?style=for-the-badge" alt="eye"/>
+
+```
+🟪🟪🟪 🟪  🟪 🟪 🟪
+🟪    🟪🟪 🟪 🟪 🟪
+🟪🟪🟪 🟪  🟪  🟪
+```
+
 </a>
-<pre>
-░█▀▀░█▀█░█░█
-░█▀▀░█░█░▀▄▀
-░▀▀▀░▀░▀░░▀░
-</pre>
-<sub>Safe .env Inspection</sub>
+<b>Safe .env Inspection</b>
 </td>
 <td align="center">
 <a href="#claude-code-safety-hooks">
-<img src="https://img.shields.io/badge/-%F0%9F%9B%A1-yellow?style=for-the-badge" alt="shield"/>
+
+```
+🟨🟨🟨 🟨🟨🟨 🟨🟨🟨 🟨🟨🟨
+🟨   🟨 🟨 🟨   🟨
+🟨🟨🟨 🟨 🟨 🟨   🟨🟨🟨
+```
+
 </a>
-<pre>
-░█▀▀░█▀█░█▀▀░█▀▀
-░▀▀█░█▀█░█▀▀░█▀▀
-░▀▀▀░▀░▀░▀░░░▀▀▀
-</pre>
-<sub>Protection Hooks</sub>
+<b>Protection Hooks</b>
 </td>
+</tr>
+<tr>
 <td align="center">
 <a href="#status-line">
-<img src="https://img.shields.io/badge/-%F0%9F%93%8A-cyan?style=for-the-badge" alt="chart"/>
+
+```
+🟫🟫🟫 🟫🟫🟫 🟫🟫🟫 🟫🟫🟫
+🟫     🟫   🟫 🟫   🟫
+🟫🟫🟫  🟫  🟫 🟫   🟫
+```
+
 </a>
-<pre>
-░█▀▀░▀█▀░█▀█░▀█▀
-░▀▀█░░█░░█▀█░░█░
-░▀▀▀░░▀░░▀░▀░░▀░
-</pre>
-<sub>Context Progress Bar</sub>
+<b>Context Progress Bar</b>
 </td>
 <td align="center">
 <a href="#google-docs-tools">
-<img src="https://img.shields.io/badge/-%F0%9F%93%84-brightgreen?style=for-the-badge" alt="doc"/>
+
+```
+🟩🟩  🟩🟩🟩 🟩🟩🟩 🟩🟩🟩
+🟩 🟩 🟩 🟩 🟩   🟩
+🟩🟩  🟩🟩🟩 🟩🟩🟩 🟩🟩🟩
+```
+
 </a>
-<pre>
-░█▀▄░█▀█░█▀▀░█▀▀
-░█░█░█░█░█░░░▀▀█
-░▀▀░░▀▀▀░▀▀▀░▀▀▀
-</pre>
-<sub>Markdown ↔ Google Docs</sub>
+<b>Markdown ↔ Google Docs</b>
 </td>
 </tr>
 </table>
