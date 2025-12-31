@@ -25,6 +25,7 @@ from git_checkout_safety_hook import check_git_checkout_command
 from git_commit_block_hook import check_git_commit_command
 from rm_block_hook import check_rm_command
 from env_file_protection_hook import check_env_file_access
+from command_utils import expand_command_aliases
 
 
 def normalize_check_result(result):
@@ -51,6 +52,10 @@ def main():
 
     # Get the command being executed
     command = data.get("tool_input", {}).get("command", "")
+
+    # Expand any shell aliases before checking
+    # This handles cases like 'gco -f' -> 'git checkout -f'
+    command = expand_command_aliases(command)
 
     # Run all checks
     checks = [
