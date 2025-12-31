@@ -45,6 +45,9 @@ install:
 		echo "To install lmsh later, run: make lmsh-install"; \
 	fi
 
+install-gdocs:
+	uv tool install --force -e ".[gdocs]"
+
 dev-install:
 	uv pip install -e ".[dev]"
 

@@ -19,6 +19,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["commitizen>=3.0.0"]
+gdocs = [
+    "google-api-python-client>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+]
 
 [project.scripts]
 # Unified session management interface
@@ -29,6 +33,8 @@ aichat = "claude_code_tools.aichat:main"
 vault = "claude_code_tools.dotenv_vault:main"
 tmux-cli = "claude_code_tools.tmux_cli_controller:main"
 env-safe = "claude_code_tools.env_safe:main"
+md2gdoc = "claude_code_tools.md2gdoc:main"
+gdoc2md = "claude_code_tools.gdoc2md:main"
 
 [build-system]
 requires = ["hatchling"]

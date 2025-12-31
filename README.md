@@ -14,6 +14,7 @@ and other CLI coding agents.
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
 - [📊 Status Line](#status-line)
 - [🔐 Utilities](#utilities)
+- [📝 Google Docs Tools](#google-docs-tools)
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
 - [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
 - [📚 Documentation](#documentation)
@@ -762,6 +763,62 @@ env-safe --help                  # See all options
 ### Why env-safe?
 
 The [`safety-hooks` plugin](#claude-code-safety-hooks) in this repo blocks Claude Code from directly accessing .env files — no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
+
+<a id="google-docs-tools"></a>
+## 📝 Google Docs Tools (md2gdoc, gdoc2md)
+
+Upload Markdown to Google Docs and download Google Docs as Markdown, using
+Google's native conversion (same as the manual "Open in Google Docs" flow).
+
+### Installation
+
+These tools require additional dependencies. Install with the `gdocs` extra:
+
+```bash
+uv tool install 'claude-code-tools[gdocs]'
+```
+
+### First-Time Setup (One-Time)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create/select a project and enable the **Google Drive API**
+3. Go to **APIs & Services** → **Credentials** → **Create Credentials** →
+   **OAuth client ID**
+4. Choose **Desktop app**, then download the JSON file
+5. Save it as `.gdoc-credentials.json` in your project directory
+6. First run will open browser for OAuth consent (one-time per project)
+
+Credentials are project-specific (`.gdoc-credentials.json` and `.gdoc-token.json`
+in the current directory), so different projects can use different Google
+accounts.
+
+### md2gdoc — Markdown to Google Docs
+
+Upload Markdown files as native Google Docs:
+
+```bash
+md2gdoc report.md                           # Upload to root of Drive
+md2gdoc report.md --folder "OTA/Reports"    # Upload to specific folder
+md2gdoc report.md --name "Q4 Summary"       # Upload with custom name
+```
+
+Features:
+
+- Native markdown conversion (same quality as manual upload + "Open in Docs")
+- Follows Drive shortcuts to shared folders
+- Conflict detection with version suffix or overwrite options
+- Creates folders if they don't exist
+
+### gdoc2md — Google Docs to Markdown
+
+Download Google Docs as Markdown files:
+
+```bash
+gdoc2md "My Document"                        # Download from root
+gdoc2md "My Document" --folder "OTA/Reports" # Download from folder
+gdoc2md "My Document" -o report.md           # Save with custom name
+gdoc2md --list --folder OTA                  # List docs in folder
+```
 
 <a id="claude-code-safety-hooks"></a>
 ## 🛡️ Claude Code Safety Hooks
