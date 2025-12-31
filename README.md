@@ -12,105 +12,53 @@ and other CLI coding agents.
 <tr>
 <td align="center">
 <a href="#aichat-session-management">
-
-```
-🟦🟦🟦 🟦 🟦🟦🟦 🟦 🟦 🟦🟦🟦 🟦🟦🟦
-🟦 🟦 🟦 🟦   🟦🟦🟦 🟦 🟦   🟦
-🟦 🟦 🟦 🟦🟦🟦 🟦 🟦 🟦 🟦   🟦
-```
-
+<img src="https://img.shields.io/badge/AICHAT-0969da?style=for-the-badge&labelColor=0969da" alt="AICHAT"/>
 </a>
-<b>Session Search & Resume</b>
+<br><sub>Session Search & Resume</sub>
 </td>
 <td align="center">
 <a href="#tmux-cli-terminal-automation">
-
-```
-🟩🟩🟩 🟩🟩 🟩 🟩 🟩 🟩 🟩 🟩
-  🟩   🟩🟩🟩🟩 🟩 🟩  🟩🟩
-  🟩   🟩  🟩 🟩🟩🟩 🟩 🟩
-```
-
+<img src="https://img.shields.io/badge/TMUX-1a7f37?style=for-the-badge&labelColor=1a7f37" alt="TMUX"/>
 </a>
-<b>Terminal Automation</b>
+<br><sub>Terminal Automation</sub>
 </td>
-</tr>
-<tr>
 <td align="center">
 <a href="#lmsh-experimental">
-
-```
-🟧 🟧🟧 🟧🟧 🟧🟧🟧 🟧 🟧
-🟧 🟧🟧🟧🟧 🟧   🟧🟧🟧
-🟧🟧 🟧  🟧 🟧🟧🟧 🟧 🟧
-```
-
+<img src="https://img.shields.io/badge/LMSH-d4380d?style=for-the-badge&labelColor=d4380d" alt="LMSH"/>
 </a>
-<b>Natural Language Shell</b>
+<br><sub>Natural Language Shell</sub>
 </td>
 <td align="center">
 <a href="#vault">
-
-```
-🟥 🟥 🟥🟥🟥 🟥 🟥 🟥   🟥🟥🟥
-🟥 🟥 🟥 🟥 🟥 🟥 🟥     🟥
- 🟥  🟥 🟥 🟥🟥🟥 🟥🟥🟥  🟥
-```
-
+<img src="https://img.shields.io/badge/VAULT-8250df?style=for-the-badge&labelColor=8250df" alt="VAULT"/>
 </a>
-<b>Encrypted .env Backup</b>
+<br><sub>Encrypted .env Backup</sub>
 </td>
 </tr>
 <tr>
 <td align="center">
 <a href="#env-safe">
-
-```
-🟪🟪🟪 🟪  🟪 🟪 🟪
-🟪    🟪🟪 🟪 🟪 🟪
-🟪🟪🟪 🟪  🟪  🟪
-```
-
+<img src="https://img.shields.io/badge/ENV--SAFE-bf4b8a?style=for-the-badge&labelColor=bf4b8a" alt="ENV-SAFE"/>
 </a>
-<b>Safe .env Inspection</b>
+<br><sub>Safe .env Inspection</sub>
 </td>
 <td align="center">
 <a href="#claude-code-safety-hooks">
-
-```
-🟨🟨🟨 🟨🟨🟨 🟨🟨🟨 🟨🟨🟨
-🟨   🟨 🟨 🟨   🟨
-🟨🟨🟨 🟨 🟨 🟨   🟨🟨🟨
-```
-
+<img src="https://img.shields.io/badge/SAFETY-9a6700?style=for-the-badge&labelColor=9a6700" alt="SAFETY"/>
 </a>
-<b>Protection Hooks</b>
+<br><sub>Protection Hooks</sub>
 </td>
-</tr>
-<tr>
 <td align="center">
 <a href="#status-line">
-
-```
-🟫🟫🟫 🟫🟫🟫 🟫🟫🟫 🟫🟫🟫
-🟫     🟫   🟫 🟫   🟫
-🟫🟫🟫  🟫  🟫 🟫   🟫
-```
-
+<img src="https://img.shields.io/badge/STATUSLINE-0550ae?style=for-the-badge&labelColor=0550ae" alt="STATUSLINE"/>
 </a>
-<b>Context Progress Bar</b>
+<br><sub>Context Progress Bar</sub>
 </td>
 <td align="center">
 <a href="#google-docs-tools">
-
-```
-🟩🟩  🟩🟩🟩 🟩🟩🟩 🟩🟩🟩
-🟩 🟩 🟩 🟩 🟩   🟩
-🟩🟩  🟩🟩🟩 🟩🟩🟩 🟩🟩🟩
-```
-
+<img src="https://img.shields.io/badge/GDOCS-238636?style=for-the-badge&labelColor=238636" alt="GDOCS"/>
 </a>
-<b>Markdown ↔ Google Docs</b>
+<br><sub>Markdown ↔ Google Docs</sub>
 </td>
 </tr>
 </table>
