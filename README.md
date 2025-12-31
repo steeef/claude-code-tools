@@ -9,150 +9,130 @@ and other CLI coding agents.
 <div align="center">
 
 ```
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║                          ░▒▓ TOOL GALLERY ▓▒░                                 ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ░▒▓█ TOOL GALLERY █▓▒░                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 <table>
 <tr>
-<td align="center" width="180">
-<a href="#aichat-session-management">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │ █▀▀▀█  │
-    │ █ ? █  │
-    │ █▄▄▄█  │
-    │ ╰─►    │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│  ▄█▀▀█▄   │
+│  █ ?? █   │
+│  ▀█▄▄█▀   │
+│    ╰─►    │
+└───────────┘
 </pre>
-<b>aichat</b><br/>
-<sub>Session Search<br/>& Resume</sub>
-</a>
+<a href="#aichat-session-management"><b>aichat</b></a><br>
+<sub>Session Search & Resume</sub>
 </td>
-<td align="center" width="180">
-<a href="#tmux-cli-terminal-automation">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │ ┌─┬─┐  │
-    │ │$│$│  │
-    │ ├─┼─┤  │
-    │ │$│▌│  │
-    │ └─┴─┘  │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│  ┌──┬──┐  │
+│  │$ │$ │  │
+│  ├──┼──┤  │
+│  │$ │▌ │  │
+│  └──┴──┘  │
+└───────────┘
 </pre>
-<b>tmux-cli</b><br/>
-<sub>Terminal<br/>Automation</sub>
-</a>
+<a href="#tmux-cli-terminal-automation"><b>tmux-cli</b></a><br>
+<sub>Terminal Automation</sub>
 </td>
-<td align="center" width="180">
-<a href="#lmsh-experimental">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │   ▄▀   │
-    │  ▀█▀   │
-    │ ▄█████ │
-    │ ▀▀ ▀▀  │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│     ▲     │
+│    ╱█╲    │
+│   ╱███╲   │
+│  ▔▔▔▔▔▔▔  │
+└───────────┘
 </pre>
-<b>lmsh</b><br/>
-<sub>Natural Lang<br/>Shell</sub>
-</a>
+<a href="#lmsh-experimental"><b>lmsh</b></a><br>
+<sub>Natural Lang Shell</sub>
 </td>
-<td align="center" width="180">
-<a href="#vault">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │ ╔═══╗  │
-    │ ║ ◎ ║  │
-    │ ║ │ ║  │
-    │ ╚═══╝  │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│  ╔═════╗  │
+│  ║ (●) ║  │
+│  ║  │  ║  │
+│  ╚═════╝  │
+└───────────┘
 </pre>
-<b>vault</b><br/>
-<sub>Encrypted<br/>.env Backup</sub>
-</a>
+<a href="#vault"><b>vault</b></a><br>
+<sub>Encrypted .env Backup</sub>
 </td>
 </tr>
 <tr>
-<td align="center" width="180">
-<a href="#env-safe">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │  ◢██◣  │
-    │ █ ◉◉ █ │
-    │  ████  │
-    │   ▀▀   │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│   ╭───╮   │
+│   │ ◉ │   │
+│   ╰─┬─╯   │
+│     █     │
+└───────────┘
 </pre>
-<b>env-safe</b><br/>
-<sub>Safe .env<br/>Inspection</sub>
-</a>
+<a href="#env-safe"><b>env-safe</b></a><br>
+<sub>Safe .env Inspection</sub>
 </td>
-<td align="center" width="180">
-<a href="#claude-code-safety-hooks">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │  ╱▔▔╲  │
-    │ ▕ ⛨  ▏ │
-    │ ▕    ▏ │
-    │  ╲▁▁╱  │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│    ╱╲     │
+│   ╱  ╲    │
+│  ╱ ⛨  ╲   │
+│ ╱──────╲  │
+└───────────┘
 </pre>
-<b>safety</b><br/>
-<sub>Protection<br/>Hooks</sub>
-</a>
+<a href="#claude-code-safety-hooks"><b>safety</b></a><br>
+<sub>Protection Hooks</sub>
 </td>
-<td align="center" width="180">
-<a href="#status-line">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │ ▁▂▃▄▅▆ │
-    │ ▔▔▔▔▔▔ │
-    │ █▓▒░   │
-    │ 69% ▶  │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│ ▁▂▃▄▅▆▇█  │
+│ ├────────┤│
+│ │████░░░ ││
+│ └────────┘│
+└───────────┘
 </pre>
-<b>statusline</b><br/>
-<sub>Context<br/>Progress Bar</sub>
-</a>
+<a href="#status-line"><b>statusline</b></a><br>
+<sub>Context Progress Bar</sub>
 </td>
-<td align="center" width="180">
-<a href="#google-docs-tools">
+<td align="center" width="160">
 <pre>
-    ╭─────────╮
-    │ ◉ ◯ ◯  │
-    ├─────────┤
-    │ ┌──┬─╮ │
-    │ │▓▓│ │ │
-    │ │▓▓├─╯ │
-    │ └──┴─  │
-    ╰─────────╯
+┌───────────┐
+│ ◉ ○ ○     │
+├───────────┤
+│  ┌────┬╮  │
+│  │ ≡≡ │╯  │
+│  │ ≡≡ │   │
+│  └────┘   │
+└───────────┘
 </pre>
-<b>gdocs</b><br/>
-<sub>Markdown ↔<br/>Google Docs</sub>
-</a>
+<a href="#google-docs-tools"><b>gdocs</b></a><br>
+<sub>Markdown ↔ Google Docs</sub>
 </td>
 </tr>
 </table>
-
-```
-╚══════════════════════════════════════════════════════════════════════════════╝
-```
 
 </div>
 
