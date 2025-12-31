@@ -8,127 +8,98 @@ and other CLI coding agents.
 
 <div align="center">
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         ░▒▓█ TOOL GALLERY █▓▒░                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+### ░▒▓█ TOOL GALLERY █▓▒░
 
 <table>
 <tr>
-<td align="center" width="160">
+<td align="center">
+<a href="#aichat-session-management">
+<img src="https://img.shields.io/badge/-%F0%9F%94%8D-blue?style=for-the-badge" alt="search"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│  ▄█▀▀█▄   │
-│  █ ?? █   │
-│  ▀█▄▄█▀   │
-│    ╰─►    │
-└───────────┘
+░█▀█░▀█▀░█▀▀░█░█░█▀█░▀█▀
+░█▀█░░█░░█░░░█▀█░█▀█░░█░
+░▀░▀░▀▀▀░▀▀▀░▀░▀░▀░▀░░▀░
 </pre>
-<a href="#aichat-session-management"><b>aichat</b></a><br>
 <sub>Session Search & Resume</sub>
 </td>
-<td align="center" width="160">
+<td align="center">
+<a href="#tmux-cli-terminal-automation">
+<img src="https://img.shields.io/badge/-%F0%9F%96%A5-green?style=for-the-badge" alt="terminal"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│  ┌──┬──┐  │
-│  │$ │$ │  │
-│  ├──┼──┤  │
-│  │$ │▌ │  │
-│  └──┴──┘  │
-└───────────┘
+░▀█▀░█▄█░█░█░█░█
+░░█░░█░█░█░█░▄▀▄
+░░▀░░▀░▀░▀▀▀░▀░▀
 </pre>
-<a href="#tmux-cli-terminal-automation"><b>tmux-cli</b></a><br>
 <sub>Terminal Automation</sub>
 </td>
-<td align="center" width="160">
+<td align="center">
+<a href="#lmsh-experimental">
+<img src="https://img.shields.io/badge/-%F0%9F%9A%80-orange?style=for-the-badge" alt="rocket"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│     ▲     │
-│    ╱█╲    │
-│   ╱███╲   │
-│  ▔▔▔▔▔▔▔  │
-└───────────┘
+░█░░░█▄█░█▀▀░█░█
+░█░░░█░█░▀▀█░█▀█
+░▀▀▀░▀░▀░▀▀▀░▀░▀
 </pre>
-<a href="#lmsh-experimental"><b>lmsh</b></a><br>
-<sub>Natural Lang Shell</sub>
+<sub>Natural Language Shell</sub>
 </td>
-<td align="center" width="160">
+<td align="center">
+<a href="#vault">
+<img src="https://img.shields.io/badge/-%F0%9F%94%90-red?style=for-the-badge" alt="lock"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│  ╔═════╗  │
-│  ║ (●) ║  │
-│  ║  │  ║  │
-│  ╚═════╝  │
-└───────────┘
+░█░█░█▀█░█░█░█░░░▀█▀
+░▀▄▀░█▀█░█░█░█░░░░█░
+░░▀░░▀░▀░▀▀▀░▀▀▀░░▀░
 </pre>
-<a href="#vault"><b>vault</b></a><br>
 <sub>Encrypted .env Backup</sub>
 </td>
 </tr>
 <tr>
-<td align="center" width="160">
+<td align="center">
+<a href="#env-safe">
+<img src="https://img.shields.io/badge/-%F0%9F%91%81-purple?style=for-the-badge" alt="eye"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│   ╭───╮   │
-│   │ ◉ │   │
-│   ╰─┬─╯   │
-│     █     │
-└───────────┘
+░█▀▀░█▀█░█░█
+░█▀▀░█░█░▀▄▀
+░▀▀▀░▀░▀░░▀░
 </pre>
-<a href="#env-safe"><b>env-safe</b></a><br>
 <sub>Safe .env Inspection</sub>
 </td>
-<td align="center" width="160">
+<td align="center">
+<a href="#claude-code-safety-hooks">
+<img src="https://img.shields.io/badge/-%F0%9F%9B%A1-yellow?style=for-the-badge" alt="shield"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│    ╱╲     │
-│   ╱  ╲    │
-│  ╱ ⛨  ╲   │
-│ ╱──────╲  │
-└───────────┘
+░█▀▀░█▀█░█▀▀░█▀▀
+░▀▀█░█▀█░█▀▀░█▀▀
+░▀▀▀░▀░▀░▀░░░▀▀▀
 </pre>
-<a href="#claude-code-safety-hooks"><b>safety</b></a><br>
 <sub>Protection Hooks</sub>
 </td>
-<td align="center" width="160">
+<td align="center">
+<a href="#status-line">
+<img src="https://img.shields.io/badge/-%F0%9F%93%8A-cyan?style=for-the-badge" alt="chart"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│ ▁▂▃▄▅▆▇█  │
-│ ├────────┤│
-│ │████░░░ ││
-│ └────────┘│
-└───────────┘
+░█▀▀░▀█▀░█▀█░▀█▀
+░▀▀█░░█░░█▀█░░█░
+░▀▀▀░░▀░░▀░▀░░▀░
 </pre>
-<a href="#status-line"><b>statusline</b></a><br>
 <sub>Context Progress Bar</sub>
 </td>
-<td align="center" width="160">
+<td align="center">
+<a href="#google-docs-tools">
+<img src="https://img.shields.io/badge/-%F0%9F%93%84-brightgreen?style=for-the-badge" alt="doc"/>
+</a>
 <pre>
-┌───────────┐
-│ ◉ ○ ○     │
-├───────────┤
-│  ┌────┬╮  │
-│  │ ≡≡ │╯  │
-│  │ ≡≡ │   │
-│  └────┘   │
-└───────────┘
+░█▀▄░█▀█░█▀▀░█▀▀
+░█░█░█░█░█░░░▀▀█
+░▀▀░░▀▀▀░▀▀▀░▀▀▀
 </pre>
-<a href="#google-docs-tools"><b>gdocs</b></a><br>
 <sub>Markdown ↔ Google Docs</sub>
 </td>
 </tr>
