@@ -886,8 +886,17 @@ command-line options for switching models, see
 <a id="google-docs-tools"></a>
 ## 📝 Google Docs Tools (md2gdoc, gdoc2md)
 
-Upload Markdown to Google Docs and download Google Docs as Markdown, using
-Google's native conversion (same as the manual "Open in Google Docs" flow).
+I work in Markdown but often need to collaborate with teammates via Google Docs.
+The problem: uploading a Markdown file to Google Drive with proper formatting
+is a pain. You have to:
+
+1. Upload the `.md` file to Google Drive
+2. Click "Open in Google Docs" to trigger conversion
+3. This creates a *new* document with proper formatting
+4. Delete the original raw `.md` file
+5. Rename the new document
+
+`md2gdoc` reduces this to one command. `gdoc2md` does the reverse.
 
 ### Installation
 
