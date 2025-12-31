@@ -53,6 +53,13 @@ and other CLI coding agents.
 </a>
 </td>
 </tr>
+<tr>
+<td colspan="4" align="center">
+<a href="#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers">
+<img src="assets/card-alt.svg" alt="ALT" width="220"/>
+</a>
+</td>
+</tr>
 </table>
 
 </div>
