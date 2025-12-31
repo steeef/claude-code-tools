@@ -13,7 +13,7 @@
     </linearGradient>
   </defs>
   <rect width="200" height="90" rx="8" fill="url(#bg)" stroke="#20b2aa" stroke-width="1.5"/>
-  <text x="100" y="42" font-family="monospace" font-size="28" font-weight="bold" fill="#40d4cc" text-anchor="middle" filter="url(#glow)">gdocs</text>
+  <text x="100" y="42" font-family="monospace" font-size="28" font-weight="bold" fill="#40d4cc" text-anchor="middle" filter="url(#glow)">md &lt;-&gt; gdoc</text>
   <text x="100" y="65" font-family="monospace" font-size="10" fill="#80e8e0" text-anchor="middle">Markdown &lt;-&gt;</text>
   <text x="100" y="80" font-family="monospace" font-size="10" fill="#80e8e0" text-anchor="middle">Google Docs</text>
 </svg>
