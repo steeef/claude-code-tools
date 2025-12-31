@@ -3818,9 +3818,19 @@ fn extract_claude_message_text(json: &serde_json::Value) -> Option<String> {
                         }
                     }
                     "tool_use" => {
-                        // Optionally show tool calls (condensed)
+                        // Show tool name
                         if let Some(name) = block.get("name").and_then(|v| v.as_str()) {
                             texts.push(format!("[Tool: {}]", name));
+                        }
+                        // Index tool input content (code, commands, etc.)
+                        if let Some(input) = block.get("input").and_then(|v| v.as_object()) {
+                            for value in input.values() {
+                                if let Some(s) = value.as_str() {
+                                    if !s.is_empty() {
+                                        texts.push(s.to_string());
+                                    }
+                                }
+                            }
                         }
                     }
                     _ => {}
@@ -3852,6 +3862,16 @@ fn extract_codex_message_text(payload: &serde_json::Value) -> Option<String> {
                 "tool_use" | "function_call" => {
                     if let Some(name) = block.get("name").and_then(|v| v.as_str()) {
                         texts.push(format!("[Tool: {}]", name));
+                    }
+                    // Index tool input content (code, commands, etc.)
+                    if let Some(input) = block.get("input").and_then(|v| v.as_object()) {
+                        for value in input.values() {
+                            if let Some(s) = value.as_str() {
+                                if !s.is_empty() {
+                                    texts.push(s.to_string());
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {}
