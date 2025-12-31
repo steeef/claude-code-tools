@@ -554,6 +554,12 @@ class SessionIndex:
                                     elif block.get("type") == "tool_use":
                                         tool_name = block.get("name", "")
                                         text += f"[Tool: {tool_name}]\n"
+                                        # Index tool input content
+                                        tool_input = block.get("input", {})
+                                        if isinstance(tool_input, dict):
+                                            for value in tool_input.values():
+                                                if isinstance(value, str) and value:
+                                                    text += f"{value}\n"
                                     elif block.get("type") == "tool_result":
                                         result = block.get("content", "")
                                         if isinstance(result, str):
