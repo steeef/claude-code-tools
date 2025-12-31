@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="90" viewBox="0 0 200 90">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2a1a0a"/>
+      <stop offset="100%" style="stop-color:#1a0f05"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="90" rx="8" fill="url(#bg)" stroke="#ff9933" stroke-width="1.5"/>
+  <text x="100" y="42" font-family="monospace" font-size="28" font-weight="bold" fill="#ffaa44" text-anchor="middle" filter="url(#glow)">lmsh</text>
+  <text x="100" y="65" font-family="monospace" font-size="10" fill="#ffcc88" text-anchor="middle">Natural Language</text>
+  <text x="100" y="80" font-family="monospace" font-size="10" fill="#ffcc88" text-anchor="middle">Shell</text>
+</svg>

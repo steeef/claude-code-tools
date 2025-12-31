@@ -6,6 +6,64 @@
 A collection of practical tools, hooks, and utilities for enhancing Claude Code
 and other CLI coding agents.
 
+<div align="center">
+
+<table>
+<tr>
+<td align="center">
+<a href="#aichat-session-management">
+<img src="assets/card-aichat.svg" alt="AICHAT" width="180"/>
+</a>
+</td>
+<td align="center">
+<a href="#tmux-cli-terminal-automation">
+<img src="assets/card-tmux.svg" alt="TMUX" width="180"/>
+</a>
+</td>
+<td align="center">
+<a href="#lmsh-experimental">
+<img src="assets/card-lmsh.svg" alt="LMSH" width="180"/>
+</a>
+</td>
+<td align="center">
+<a href="#vault">
+<img src="assets/card-vault.svg" alt="VAULT" width="180"/>
+</a>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="#env-safe">
+<img src="assets/card-env-safe.svg" alt="ENV-SAFE" width="180"/>
+</a>
+</td>
+<td align="center">
+<a href="#claude-code-safety-hooks">
+<img src="assets/card-safety.svg" alt="SAFETY" width="180"/>
+</a>
+</td>
+<td align="center">
+<a href="#status-line">
+<img src="assets/card-statusline.svg" alt="STATUSLINE" width="180"/>
+</a>
+</td>
+<td align="center">
+<a href="#google-docs-tools">
+<img src="assets/card-gdocs.svg" alt="GDOCS" width="180"/>
+</a>
+</td>
+</tr>
+<tr>
+<td colspan="4" align="center">
+<a href="#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers">
+<img src="assets/card-alt.svg" alt="ALT" width="220"/>
+</a>
+</td>
+</tr>
+</table>
+
+</div>
+
 ## Table of Contents
 
 - [🚀 Quick Start](#quick-start)

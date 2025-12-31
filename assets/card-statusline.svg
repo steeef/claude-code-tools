@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="90" viewBox="0 0 200 90">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f2818"/>
+      <stop offset="100%" style="stop-color:#071a0c"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="90" rx="8" fill="url(#bg)" stroke="#33ff33" stroke-width="1.5"/>
+  <text x="100" y="42" font-family="monospace" font-size="20" font-weight="bold" fill="#33ff33" text-anchor="middle" filter="url(#glow)">statusline</text>
+  <text x="100" y="65" font-family="monospace" font-size="10" fill="#66ff66" text-anchor="middle">Colored Context</text>
+  <text x="100" y="80" font-family="monospace" font-size="10" fill="#66ff66" text-anchor="middle">Usage Bar</text>
+</svg>
