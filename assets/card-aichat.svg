@@ -13,8 +13,8 @@
     </linearGradient>
   </defs>
   <rect width="200" height="90" rx="8" fill="url(#bg)" stroke="#1e90ff" stroke-width="1.5"/>
-  <text x="100" y="38" font-family="monospace" font-size="28" font-weight="bold" fill="#4da6ff" text-anchor="middle" filter="url(#glow)">aichat</text>
-  <text x="100" y="58" font-family="monospace" font-size="9" fill="#7ec8ff" text-anchor="middle">Sessions: Search,</text>
-  <text x="100" y="70" font-family="monospace" font-size="9" fill="#7ec8ff" text-anchor="middle">Lossless Continuity</text>
-  <text x="100" y="82" font-family="monospace" font-size="8" fill="#5eb0ff" text-anchor="middle">(avoid compaction)</text>
+  <text x="100" y="32" font-family="monospace" font-size="28" font-weight="bold" fill="#4da6ff" text-anchor="middle" filter="url(#glow)">aichat</text>
+  <text x="100" y="50" font-family="monospace" font-size="10" fill="#7ec8ff" text-anchor="middle">Sessions: Search,</text>
+  <text x="100" y="64" font-family="monospace" font-size="10" fill="#7ec8ff" text-anchor="middle">Lossless Continuity</text>
+  <text x="100" y="78" font-family="monospace" font-size="10" fill="#7ec8ff" text-anchor="middle">(avoid compaction)</text>
 </svg>
