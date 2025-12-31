@@ -12,51 +12,51 @@ and other CLI coding agents.
 <tr>
 <td align="center">
 <a href="#aichat-session-management">
-<img src="assets/card-aichat.svg" alt="AICHAT" width="180"/>
+<img src="assets/card-aichat.svg" alt="aichat" width="200"/>
 </a>
 </td>
 <td align="center">
 <a href="#tmux-cli-terminal-automation">
-<img src="assets/card-tmux.svg" alt="TMUX" width="180"/>
+<img src="assets/card-tmux.svg" alt="tmux-cli" width="200"/>
 </a>
 </td>
 <td align="center">
 <a href="#lmsh-experimental">
-<img src="assets/card-lmsh.svg" alt="LMSH" width="180"/>
-</a>
-</td>
-<td align="center">
-<a href="#vault">
-<img src="assets/card-vault.svg" alt="VAULT" width="180"/>
+<img src="assets/card-lmsh.svg" alt="lmsh" width="200"/>
 </a>
 </td>
 </tr>
 <tr>
 <td align="center">
+<a href="#vault">
+<img src="assets/card-vault.svg" alt="vault" width="200"/>
+</a>
+</td>
+<td align="center">
 <a href="#env-safe">
-<img src="assets/card-env-safe.svg" alt="ENV-SAFE" width="180"/>
+<img src="assets/card-env-safe.svg" alt="env-safe" width="200"/>
 </a>
 </td>
 <td align="center">
 <a href="#claude-code-safety-hooks">
-<img src="assets/card-safety.svg" alt="SAFETY" width="180"/>
-</a>
-</td>
-<td align="center">
-<a href="#status-line">
-<img src="assets/card-statusline.svg" alt="STATUSLINE" width="180"/>
-</a>
-</td>
-<td align="center">
-<a href="#google-docs-tools">
-<img src="assets/card-gdocs.svg" alt="GDOCS" width="180"/>
+<img src="assets/card-safety.svg" alt="safety" width="200"/>
 </a>
 </td>
 </tr>
 <tr>
-<td colspan="4" align="center">
+<td align="center">
+<a href="#status-line">
+<img src="assets/card-statusline.svg" alt="statusline" width="200"/>
+</a>
+</td>
+<td align="center">
+<a href="#google-docs-tools">
+<img src="assets/card-gdocs.svg" alt="gdocs" width="200"/>
+</a>
+</td>
+<td align="center">
 <a href="#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers">
-<img src="assets/card-alt.svg" alt="ALT" width="220"/>
+<img src="assets/card-alt.svg" alt="alt" width="200"/>
 </a>
 </td>
 </tr>
