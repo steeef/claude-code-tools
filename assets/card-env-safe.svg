@@ -12,7 +12,7 @@
       <stop offset="100%" style="stop-color:#051518"/>
     </linearGradient>
   </defs>
-  <rect width="200" height="100" rx="8" fill="url(#bg)" stroke="#00cccc" stroke-width="1.5"/>
+  <rect width="200" height="100" rx="8" fill="url(#bg)"/>
   <text x="100" y="37" font-family="monospace" font-size="26" font-weight="bold" fill="#00dddd" text-anchor="middle" filter="url(#glow)">env-safe</text>
   <text x="100" y="60" font-family="monospace" font-size="14" fill="#66eeee" text-anchor="middle">Safe .env</text>
   <text x="100" y="75" font-family="monospace" font-size="14" fill="#66eeee" text-anchor="middle">Inspection</text>

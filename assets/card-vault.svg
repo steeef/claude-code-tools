@@ -12,7 +12,7 @@
       <stop offset="100%" style="stop-color:#0f051a"/>
     </linearGradient>
   </defs>
-  <rect width="200" height="100" rx="8" fill="url(#bg)" stroke="#aa66ff" stroke-width="1.5"/>
+  <rect width="200" height="100" rx="8" fill="url(#bg)"/>
   <text x="100" y="37" font-family="monospace" font-size="26" font-weight="bold" fill="#bb77ff" text-anchor="middle" filter="url(#glow)">vault</text>
   <text x="100" y="60" font-family="monospace" font-size="14" fill="#cc99ff" text-anchor="middle">Encrypted .env</text>
   <text x="100" y="75" font-family="monospace" font-size="14" fill="#cc99ff" text-anchor="middle">Backup</text>

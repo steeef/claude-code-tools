@@ -12,7 +12,7 @@
       <stop offset="100%" style="stop-color:#1a0f05"/>
     </linearGradient>
   </defs>
-  <rect width="200" height="100" rx="8" fill="url(#bg)" stroke="#ff9933" stroke-width="1.5"/>
+  <rect width="200" height="100" rx="8" fill="url(#bg)"/>
   <text x="100" y="37" font-family="monospace" font-size="26" font-weight="bold" fill="#ffaa44" text-anchor="middle" filter="url(#glow)">lmsh</text>
   <text x="100" y="60" font-family="monospace" font-size="14" fill="#ffcc88" text-anchor="middle">Natural Language</text>
   <text x="100" y="75" font-family="monospace" font-size="14" fill="#ffcc88" text-anchor="middle">Shell</text>
