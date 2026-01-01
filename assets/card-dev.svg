@@ -13,5 +13,5 @@
     </linearGradient>
   </defs>
   <rect width="300" height="70" rx="6" fill="url(#bg)" stroke="#888888" stroke-width="1"/>
-  <text x="20" y="44" font-family="monospace" font-size="24" font-weight="bold" fill="#cccccc" filter="url(#glow)">&gt; development</text>
+  <text x="20" y="44" font-family="monospace" font-size="24" font-weight="bold" fill="#cccccc" filter="url(#glow)">&lt;dev&gt;</text>
 </svg>

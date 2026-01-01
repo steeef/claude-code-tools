@@ -85,7 +85,7 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 </a>
 </td>
 <td align="center">
-<a href="#license">
+<a href="LICENSE.md">
 <img src="assets/card-license.svg" alt="license" width="300"/>
 </a>
 </td>
