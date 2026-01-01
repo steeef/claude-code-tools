@@ -10,7 +10,7 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 
 <table>
 <tr>
-<td align="center" colspan="2">
+<td align="center">
 <a href="#quick-start">
 <img src="assets/card-quickstart.svg" alt="quick start" width="300"/>
 </a>
@@ -21,6 +21,9 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 </a>
 </td>
 </tr>
+</table>
+
+<table>
 <tr>
 <td align="center">
 <a href="#aichat-session-management">
