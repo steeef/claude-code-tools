@@ -91,8 +91,6 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
 - [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
 - [📝 Google Docs Tools](#google-docs-tools)
-- [📚 Documentation](#documentation)
-- [📋 Requirements](#requirements)
 - [🛠️ Development](#development)
 - [📄 License](#license)
 
@@ -711,7 +709,7 @@ the tmux-cli command; you can do tmux-cli --help to see how to use it.
 
 To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
 
-For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
+For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md) and [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md).
 
 All of this assumes you're familiar and comfortable with tmux, and (like me) run
 all CLI coding sessions inside tmux sessions.
@@ -1018,25 +1016,6 @@ gdoc2md "My Document" --folder "PNL/Reports" # Download from folder
 gdoc2md "My Document" -o report.md           # Save with custom name
 gdoc2md --list --folder PNL                  # List docs in folder
 ```
-
-<a id="documentation"></a>
-## 📚 Documentation
-
-- [tmux-cli detailed instructions](docs/tmux-cli-instructions.md) - 
-  Comprehensive guide for using tmux-cli
-- [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md) - 
-  Additional tutorials and examples
-- [Vault documentation](docs/vault-documentation.md) - 
-  Complete guide for the .env backup system
-
-<a id="requirements"></a>
-## 📋 Requirements
-
-- Python 3.11+
-- uv (for installation)
-- **Node.js 16+** (for interactive UI - typically already installed with Claude Code)
-- tmux (for tmux-cli functionality)
-- SOPS (for vault functionality)
 
 <a id="development"></a>
 ## 🛠️ Development
