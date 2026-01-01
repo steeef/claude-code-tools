@@ -11,6 +11,21 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 <table>
 <tr>
 <td align="center">
+<a href="#quick-start">
+<img src="assets/card-quickstart.svg" alt="quick start" width="300"/>
+</a>
+</td>
+<td align="center">
+<a href="#claude-code-plugins">
+<img src="assets/card-plugins.svg" alt="plugins" width="300"/>
+</a>
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center">
 <a href="#aichat-session-management">
 <img src="assets/card-aichat.svg" alt="aichat" width="200"/>
 </a>
@@ -62,23 +77,22 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 </tr>
 </table>
 
+<table>
+<tr>
+<td align="center">
+<a href="#development">
+<img src="assets/card-dev.svg" alt="development" width="300"/>
+</a>
+</td>
+<td align="center">
+<a href="LICENSE.md">
+<img src="assets/card-license.svg" alt="license" width="300"/>
+</a>
+</td>
+</tr>
+</table>
+
 </div>
-
-## Table of Contents
-
-- [🚀 Quick Start](#quick-start)
-- [💬 aichat — Search sessions, resume without compaction](#aichat-session-management)
-- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
-- [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
-- [📊 Status Line](#status-line)
-- [🔐 Utilities](#utilities)
-- [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
-- [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
-- [📝 Google Docs Tools](#google-docs-tools)
-- [📚 Documentation](#documentation)
-- [📋 Requirements](#requirements)
-- [🛠️ Development](#development)
-- [📄 License](#license)
 
 ---
 
@@ -695,7 +709,7 @@ the tmux-cli command; you can do tmux-cli --help to see how to use it.
 
 To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
 
-For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
+For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md) and [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md).
 
 All of this assumes you're familiar and comfortable with tmux, and (like me) run
 all CLI coding sessions inside tmux sessions.
@@ -771,11 +785,8 @@ Add to `~/.claude/settings.json`:
 
 Requires `jq` and a [Nerd Font](https://www.nerdfonts.com/) for powerline symbols.
 
-<a id="utilities"></a>
-# 🔐 Utilities
-
 <a id="vault"></a>
-## 🔐 vault
+# 🔐 vault
 
 Centralized encrypted backup for .env files across all your projects using SOPS.
 
@@ -797,7 +808,7 @@ vault status    # Check sync status for current project
 For detailed documentation, see [docs/vault-documentation.md](docs/vault-documentation.md).
 
 <a id="env-safe"></a>
-## 🔍 env-safe
+# 🔍 env-safe
 
 Safely inspect .env files without exposing sensitive values. Designed for Claude Code and other automated tools that need to work with environment files without accidentally leaking secrets.
 
@@ -824,7 +835,7 @@ The [`safety-hooks` plugin](#claude-code-safety-hooks) in this repo blocks Claud
 
 
 <a id="claude-code-safety-hooks"></a>
-## 🛡️ Claude Code Safety Hooks
+# 🛡️ Claude Code Safety Hooks
 
 This repository includes a comprehensive set of safety hooks that enhance Claude
 Code's behavior and prevent dangerous operations.
@@ -1005,26 +1016,6 @@ gdoc2md "My Document" --folder "PNL/Reports" # Download from folder
 gdoc2md "My Document" -o report.md           # Save with custom name
 gdoc2md --list --folder PNL                  # List docs in folder
 ```
-
-<a id="documentation"></a>
-## 📚 Documentation
-
-- [tmux-cli detailed instructions](docs/tmux-cli-instructions.md) - 
-  Comprehensive guide for using tmux-cli
-- [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md) - 
-  Additional tutorials and examples
-- [Vault documentation](docs/vault-documentation.md) - 
-  Complete guide for the .env backup system
-- [Hook configuration](hooks/README.md) - Setting up Claude Code hooks
-
-<a id="requirements"></a>
-## 📋 Requirements
-
-- Python 3.11+
-- uv (for installation)
-- **Node.js 16+** (for interactive UI - typically already installed with Claude Code)
-- tmux (for tmux-cli functionality)
-- SOPS (for vault functionality)
 
 <a id="development"></a>
 ## 🛠️ Development
