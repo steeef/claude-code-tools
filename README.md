@@ -3,8 +3,10 @@
 [![claude-code-tools](https://img.shields.io/github/v/release/pchalasani/claude-code-tools?filter=v*&label=claude-code-tools&color=blue)](https://pypi.org/project/claude-code-tools/)
 [![aichat-search](https://img.shields.io/github/v/release/pchalasani/claude-code-tools?filter=rust-v*&label=aichat-search&color=orange)](https://github.com/pchalasani/claude-code-tools/releases?q=rust)
 
-Practical productivity tools (CLI commands, skills, agents, hooks, plugins) 
-for Claude Code, Codex-CLI, and similar CLI coding agents.
+Collection of tools I built for productivity with
+Claude Code, Codex-CLI, and similar CLI coding agents:
+CLI commands, skills, agents, hooks, plugins.
+
 
 <div align="center">
 
