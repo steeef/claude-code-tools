@@ -420,6 +420,7 @@ Examples:
   md2gdoc report.md                           # Upload to root of Drive
   md2gdoc report.md --folder "OTA/Reports"    # Upload to specific folder
   md2gdoc report.md --name "Q4 Summary"       # Upload with custom name
+  md2gdoc report.md --on-existing version     # Auto-version if exists (no prompt)
 
 Credentials (in order of precedence):
   1. .gdoc-token.json in current directory (project-specific)
@@ -450,6 +451,15 @@ First run opens browser for OAuth (one-time per project).
         type=str,
         default="",
         help="Name for the Google Doc (default: markdown filename without extension)",
+    )
+
+    parser.add_argument(
+        "--on-existing",
+        type=str,
+        choices=["ask", "version", "overwrite"],
+        default="ask",
+        help="Action when file exists: ask (prompt), version (auto-increment), "
+        "overwrite (replace). Default: ask",
     )
 
     args = parser.parse_args()
@@ -492,13 +502,20 @@ First run opens browser for OAuth (one-time per project).
     final_name = target_name
     if file_exists:
         versioned_name = get_next_version_name(service, folder_id, target_name)
-        action = prompt_for_conflict(target_name, versioned_name)
 
-        if action is None:
-            console.print("[dim]Upload cancelled.[/dim]")
-            sys.exit(0)
-        elif action == "version":
+        # Determine action based on --on-existing flag
+        on_existing = getattr(args, "on_existing", "ask")
+        if on_existing == "ask":
+            action = prompt_for_conflict(target_name, versioned_name)
+            if action is None:
+                console.print("[dim]Upload cancelled.[/dim]")
+                sys.exit(0)
+        else:
+            action = on_existing
+
+        if action == "version":
             final_name = versioned_name
+            console.print(f"[dim]File exists, using versioned name: {final_name}[/dim]")
         elif action == "overwrite":
             console.print(f"[dim]Deleting existing file: {target_name}[/dim]")
             delete_file(service, folder_id, target_name)

@@ -971,6 +971,11 @@ md2gdoc report.md --folder "Perf/Reports"    # Upload to specific folder
 md2gdoc report.md --name "Q4 Summary"       # Upload with custom name
 ```
 
+If a file with the same name exists, `--on-existing` controls behavior:
+- `ask` (default): prompt for action
+- `version`: auto-add suffix (`report-1`, `report-2`, etc.)
+- `overwrite`: replace existing file
+
 Features:
 
 - Native markdown conversion (same quality as manual upload + "Open in Docs")
