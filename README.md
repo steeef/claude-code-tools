@@ -77,22 +77,22 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 </tr>
 </table>
 
+<table>
+<tr>
+<td align="center">
+<a href="#development">
+<img src="assets/card-dev.svg" alt="development" width="300"/>
+</a>
+</td>
+<td align="center">
+<a href="#license">
+<img src="assets/card-license.svg" alt="license" width="300"/>
+</a>
+</td>
+</tr>
+</table>
+
 </div>
-
-## Table of Contents
-
-- [🚀 Quick Start](#quick-start)
-- [💬 aichat — Search sessions, resume without compaction](#aichat-session-management)
-- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
-- [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
-- [📊 Status Line](#status-line)
-- [🔐 vault — Encrypted .env backup](#vault)
-- [🔍 env-safe — Safe .env inspection](#env-safe)
-- [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
-- [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
-- [📝 Google Docs Tools](#google-docs-tools)
-- [🛠️ Development](#development)
-- [📄 License](#license)
 
 ---
 
