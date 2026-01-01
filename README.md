@@ -86,7 +86,8 @@ for Claude Code, Codex-CLI, and similar CLI coding agents.
 - [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
 - [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
 - [📊 Status Line](#status-line)
-- [🔐 Utilities](#utilities)
+- [🔐 vault — Encrypted .env backup](#vault)
+- [🔍 env-safe — Safe .env inspection](#env-safe)
 - [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
 - [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
 - [📝 Google Docs Tools](#google-docs-tools)
@@ -786,11 +787,8 @@ Add to `~/.claude/settings.json`:
 
 Requires `jq` and a [Nerd Font](https://www.nerdfonts.com/) for powerline symbols.
 
-<a id="utilities"></a>
-# 🔐 Utilities
-
 <a id="vault"></a>
-## 🔐 vault
+# 🔐 vault
 
 Centralized encrypted backup for .env files across all your projects using SOPS.
 
@@ -812,7 +810,7 @@ vault status    # Check sync status for current project
 For detailed documentation, see [docs/vault-documentation.md](docs/vault-documentation.md).
 
 <a id="env-safe"></a>
-## 🔍 env-safe
+# 🔍 env-safe
 
 Safely inspect .env files without exposing sensitive values. Designed for Claude Code and other automated tools that need to work with environment files without accidentally leaking secrets.
 
@@ -839,7 +837,7 @@ The [`safety-hooks` plugin](#claude-code-safety-hooks) in this repo blocks Claud
 
 
 <a id="claude-code-safety-hooks"></a>
-## 🛡️ Claude Code Safety Hooks
+# 🛡️ Claude Code Safety Hooks
 
 This repository includes a comprehensive set of safety hooks that enhance Claude
 Code's behavior and prevent dangerous operations.
@@ -1030,7 +1028,6 @@ gdoc2md --list --folder PNL                  # List docs in folder
   Additional tutorials and examples
 - [Vault documentation](docs/vault-documentation.md) - 
   Complete guide for the .env backup system
-- [Hook configuration](hooks/README.md) - Setting up Claude Code hooks
 
 <a id="requirements"></a>
 ## 📋 Requirements
