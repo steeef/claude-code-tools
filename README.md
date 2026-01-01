@@ -655,10 +655,17 @@ bakes in defaults that address these: Enter is sent automatically with a 1-secon
 (configurable), pane targeting accepts simple numbers instead of `session:window.pane`,
 and there's built-in `wait_idle` to detect when a CLI is ready for input.
 
-<a id="tmux-cli-deep-dive"></a>
-## 🎮 tmux-cli Deep Dive
+## Tmux-cli skill
 
-### What Claude Code Can Do With tmux-cli
+To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
+
+For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md) and [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md).
+
+All of this assumes you're familiar and comfortable with tmux, and (like me) run
+all CLI coding sessions inside tmux sessions.
+
+
+## What Claude Code Can Do With tmux-cli
 
 1. **Test Interactive Scripts** - CC can run and interact with scripts that 
    require user input, answering prompts automatically based on your instructions.
@@ -672,49 +679,12 @@ and there's built-in `wait_idle` to detect when a CLI is ready for input.
 4. **Claude-to-Claude Communication** - CC can launch another Claude Code instance 
    to get specialized help or code reviews.
 
-Claude Code knows how to use tmux-cli through its built-in help. You just describe 
-what you want, and CC handles the technical details.
+
+Claude Code can find out how to use tmux-cli through its built-in help. 
+You just describe what you want, and CC handles the technical details.
 
 For complete command reference, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
-### Setting up tmux-cli for Claude Code
-
-To enable CC to use tmux-cli, add this snippet to your global
-`~/.claude/CLAUDE.md` file:
-
-```markdown
-# tmux-cli Command to interact with CLI applications
-
-`tmux-cli` is a bash command that enables Claude Code to control CLI applications 
-running in separate tmux panes - launch programs, send input, capture output, 
-and manage interactive sessions. Run `tmux-cli --help` for detailed usage 
-instructions.
-
-Example uses:
-- Interact with a script that waits for user input
-- Launch another Claude Code instance to have it perform some analysis or review or 
-  debugging etc
-- Run a Python script with the Pdb debugger to step thru its execution, for 
-  code-understanding and debugging
-- Launch web apps and test them with browser automation MCP tools like Playwright or 
-Chrome Dev Tools.
-```
-
-More frequently, I use this method: I launch another CLI-agent (say Codex-CLI) 
-in another tmux pane, and say something like this to the first agent:
-
-> There's another coding agent "Codex" running in tmux Pane 3. Feel free to use Codex 
-to help you with your task or review your work. You can communicate with Codex using
-the tmux-cli command; you can do tmux-cli --help to see how to use it.
-
-## Tmux-cli skill
-
-To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
-
-For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md) and [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md).
-
-All of this assumes you're familiar and comfortable with tmux, and (like me) run
-all CLI coding sessions inside tmux sessions.
 
 
 <a id="lmsh-experimental"></a>
