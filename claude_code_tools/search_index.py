@@ -10,6 +10,7 @@ from importlib.metadata import version as get_pkg_version
 from pathlib import Path
 from typing import Any, Optional
 
+from claude_code_tools.export_session import NON_GENUINE_MSG_PATTERNS
 from claude_code_tools.session_utils import is_valid_session
 
 
@@ -177,6 +178,7 @@ class SessionIndex:
         self.schema_builder.add_text_field("first_msg_content", stored=True)
         self.schema_builder.add_text_field("last_msg_role", stored=True)
         self.schema_builder.add_text_field("last_msg_content", stored=True)
+        self.schema_builder.add_text_field("first_user_msg_content", stored=True)
 
         # Session type fields (for filtering in TUI)
         self.schema_builder.add_text_field("derivation_type", stored=True)
@@ -321,10 +323,12 @@ class SessionIndex:
             # First and last message fields
             first_msg = metadata.get("first_msg", {}) or {}
             last_msg = metadata.get("last_msg", {}) or {}
+            first_user_msg = metadata.get("first_user_msg", {}) or {}
             doc.add_text("first_msg_role", first_msg.get("role", ""))
             doc.add_text("first_msg_content", first_msg.get("content", ""))
             doc.add_text("last_msg_role", last_msg.get("role", ""))
             doc.add_text("last_msg_content", last_msg.get("content", ""))
+            doc.add_text("first_user_msg_content", first_user_msg.get("content", ""))
 
             # Session type fields
             doc.add_text("derivation_type", metadata.get("derivation_type", "") or "")
@@ -405,10 +409,12 @@ class SessionIndex:
             # First and last message fields
             first_msg = metadata.get("first_msg", {}) or {}
             last_msg = metadata.get("last_msg", {}) or {}
+            first_user_msg = metadata.get("first_user_msg", {}) or {}
             doc.add_text("first_msg_role", first_msg.get("role", ""))
             doc.add_text("first_msg_content", first_msg.get("content", ""))
             doc.add_text("last_msg_role", last_msg.get("role", ""))
             doc.add_text("last_msg_content", last_msg.get("content", ""))
+            doc.add_text("first_user_msg_content", first_user_msg.get("content", ""))
 
             # Session type fields
             doc.add_text(
@@ -525,9 +531,10 @@ class SessionIndex:
                         message = data.get("message", {})
                         content = message.get("content")
 
-                        # Count user messages, but exclude tool results
-                        # Tool results have content as list with {"type": "tool_result"}
-                        # Real user messages have content as string or list with text
+                        # Count user messages, but exclude:
+                        # - Tool results (content is list with {"type": "tool_result"})
+                        # - Meta messages (isMeta: true, e.g., "Caveat:" warnings)
+                        # - Local command messages (<command-name>, <local-command-stdout>)
                         if role == "user":
                             is_tool_result = (
                                 isinstance(content, list)
@@ -535,7 +542,14 @@ class SessionIndex:
                                 and isinstance(content[0], dict)
                                 and content[0].get("type") == "tool_result"
                             )
-                            if not is_tool_result:
+                            # Check for meta/non-genuine messages
+                            is_meta = data.get("isMeta") is True
+                            text_content = content if isinstance(content, str) else ""
+                            # Check against global non-genuine patterns
+                            matches_pattern = any(
+                                p.search(text_content) for p in NON_GENUINE_MSG_PATTERNS
+                            )
+                            if not is_tool_result and not is_meta and not matches_pattern:
                                 user_count += 1
 
                         if not content:
@@ -575,12 +589,25 @@ class SessionIndex:
                             continue
 
                         role = payload.get("role")
-                        if role == "user":
-                            user_count += 1
                         content = payload.get("content", [])
 
                         if not isinstance(content, list):
                             continue
+
+                        # Extract text first to check for meta patterns
+                        codex_text = ""
+                        for block in content:
+                            if isinstance(block, dict):
+                                if block.get("type") in ("input_text", "output_text"):
+                                    codex_text += block.get("text", "")
+
+                        # Count user messages, but exclude non-genuine messages
+                        if role == "user":
+                            matches_pattern = any(
+                                p.search(codex_text) for p in NON_GENUINE_MSG_PATTERNS
+                            )
+                            if not matches_pattern:
+                                user_count += 1
 
                         for block in content:
                             if not isinstance(block, dict):
@@ -635,6 +662,7 @@ class SessionIndex:
             # Map metadata fields to expected format
             first_msg = metadata.get("first_msg") or {"role": "", "content": ""}
             last_msg = metadata.get("last_msg") or {"role": "", "content": ""}
+            first_user_msg = metadata.get("first_user_msg") or {"role": "", "content": ""}
 
             # Always use filename-derived session_id (the canonical identifier)
             # Internal sessionId field can be stale in forked sessions
@@ -660,6 +688,7 @@ class SessionIndex:
                 "content": content,
                 "first_msg": first_msg,
                 "last_msg": last_msg,
+                "first_user_msg": first_user_msg,
                 "lines": msg_count,
                 "file_path": str(jsonl_path),
             }
@@ -742,6 +771,7 @@ class SessionIndex:
             metadata = parsed["metadata"]
             first_msg = parsed["first_msg"]
             last_msg = parsed["last_msg"]
+            first_user_msg = parsed.get("first_user_msg", {}) or {}
 
             # Skip helper sessions (SDK/headless sessions used for analysis)
             if metadata.get("session_type") == "helper":
@@ -785,6 +815,7 @@ class SessionIndex:
                 doc.add_text("first_msg_content", first_msg.get("content", ""))
                 doc.add_text("last_msg_role", last_msg.get("role", ""))
                 doc.add_text("last_msg_content", last_msg.get("content", ""))
+                doc.add_text("first_user_msg_content", first_user_msg.get("content", ""))
 
                 # Session type fields
                 doc.add_text(
@@ -1007,6 +1038,7 @@ class SessionIndex:
             first_msg_content = doc.get_first("first_msg_content") or ""
             last_msg_role = doc.get_first("last_msg_role") or ""
             last_msg_content = doc.get_first("last_msg_content") or ""
+            first_user_msg_content = doc.get_first("first_user_msg_content") or ""
 
             results.append({
                 "session_id": session_id,
@@ -1024,6 +1056,7 @@ class SessionIndex:
                 "first_msg_content": first_msg_content,
                 "last_msg_role": last_msg_role,
                 "last_msg_content": last_msg_content,
+                "first_user_msg_content": first_user_msg_content,
             })
 
             if len(results) >= limit:
@@ -1087,6 +1120,7 @@ class SessionIndex:
                 "first_msg_content": doc.get_first("first_msg_content") or "",
                 "last_msg_role": doc.get_first("last_msg_role") or "",
                 "last_msg_content": doc.get_first("last_msg_content") or "",
+                "first_user_msg_content": doc.get_first("first_user_msg_content") or "",
                 "claude_home": doc.get_first("claude_home") or "",
             })
 
@@ -1186,6 +1220,7 @@ class SessionIndex:
                 "first_msg_content": doc.get_first("first_msg_content") or "",
                 "last_msg_role": doc.get_first("last_msg_role") or "",
                 "last_msg_content": doc.get_first("last_msg_content") or "",
+                "first_user_msg_content": doc.get_first("first_user_msg_content") or "",
                 "derivation_type": doc.get_first("derivation_type") or "",
                 "is_sidechain": doc.get_first("is_sidechain") or "false",
             }
