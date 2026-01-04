@@ -2,7 +2,6 @@
 
 import json
 import math
-import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -11,10 +10,7 @@ from importlib.metadata import version as get_pkg_version
 from pathlib import Path
 from typing import Any, Optional
 
-from claude_code_tools.export_session import (
-    NON_GENUINE_MSG_PATTERNS,
-    NON_GENUINE_XML_TAGS,
-)
+from claude_code_tools.export_session import _is_meta_user_message
 from claude_code_tools.session_utils import is_valid_session
 
 
@@ -547,24 +543,10 @@ class SessionIndex:
                                 and content[0].get("type") == "tool_result"
                             )
                             # Check for meta/non-genuine messages
-                            is_meta = data.get("isMeta") is True
                             text_content = content if isinstance(content, str) else ""
-                            # Check against regex patterns
-                            matches_pattern = any(
-                                p.search(text_content) for p in NON_GENUINE_MSG_PATTERNS
-                            )
-                            # Check for known system-injected XML tags
-                            xml_match = re.match(
-                                r"^<([a-z][a-z0-9_-]*)>", text_content.strip()
-                            )
-                            is_system_xml = (
-                                xml_match and xml_match.group(1) in NON_GENUINE_XML_TAGS
-                            )
                             if (
                                 not is_tool_result
-                                and not is_meta
-                                and not matches_pattern
-                                and not is_system_xml
+                                and not _is_meta_user_message(data, text_content)
                             ):
                                 user_count += 1
 
@@ -619,17 +601,7 @@ class SessionIndex:
 
                         # Count user messages, but exclude non-genuine messages
                         if role == "user":
-                            matches_pattern = any(
-                                p.search(codex_text) for p in NON_GENUINE_MSG_PATTERNS
-                            )
-                            # Check for known system-injected XML tags
-                            xml_match = re.match(
-                                r"^<([a-z][a-z0-9_-]*)>", codex_text.strip()
-                            )
-                            is_system_xml = (
-                                xml_match and xml_match.group(1) in NON_GENUINE_XML_TAGS
-                            )
-                            if not matches_pattern and not is_system_xml:
+                            if not _is_meta_user_message({}, codex_text):
                                 user_count += 1
 
                         for block in content:
