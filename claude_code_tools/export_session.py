@@ -8,11 +8,29 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Optional
 
+# Known system-injected XML tags that appear at the start of messages.
+# Using a whitelist of specific tags avoids filtering legitimate user
+# messages that start with HTML/XML like <div> or <svg>.
+NON_GENUINE_XML_TAGS = {
+    # Claude system tags (local command execution)
+    "command-name",
+    "command-message",
+    "command-args",
+    "local-command-stdout",
+    "bash-input",
+    "bash-stdout",
+    "bash-stderr",
+    "bash-notification",
+    # Codex system tags (environment/context injection)
+    "environment_context",
+    "user_instructions",
+    "user_shell_command",
+}
+
 # Regex patterns for non-genuine user messages (system-injected content).
 # Messages matching any of these patterns are filtered out when finding
 # the first real user message. Used for both Claude and Codex sessions.
 NON_GENUINE_MSG_PATTERNS = [
-    re.compile(r"^<[a-z][a-z0-9_-]*>"),  # XML tags: <command-name>, <environment_context>, etc.
     re.compile(r"^Caveat:", re.IGNORECASE),  # Caveat warnings about local commands
     re.compile(r"^\s*\[SESSION LINEAGE\]", re.IGNORECASE),  # Session continuation context
 ]
@@ -167,10 +185,16 @@ def _is_meta_user_message(data: dict, text: str) -> bool:
     if data.get("isMeta") is True:
         return True
 
-    # Check against global non-genuine message patterns
+    # Check against regex patterns (Caveat, SESSION LINEAGE, etc.)
     for pattern in NON_GENUINE_MSG_PATTERNS:
         if pattern.search(text):
             return True
+
+    # Check if message starts with a known system-injected XML tag
+    text_stripped = text.strip()
+    match = re.match(r"^<([a-z][a-z0-9_-]*)>", text_stripped)
+    if match and match.group(1) in NON_GENUINE_XML_TAGS:
+        return True
 
     return False
 
