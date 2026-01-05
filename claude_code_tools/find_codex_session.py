@@ -79,14 +79,6 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-try:
-    from claude_code_tools.session_tui import run_session_tui
-
-    TUI_AVAILABLE = True
-except ImportError:
-    TUI_AVAILABLE = False
-
-
 def extract_session_id_from_filename(filename: str) -> Optional[str]:
     """
     Extract session ID from Codex session filename.

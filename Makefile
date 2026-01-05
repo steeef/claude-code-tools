@@ -45,6 +45,9 @@ install:
 		echo "To install lmsh later, run: make lmsh-install"; \
 	fi
 
+install-gdocs:
+	uv tool install --force -e ".[gdocs]"
+
 dev-install:
 	uv pip install -e ".[dev]"
 
@@ -82,7 +85,7 @@ all-patch: prep-node
 	git push && git push --tags
 	@echo "Creating GitHub release..."
 	@VERSION=$$(grep "^version" pyproject.toml | head -1 | cut -d'"' -f2); \
-	gh release create v$$VERSION --title "v$$VERSION" --generate-notes || echo "Release v$$VERSION already exists"
+	gh release create v$$VERSION --title "v$$VERSION" || echo "Release v$$VERSION already exists"
 	@echo "Cleaning old builds..."
 	rm -rf dist/*
 	@echo "Building package..."
@@ -98,7 +101,7 @@ all-minor: prep-node
 	git push && git push --tags
 	@echo "Creating GitHub release..."
 	@VERSION=$$(grep "^version" pyproject.toml | head -1 | cut -d'"' -f2); \
-	gh release create v$$VERSION --title "v$$VERSION" --generate-notes || echo "Release v$$VERSION already exists"
+	gh release create v$$VERSION --title "v$$VERSION" || echo "Release v$$VERSION already exists"
 	@echo "Cleaning old builds..."
 	rm -rf dist/*
 	@echo "Building package..."
@@ -114,7 +117,7 @@ all-major: prep-node
 	git push && git push --tags
 	@echo "Creating GitHub release..."
 	@VERSION=$$(grep "^version" pyproject.toml | head -1 | cut -d'"' -f2); \
-	gh release create v$$VERSION --title "v$$VERSION" --generate-notes || echo "Release v$$VERSION already exists"
+	gh release create v$$VERSION --title "v$$VERSION" || echo "Release v$$VERSION already exists"
 	@echo "Cleaning old builds..."
 	rm -rf dist/*
 	@echo "Building package..."
@@ -124,7 +127,7 @@ all-major: prep-node
 release-github:
 	@echo "Creating GitHub release..."
 	@VERSION=$$(grep "^version" pyproject.toml | head -1 | cut -d'"' -f2); \
-	gh release create v$$VERSION --title "v$$VERSION" --generate-notes
+	gh release create v$$VERSION --title "v$$VERSION"
 	@echo "GitHub release created!"
 
 lmsh:

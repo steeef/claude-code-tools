@@ -70,14 +70,6 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-try:
-    from claude_code_tools.session_tui import run_session_tui
-
-    TUI_AVAILABLE = True
-except ImportError:
-    TUI_AVAILABLE = False
-
-
 @dataclass
 class AgentConfig:
     """Configuration for a coding agent."""

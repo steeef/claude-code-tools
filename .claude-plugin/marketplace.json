@@ -1,6 +1,6 @@
 {
   "name": "cctools-plugins",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "owner": {
     "name": "Prasad Chalasani"
   },
@@ -8,22 +8,22 @@
     {
       "name": "safety-hooks",
       "source": "./plugins/safety-hooks",
-      "description": "Safety hooks to block or require user approval for dangerous commands (rm, git operations, .env access, file size limits)"
+      "description": "Provides safety guards to block or require confirmation for risky CLI operations (e.g., rm, destructive git actions, .env access, large file operations)"
     },
     {
       "name": "aichat",
       "source": "./plugins/aichat",
-      "description": "Provides an agent, skill, hook, and slash command related to the `aichat` tool-set for searching and resuming CLI-agent sessions"
+      "description": "Adds `aichat`-related capabilities (agent support, reusable skills, hooks, and a slash command) for continuing work in CLI agent sessions without compaction, and for searching sessions"
     },
     {
       "name": "tmux-cli",
       "source": "./plugins/tmux-cli",
-      "description": "Provides tmux-cli skill to interact with CLI scripts or other code-agents in tmux panes, using the `tmux-cli` command"
+      "description": "Introduces tmux-cli skill for interacting with CLI scripts and other code agents inside tmux panes using the `tmux-cli` command"
     },
     {
       "name": "workflow",
       "source": "./plugins/workflow",
-      "description": "Workflow skills and agents: code-walk-thru, log-work, make-issue-spec skills; ui-tester agent for browser-based UI validation"
+      "description": "Workflow utilities and agents including code walkthrough tools, work logging, issue specification helpers, and a UI testing agent for browser-based validation"
     },
     {
       "name": "steeef-safety",

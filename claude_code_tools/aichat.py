@@ -32,8 +32,18 @@ class SessionIDGroup(click.Group):
 
 @click.group(cls=SessionIDGroup, invoke_without_command=True)
 @click.version_option()
+@click.option(
+    '--claude-home',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help='Claude home directory (default: ~/.claude or CLAUDE_CONFIG_DIR)',
+)
+@click.option(
+    '--codex-home',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help='Codex home directory (default: ~/.codex or CODEX_HOME)',
+)
 @click.pass_context
-def main(ctx):
+def main(ctx, claude_home, codex_home):
     """
     Session management tools for Claude Code and Codex.
 
@@ -56,7 +66,17 @@ def main(ctx):
         aichat resume abc123-def456   # Resume specific session
         aichat menu abc123-def456
         aichat trim session-id.jsonl
+
+    \b
+    Environment variables:
+        CLAUDE_CONFIG_DIR  - Default Claude home (overridden by --claude-home)
+        CODEX_HOME         - Default Codex home (overridden by --codex-home)
     """
+    # Store home dirs in context for subcommands to access
+    ctx.ensure_object(dict)
+    ctx.obj['claude_home'] = claude_home
+    ctx.obj['codex_home'] = codex_home
+
     # Auto-index sessions on every aichat command (incremental, fast if up-to-date)
     # Skip for build-index/clear-index to avoid double-indexing or state conflicts
     # In JSON mode (-j/--json), suppress all output for clean parsing
@@ -68,10 +88,10 @@ def main(ctx):
         try:
             from claude_code_tools.search_index import auto_index
             from claude_code_tools.session_utils import get_claude_home, get_codex_home
-            # Respect CLAUDE_CONFIG_DIR and CODEX_HOME environment variables
+            # Respect CLI args, then env vars, then defaults
             auto_index(
-                claude_home=get_claude_home(),
-                codex_home=get_codex_home(),
+                claude_home=get_claude_home(cli_arg=claude_home),
+                codex_home=get_codex_home(cli_arg=codex_home),
                 verbose=False,
                 silent=json_mode,
             )
@@ -1362,14 +1382,33 @@ def lineage(session, agent, json_output):
 
 
 @main.command("resume", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "allow_interspersed_args": False})
+@click.option(
+    '--claude-home',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help='Claude home directory (default: ~/.claude or CLAUDE_CONFIG_DIR)',
+)
+@click.option(
+    '--codex-home',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help='Codex home directory (default: ~/.codex or CODEX_HOME)',
+)
 @click.pass_context
-def resume_session(ctx):
+def resume_session(ctx, claude_home, codex_home):
     """Resume a session with various options (resume, clone, trim, continue).
 
     If no session ID provided, finds latest session for current project/branch.
     Shows resume menu with options: resume as-is, clone, trim+resume,
     smart-trim, or continue with context.
+
+    \b
+    Environment variables:
+        CLAUDE_CONFIG_DIR  - Default Claude home (overridden by --claude-home)
+        CODEX_HOME         - Default Codex home (overridden by --codex-home)
     """
+    # Merge with parent context options (CLI arg takes precedence)
+    claude_home = claude_home or (ctx.obj or {}).get('claude_home')
+    codex_home = codex_home or (ctx.obj or {}).get('codex_home')
+
     args = ctx.args
     session_id = args[0] if args and not args[0].startswith('-') else None
     _find_and_run_session_ui(

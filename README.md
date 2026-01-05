@@ -3,31 +3,120 @@
 [![claude-code-tools](https://img.shields.io/github/v/release/pchalasani/claude-code-tools?filter=v*&label=claude-code-tools&color=blue)](https://pypi.org/project/claude-code-tools/)
 [![aichat-search](https://img.shields.io/github/v/release/pchalasani/claude-code-tools?filter=rust-v*&label=aichat-search&color=orange)](https://github.com/pchalasani/claude-code-tools/releases?q=rust)
 
-A collection of practical tools, hooks, and utilities for enhancing Claude Code
-and other CLI coding agents.
+Productivity tools for Claude Code, Codex-CLI, and similar CLI coding agents:
+CLI commands, skills, agents, hooks, plugins. Click on a card below to navigate.
+
+
+<div align="center">
+
+<table>
+<tr>
+<td align="center">
+<a href="#quick-start">
+<img src="assets/card-quickstart.svg" alt="quick start" width="300"/>
+</a>
+</td>
+<td align="center">
+<a href="#claude-code-plugins">
+<img src="assets/card-plugins.svg" alt="plugins" width="300"/>
+</a>
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center">
+<a href="#aichat-session-management">
+<img src="assets/card-aichat.svg" alt="aichat" width="200"/>
+</a>
+</td>
+<td align="center">
+<a href="#tmux-cli-terminal-automation">
+<img src="assets/card-tmux.svg" alt="tmux-cli" width="200"/>
+</a>
+</td>
+<td align="center">
+<a href="#lmsh-experimental">
+<img src="assets/card-lmsh.svg" alt="lmsh" width="200"/>
+</a>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="#vault">
+<img src="assets/card-vault.svg" alt="vault" width="200"/>
+</a>
+</td>
+<td align="center">
+<a href="#env-safe">
+<img src="assets/card-env-safe.svg" alt="env-safe" width="200"/>
+</a>
+</td>
+<td align="center">
+<a href="#claude-code-safety-hooks">
+<img src="assets/card-safety.svg" alt="safety" width="200"/>
+</a>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="#status-line">
+<img src="assets/card-statusline.svg" alt="statusline" width="200"/>
+</a>
+</td>
+<td align="center">
+<a href="#google-docs-tools">
+<img src="assets/card-gdocs.svg" alt="gdocs" width="200"/>
+</a>
+</td>
+<td align="center">
+<a href="#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers">
+<img src="assets/card-alt.svg" alt="alt" width="200"/>
+</a>
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center">
+<a href="#development">
+<img src="assets/card-dev.svg" alt="development" width="300"/>
+</a>
+</td>
+<td align="center">
+<a href="LICENSE">
+<img src="assets/card-license.svg" alt="license" width="300"/>
+</a>
+</td>
+</tr>
+</table>
+
+</div>
+
+---
 
 <a id="quick-start"></a>
 ## 🚀 Quick Start
 
+**Prerequisites:** Node.js 16+ (required for action menus)
+
+**Step 1:** Install the Python package (includes Node.js UI components):
 ```bash
-uv tool install claude-code-tools   # Python package (includes Node.js UI)
+uv tool install claude-code-tools
 ```
 
-**Install the search TUI** (one of these):
+**Step 2:** Install the Rust-based search engine (powers both human TUI and agent search).
+Choose **one** of these methods:
 
 - **Homebrew** (macOS/Linux): `brew install pchalasani/tap/aichat-search`
-- **Cargo**: `cargo install aichat-search` (compiles from source, takes ~5-6 min)
+- **Cargo**: `cargo install aichat-search` (compiles from source, ~5 min)
 - **Pre-built binary**: Download from [Releases](https://github.com/pchalasani/claude-code-tools/releases) (look for `rust-v*` releases)
 
-**Prerequisites:**
+That's it! No `npm install` needed — the Python package includes pre-installed Node.js dependencies.
 
-- **Node.js 16+** — Required for `aichat` action menus (resume, export, etc.)
-
-That's it! The Python package includes pre-installed Node.js dependencies, so no
-`npm install` is needed.
-
-Without `aichat-search`, the search command won't be available, but other
-`aichat` commands still work.
+Without `aichat-search`, search won't work, but other `aichat` commands (resume, trim, rollover, etc.) still function.
 
 ### What You Get
 
@@ -35,20 +124,25 @@ Four commands are installed:
 
 | Command | Description |
 |---------|-------------|
-| [`aichat`](#aichat-session-management) | Session management for Claude Code and Codex (find, resume, export, trim, query) |
+| [`aichat`](#aichat-session-management) | Continue work with session lineage and truncation, avoiding compaction;<br>fast (Rust/Tantivy) full-text session search TUI for humans, CLI for agents  |
 | [`tmux-cli`](#tmux-cli-terminal-automation) | Terminal automation for AI agents ("Playwright for terminals") |
 | [`vault`](#vault) | Encrypted .env backup and sync |
 | [`env-safe`](#env-safe) | Safe .env inspection without exposing values |
 
+<a id="claude-code-plugins"></a>
+
 ### Claude Code Plugins
+
+<details>
+<summary>📦 <b>Click to expand plugin details</b></summary>
 
 This repo also provides plugins for the
 [Claude Code marketplace](https://code.claude.com/docs/en/discover-plugins):
 
 | Plugin | Description |
 |--------|-------------|
-| `aichat` | Session management: hooks (`>resume`), commands, skills, agents |
-| `tmux-cli` | Terminal automation skill for controlling other tmux panes |
+| `aichat` | hooks (`>resume`), commands, skills, agents for continuing session work and fast full-text search of sessions|
+| `tmux-cli` | Terminal automation skill for interacting with other tmux panes |
 | `workflow` | Work logging, code walk-through, issue specs, UI testing |
 | `safety-hooks` | Prevent destructive git/docker/rm commands |
 
@@ -79,6 +173,40 @@ claude plugin install "safety-hooks@cctools-plugins"
 
 You can also use `/plugin` without arguments to launch a TUI for browsing and installing.
 
+<a id="aichat-plugin-details"></a>
+
+#### aichat Plugin Details
+
+The `aichat` plugin provides:
+
+| Type | Name | What it does |
+|------|------|--------------|
+| Hook | `>resume` | Type `>resume` (or `>continue`, `>handoff`) to trigger session handoff flow |
+| Skill | `/session-search` | Search past sessions (for agents without sub-agent support, e.g. Codex) |
+| Skill | `/recover-context` | Extract context from parent sessions into current conversation |
+| Agent | `session-searcher` | Sub-agent to search/retrieve context from past sessions |
+
+#### tmux-cli Plugin Details
+
+The `tmux-cli` plugin provides:
+
+| Type | Name | What it does |
+|------|------|--------------|
+| Skill | `/tmux-cli` | Interact with CLI apps/agents in other tmux panes |
+
+#### safety-hooks Plugin Details
+
+The `safety-hooks` plugin provides hooks that block or require approval for dangerous operations:
+
+| Hook | What it blocks/modifies |
+|------|------------------------|
+| `rm` protection | Blocks `rm -rf` on critical paths, requires approval for others |
+| `git add` protection | Blocks `git add -A`, requires approval for modified files |
+| `git checkout` protection | Warns before discarding uncommitted changes |
+| `git commit` protection | Blocks commits without user review |
+| `.env` protection | Blocks all read/write/edit of `.env` files; suggests `env-safe` CLI |
+| File length limit | Blocks reading files >500 lines to prevent context bloat |
+
 #### Workflow Plugin Details
 
 The `workflow` plugin provides:
@@ -90,39 +218,106 @@ The `workflow` plugin provides:
 | `/make-issue-spec` | Create task specs at `issues/YYYYMMDD-topic.md` |
 | `ui-tester` agent | Browser-based UI testing via Chrome DevTools MCP |
 
----
-
-## ⚠️ Breaking Change (v1.0)
-
-All session tools are now under `aichat`. Use `aichat search` instead of
-`find-claude-session`/`find-codex-session`, and similarly for other commands.
+</details>
 
 ---
-
-## Table of Contents
-
-- [🚀 Quick Start](#quick-start)
-- [💬 aichat — Session Management](#aichat-session-management)
-- [🎮 tmux-cli — Terminal Automation](#tmux-cli-terminal-automation)
-- [🚀 lmsh (Experimental) — natural language shell](#lmsh-experimental)
-- [📊 Status Line](#status-line)
-- [🔐 Utilities](#utilities)
-- [🛡️ Claude Code Safety Hooks](#claude-code-safety-hooks)
-- [🤖 Using with Alternative LLM Providers](#using-claude-code-with-open-weight-anthropic-api-compatible-llm-providers)
-- [📚 Documentation](#documentation)
-- [📋 Requirements](#requirements)
-- [🛠️ Development](#development)
-- [📄 License](#license)
-
 
 <a id="aichat-session-management"></a>
-# 💬 aichat — Session Management
+# 💬 aichat — Session Search, and Continuation without Compaction
+
+## Why I built this
+
+This probably belongs in a blog post or reddit post, but I think knowing the thought process and motivation helps understand what the `aichat` command-group does and why it might be useful to you.
+(For those wondering, this section is one
+of the few parts of the entire repo that is 100% hand-crafted since I just cannot
+trust today's LLMs to write just the way I want.)
+
+<details>
+<summary>📖 <b>Click to expand the full background</b></summary>
+
+#### Compaction is lossy: instead, clone the session and truncate long tool-results and older assistant messages
+
+So, here's how this all started. Session compaction is
+**lossy:** there are very often situations where compaction loses important details,
+so I wanted to find ways to continue my work without compaction.
+A typical scenario is this -- I am at 90% context usage, and I wish I can go on a bit longer to finish the current work-phase. So I thought,
+> I wish I could **truncate** some long tool results (e.g. file reads or API results) or older assistant messages (can include write/edit tool-calls) and clear out some context to continue my work.
+
+This lead to the [`aichat trim`](#three-resume-strategies) utility. It provides two variants:
+
+- a "blind" [`trim`](#three-resume-strategies) mode that truncates all tool-results longer than a threshold (default 500 chars), and optionally all-but-recent assistant messages (which may include long write/edit tool-calls)
+-- all user-configurable. This can free up 40-60% context, depending on what's been going on in the session.
+
+- a [`smart-trim`](#three-resume-strategies) mode that uses a headless Claude/Codex 
+agent to determine which
+messages can be safely truncated in order to continue the current work. The precise
+truncation criteria can be customized (e.g. the user may want to continue some
+prior work rather than the current task).
+
+
+Both of these modes *clone* the current session before truncation, and inject two
+types of [*lineage*](#lineage-nothing-is-lost):
+- *Session-lineage* is injected into the first user message: a chronological listing
+of sessions from which the current session was derived. This allows the (sub-) agent
+to extract needed context from ancestor sessions, either when prompted by the user,
+or on its own initiative.
+- Each truncated message also carries a pointer to the specific message index in the parent session so full details can always be looked up if needed.
+
+#### A cleaner alternative: Start new session with lineage and context summary
+
+Session trimming can be a quick way to clear out context in order to continue the current task for a bit longer, but after a couple of trims, does not yield as much benefit. But the lineage-injection lead to a different idea to avoid compaction:
+
+> Create a fresh session, inject parent-session lineage into the first user message, along with instructions to extract (using sub-agents if available) context of the latest
+task from the parent session, or skip context extraction and leave it to the user to extract context once the session starts.
+
+This is the idea behind the [`aichat rollover`](#three-resume-strategies) functionality, which is the variant I use the most frequently, and I use this
+instead of first trimming a session. I usually choose
+to skip the summarization (this is the `quick` rollover option in the TUI) so that
+the new session starts quickly and I can instruct Claude-Code/Codex-CLI to extract
+needed context (usually from the latest chat session shown in the lineage), as shown
+in the [demo video](#resume-demo-video) below.
+
+#### A hook to simplify continuing work from a session
+
+I wanted to make it seamless to pick any of the above three task continuation modes, when inside a Claude Code session, so I set up a `UserPromptSubmit` [hook](#resume-options) (via the `aichat` plugin) that is triggered when the user types `>resume` (or `>continue` or `>handoff`). When I am close to full context usage,
+I type `>resume`, and the hook script copies the current session id into the clipboard and shows instructions asking the user to run
+`aichat resume <pasted-session-id>`; this launches a TUI that offering options to choose
+one of the above [session resumption modes](#three-resume-strategies).
+See the [demo video](#resume-demo-video) below.
+
+#### Fast full-text session search for humans/agents to find prior work context
+
+The above session resumption methods are useful to continue your work from the
+*current* session, but often you want to continue work that was done in an
+*older* Claude-Code/Codex-CLI session. This is why I added this:
+
+> Super-fast Rust/Tantivy-based [full-text search](#aichat-search--find-and-select-sessions) of all sessions across Claude-Code and
+Codex-CLI, with a pleasant self-explanatory TUI for humans, and a CLI mode for Agents
+to find past work. (The Rust/Tantivy-based search and TUI was inspired by the excellent
+TUI in the [zippoxer/recall](https://github.com/zippoxer/recall) repo).
+
+Users can launch the search TUI using [`aichat search ...`](#aichat-search--find-and-select-sessions) and (sub-)
+[agents can run](#agent-access-to-history-the-session-searcher-sub-agent)
+`aichat search ... --json` and get results in JSONL format
+for quick analysis and filtering using `jq` which of course CLI agents are
+great at using. There is a corresponding *skill* called `session-search` and a *sub-agent* called `session-searcher`, both
+available via the `aichat` [plugin](#claude-code-plugins).
+For example in Claude Code,
+users can recover context of some older work by simply saying something like:
+
+> Use your session-searcher sub-agent to recover the context of how we worked on
+connecting the Rust search TUI with the node-based Resume Action menus.
+
+</details>
+
+## Overview
+
 
 `aichat` is your unified CLI command-group for managing Claude Code and Codex sessions.
 Two main capabilities are available:
 
 1. **Resume with lineage** — Continue sessions when context fills up, preserving
-   links to parent sessions (unlike lossy compaction)
+   links to parent sessions, avoiding lossy compaction.
 
 2. **Search** — *Full-text search* across all sessions with a fast Rust/Tantivy-based 
 TUI for humans, and CLI (with `--json` flag for jsonl output) for Codex or Claude (sub) 
@@ -144,9 +339,15 @@ aichat --help              # See all subcommands
 aichat <subcommand> --help # Help for specific subcommand
 ```
 
+> [!NOTE]
+> Most `aichat` commands accept `--claude-home` and `--codex-home` to override
+> the default session directories (`~/.claude` and `~/.codex`). You can also set
+> the `CLAUDE_CONFIG_DIR` and `CODEX_HOME` environment variables.
+
 ---
 
-## Resume Options — Managing Context
+<a id="resume-options"></a>
+## Resume Options — Continuing work in a trimmed or fresh session, with lineage.
 
 
 You have three ways to access the resume functionality:
@@ -167,6 +368,7 @@ session ID.
 for installation.*
 
 
+<a id="resume-demo-video"></a>
 
 https://github.com/user-attachments/assets/310dfa5b-a13b-4a2b-aef8-f73954ef8fe9
 
@@ -187,6 +389,11 @@ aichat resume                # Auto-find latest for this project
 
 
 ### Three Resume Strategies
+
+> [!TIP]
+> It's highly recommended to turn off auto-compaction when using `aichat resume`.
+> - **Claude Code:** Use the `/config` command to disable auto-compaction
+> - **Codex CLI:** Set `model_auto_compact_token_limit = 0` in `~/.codex/config.toml`
 
 When you access the resume menu using any of the above 3 mechanisms, you will
 be presented with 3 resume strategies, as described below.
@@ -370,14 +577,17 @@ This enables agents to find and retrieve context from any past session in the
 lineage, either on their own initiative or when you prompt them to look up
 historical context.
 
-Installing the `aichat` plugin mentioned above creates a `Session-Searcher` sub-agent 
-(for Claude-Code) that has instructions to either directly search a known session jsonl 
-file if clear from context, or use `aichat search --json` to search past sessions. 
-E.g. in Claude Code you can say:
+Installing the `aichat` plugin mentioned above provides two ways to search past sessions:
 
-> From past sessions, recover details of our work on task-termination specification in Langroid agents/taks configuration.
+- **`Session-Searcher` sub-agent** (Claude Code) — A sub-agent with instructions to
+  search a known session file if clear from context, or use `aichat search --json`
+  to search past sessions. E.g. in Claude Code you can say:
+  > From past sessions, recover details of our work on task-termination specification.
 
-This will trigger the `Session-Searcher` sub-agent to search past sessions for the specified query.
+- **`session-search` skill** (Claude Code, Codex CLI) — A skill that invokes the same
+  search functionality. Useful for CLI agents like Codex that don't yet support sub-agents.
+  E.g. you can say:
+  > Use your session-search skill to find our work on error handling.
 
 ---
 
@@ -435,10 +645,26 @@ everything automatically—just describe what you want.
 
 **Works anywhere**: Automatically handles both local tmux panes and remote sessions.
 
-<a id="tmux-cli-deep-dive"></a>
-## 🎮 tmux-cli Deep Dive
+### Why tmux-cli instead of vanilla tmux?
 
-### What Claude Code Can Do With tmux-cli
+Vanilla tmux can do everything tmux-cli does. The problem is that LLMs frequently make
+mistakes with raw tmux: forgetting the Enter key, not adding delays between text and
+Enter (causing race conditions with fast CLI apps), or incorrect escaping. `tmux-cli`
+bakes in defaults that address these: Enter is sent automatically with a 1-second delay
+(configurable), pane targeting accepts simple numbers instead of `session:window.pane`,
+and there's built-in `wait_idle` to detect when a CLI is ready for input.
+
+## Tmux-cli skill
+
+To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
+
+For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md) and [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md).
+
+All of this assumes you're familiar and comfortable with tmux, and (like me) run
+all CLI coding sessions inside tmux sessions.
+
+
+## What Claude Code Can Do With tmux-cli
 
 1. **Test Interactive Scripts** - CC can run and interact with scripts that 
    require user input, answering prompts automatically based on your instructions.
@@ -452,49 +678,12 @@ everything automatically—just describe what you want.
 4. **Claude-to-Claude Communication** - CC can launch another Claude Code instance 
    to get specialized help or code reviews.
 
-Claude Code knows how to use tmux-cli through its built-in help. You just describe 
-what you want, and CC handles the technical details.
+
+Claude Code can find out how to use tmux-cli through its built-in help. 
+You just describe what you want, and CC handles the technical details.
 
 For complete command reference, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
 
-### Setting up tmux-cli for Claude Code
-
-To enable CC to use tmux-cli, add this snippet to your global
-`~/.claude/CLAUDE.md` file:
-
-```markdown
-# tmux-cli Command to interact with CLI applications
-
-`tmux-cli` is a bash command that enables Claude Code to control CLI applications 
-running in separate tmux panes - launch programs, send input, capture output, 
-and manage interactive sessions. Run `tmux-cli --help` for detailed usage 
-instructions.
-
-Example uses:
-- Interact with a script that waits for user input
-- Launch another Claude Code instance to have it perform some analysis or review or 
-  debugging etc
-- Run a Python script with the Pdb debugger to step thru its execution, for 
-  code-understanding and debugging
-- Launch web apps and test them with browser automation MCP tools like Playwright or 
-Chrome Dev Tools.
-```
-
-More frequently, I use this method: I launch another CLI-agent (say Codex-CLI) 
-in another tmux pane, and say something like this to the first agent:
-
-> There's another coding agent "Codex" running in tmux Pane 3. Feel free to use Codex 
-to help you with your task or review your work. You can communicate with Codex using
-the tmux-cli command; you can do tmux-cli --help to see how to use it.
-
-## Tmux-cli skill
-
-To make it easier to have Claude-Code use this command, there's a **tmux-cli plugin** in this repo; once you install it, you can simply say "use your tmux-cli skill to get help from Codex running in tmux pane 3".
-
-For detailed instructions, see [docs/tmux-cli-instructions.md](docs/tmux-cli-instructions.md).
-
-All of this assumes you're familiar and comfortable with tmux, and (like me) run
-all CLI coding sessions inside tmux sessions.
 
 
 <a id="lmsh-experimental"></a>
@@ -567,11 +756,8 @@ Add to `~/.claude/settings.json`:
 
 Requires `jq` and a [Nerd Font](https://www.nerdfonts.com/) for powerline symbols.
 
-<a id="utilities"></a>
-# 🔐 Utilities
-
 <a id="vault"></a>
-## 🔐 vault
+# 🔐 vault
 
 Centralized encrypted backup for .env files across all your projects using SOPS.
 
@@ -593,7 +779,7 @@ vault status    # Check sync status for current project
 For detailed documentation, see [docs/vault-documentation.md](docs/vault-documentation.md).
 
 <a id="env-safe"></a>
-## 🔍 env-safe
+# 🔍 env-safe
 
 Safely inspect .env files without exposing sensitive values. Designed for Claude Code and other automated tools that need to work with environment files without accidentally leaking secrets.
 
@@ -616,10 +802,11 @@ env-safe --help                  # See all options
 
 ### Why env-safe?
 
-Claude Code is completely blocked from directly accessing .env files - no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
+The [`safety-hooks` plugin](#claude-code-safety-hooks) in this repo blocks Claude Code from directly accessing .env files — no reading, writing, or editing allowed. This prevents both accidental exposure of API keys and unintended modifications. The `env-safe` command provides the only approved way for Claude Code to inspect environment configuration safely, while any modifications must be done manually outside of Claude Code.
+
 
 <a id="claude-code-safety-hooks"></a>
-## 🛡️ Claude Code Safety Hooks
+# 🛡️ Claude Code Safety Hooks
 
 This repository includes a comprehensive set of safety hooks that enhance Claude
 Code's behavior and prevent dangerous operations.
@@ -736,25 +923,75 @@ For complete setup instructions including llama-server commands, config files, a
 command-line options for switching models, see
 **[docs/local-llm-setup.md](docs/local-llm-setup.md)**.
 
-<a id="documentation"></a>
-## 📚 Documentation
+<a id="google-docs-tools"></a>
+## 📝 Google Docs Tools (md2gdoc, gdoc2md)
 
-- [tmux-cli detailed instructions](docs/tmux-cli-instructions.md) - 
-  Comprehensive guide for using tmux-cli
-- [Claude Code tmux tutorials](docs/claude-code-tmux-tutorials.md) - 
-  Additional tutorials and examples
-- [Vault documentation](docs/vault-documentation.md) - 
-  Complete guide for the .env backup system
-- [Hook configuration](hooks/README.md) - Setting up Claude Code hooks
+I work in Markdown but often need to collaborate with teammates via Google Docs.
+The problem: uploading a Markdown file to Google Drive with proper formatting
+is a pain. You have to:
 
-<a id="requirements"></a>
-## 📋 Requirements
+1. Upload the `.md` file to Google Drive
+2. Click "Open in Google Docs" to trigger conversion
+3. This creates a *new* document with proper formatting
+4. Delete the original raw `.md` file
+5. Rename the new document
 
-- Python 3.11+
-- uv (for installation)
-- **Node.js 16+** (for interactive UI - typically already installed with Claude Code)
-- tmux (for tmux-cli functionality)
-- SOPS (for vault functionality)
+`md2gdoc` reduces this to one command. `gdoc2md` does the reverse.
+
+### Installation
+
+These tools require additional dependencies. Install with the `gdocs` extra:
+
+```bash
+uv tool install 'claude-code-tools[gdocs]'
+```
+
+### First-Time Setup (One-Time)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create/select a project and enable the **Google Drive API**
+3. Go to **APIs & Services** → **Credentials** → **Create Credentials** →
+   **OAuth client ID**
+4. Choose **Desktop app**, then download the JSON file
+5. Save it as `.gdoc-credentials.json` in your project directory
+6. First run will open browser for OAuth consent (one-time per project)
+
+Credentials are project-specific (`.gdoc-credentials.json` and `.gdoc-token.json`
+in the current directory), so different projects can use different Google
+accounts.
+
+### md2gdoc — Markdown to Google Docs
+
+Upload Markdown files as native Google Docs:
+
+```bash
+md2gdoc report.md                           # Upload to root of Drive
+md2gdoc report.md --folder "Perf/Reports"    # Upload to specific folder
+md2gdoc report.md --name "Q4 Summary"       # Upload with custom name
+```
+
+If a file with the same name exists, `--on-existing` controls behavior:
+- `ask` (default): prompt for action
+- `version`: auto-add suffix (`report-1`, `report-2`, etc.)
+- `overwrite`: replace existing file
+
+Features:
+
+- Native markdown conversion (same quality as manual upload + "Open in Docs")
+- Follows Drive shortcuts to shared folders
+- Conflict detection with version suffix or overwrite options
+- Creates folders if they don't exist
+
+### gdoc2md — Google Docs to Markdown
+
+Download Google Docs as Markdown files:
+
+```bash
+gdoc2md "My Document"                        # Download from root
+gdoc2md "My Document" --folder "PNL/Reports" # Download from folder
+gdoc2md "My Document" -o report.md           # Save with custom name
+gdoc2md --list --folder PNL                  # List docs in folder
+```
 
 <a id="development"></a>
 ## 🛠️ Development

@@ -2,10 +2,38 @@
 
 import json
 import os
+import re
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any, Optional
+
+# Known system-injected XML tags that appear at the start of messages.
+# Using a whitelist of specific tags avoids filtering legitimate user
+# messages that start with HTML/XML like <div> or <svg>.
+NON_GENUINE_XML_TAGS = {
+    # Claude system tags (local command execution)
+    "command-name",
+    "command-message",
+    "command-args",
+    "local-command-stdout",
+    "bash-input",
+    "bash-stdout",
+    "bash-stderr",
+    "bash-notification",
+    # Codex system tags (environment/context injection)
+    "environment_context",
+    "user_instructions",
+    "user_shell_command",
+}
+
+# Regex patterns for non-genuine user messages (system-injected content).
+# Messages matching any of these patterns are filtered out when finding
+# the first real user message. Used for both Claude and Codex sessions.
+NON_GENUINE_MSG_PATTERNS = [
+    re.compile(r"^Caveat:", re.IGNORECASE),  # Caveat warnings about local commands
+    re.compile(r"^\s*\[SESSION LINEAGE\]", re.IGNORECASE),  # Session continuation context
+]
 
 # Lazy import yaml to allow module to load even if not installed
 try:
@@ -139,22 +167,60 @@ def _extract_codex_message_text(data: dict) -> Optional[str]:
     return None
 
 
+def _is_meta_user_message(data: dict, text: str) -> bool:
+    """
+    Check if a user message is a meta/system-injected message.
+
+    These include local command injections that Claude Code records
+    in the session file but aren't actual user queries.
+
+    Args:
+        data: The parsed JSON data for the message
+        text: The extracted text content
+
+    Returns:
+        True if this is a meta message that should be skipped
+    """
+    # Check isMeta flag
+    if data.get("isMeta") is True:
+        return True
+
+    # Check against regex patterns (Caveat, SESSION LINEAGE, etc.)
+    for pattern in NON_GENUINE_MSG_PATTERNS:
+        if pattern.search(text):
+            return True
+
+    # Check if message starts with a known system-injected XML tag
+    text_stripped = text.strip()
+    match = re.match(r"^<([a-z][a-z0-9_-]*)>", text_stripped)
+    if match and match.group(1) in NON_GENUINE_XML_TAGS:
+        return True
+
+    return False
+
+
 def extract_first_last_messages(
     session_file: Path, agent: str
-) -> tuple[Optional[dict[str, str]], Optional[dict[str, str]]]:
+) -> tuple[
+    Optional[dict[str, str]],
+    Optional[dict[str, str]],
+    Optional[dict[str, str]],
+]:
     """
-    Extract first and last user/assistant messages from a session.
+    Extract first/last messages and the first real user message from a session.
 
     Args:
         session_file: Path to session JSONL file
         agent: Agent type ('claude' or 'codex')
 
     Returns:
-        Tuple of (first_msg, last_msg) where each is a dict with 'role' and
-        'content' keys, or None if not found
+        Tuple of (first_msg, last_msg, first_user_msg) where each is a dict
+        with 'role' and 'content' keys, or None if not found.
+        first_user_msg skips meta messages (local command injections).
     """
     first_msg: Optional[dict[str, str]] = None
     last_msg: Optional[dict[str, str]] = None
+    first_user_msg: Optional[dict[str, str]] = None
 
     try:
         with open(session_file, "r", encoding="utf-8") as f:
@@ -190,13 +256,20 @@ def extract_first_last_messages(
                     }
                     if first_msg is None:
                         first_msg = msg_dict
+                    # Track first real user message (skip meta messages)
+                    if (
+                        role == "user"
+                        and first_user_msg is None
+                        and not _is_meta_user_message(data, text)
+                    ):
+                        first_user_msg = msg_dict
                     # Always update last_msg to get the last one
                     last_msg = msg_dict
 
     except (OSError, IOError):
         pass
 
-    return first_msg, last_msg
+    return first_msg, last_msg, first_user_msg
 
 
 def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
@@ -236,6 +309,7 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
         "trim_stats": None,
         "first_msg": None,
         "last_msg": None,
+        "first_user_msg": None,
     }
 
     # Track session start timestamp from JSON metadata
@@ -371,9 +445,12 @@ def extract_session_metadata(session_file: Path, agent: str) -> dict[str, Any]:
         metadata["project"] = Path(metadata["cwd"]).name
 
     # Extract first and last messages
-    first_msg, last_msg = extract_first_last_messages(session_file, agent)
+    first_msg, last_msg, first_user_msg = extract_first_last_messages(
+        session_file, agent
+    )
     metadata["first_msg"] = first_msg
     metadata["last_msg"] = last_msg
+    metadata["first_user_msg"] = first_user_msg
 
     return metadata
 
@@ -458,6 +535,8 @@ def generate_yaml_frontmatter(metadata: dict[str, Any]) -> str:
         yaml_data["first_msg"] = metadata["first_msg"]
     if metadata.get("last_msg"):
         yaml_data["last_msg"] = metadata["last_msg"]
+    if metadata.get("first_user_msg"):
+        yaml_data["first_user_msg"] = metadata["first_user_msg"]
 
     # Trim stats (only for trimmed sessions)
     if metadata.get("trim_stats"):
