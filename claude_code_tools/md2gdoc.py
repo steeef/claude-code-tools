@@ -207,7 +207,13 @@ def find_folder_id(service, folder_path: str, create_if_missing: bool = True) ->
         console.print(f"[dim]Looking for '{part}' in parent={parent_id}[/dim]")
         results = (
             service.files()
-            .list(q=query, fields="files(id, name, mimeType, shortcutDetails)", pageSize=10)
+            .list(
+                q=query,
+                fields="files(id, name, mimeType, shortcutDetails)",
+                pageSize=10,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            )
             .execute()
         )
         files = results.get("files", [])
@@ -257,7 +263,13 @@ def check_file_exists(service, folder_id: Optional[str], filename: str) -> bool:
     console.print(f"[dim]Checking for existing file: {filename}[/dim]")
     results = (
         service.files()
-        .list(q=query, fields="files(id, name)", pageSize=10)
+        .list(
+            q=query,
+            fields="files(id, name)",
+            pageSize=10,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
         .execute()
     )
     files = results.get("files", [])
@@ -279,7 +291,13 @@ def list_existing_versions(
     )
     results = (
         service.files()
-        .list(q=query, fields="files(id, name)", pageSize=100)
+        .list(
+            q=query,
+            fields="files(id, name)",
+            pageSize=100,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
         .execute()
     )
     return [f["name"] for f in results.get("files", [])]
@@ -316,12 +334,18 @@ def delete_file(service, folder_id: Optional[str], filename: str) -> bool:
     )
     results = (
         service.files()
-        .list(q=query, fields="files(id)", pageSize=1)
+        .list(
+            q=query,
+            fields="files(id)",
+            pageSize=1,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
         .execute()
     )
     files = results.get("files", [])
     if files:
-        service.files().delete(fileId=files[0]["id"]).execute()
+        service.files().delete(fileId=files[0]["id"], supportsAllDrives=True).execute()
         return True
     return False
 

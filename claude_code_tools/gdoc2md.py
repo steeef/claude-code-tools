@@ -30,20 +30,41 @@ from claude_code_tools.md2gdoc import (
 )
 
 
+# Document types we can convert to markdown
+CONVERTIBLE_TYPES = {
+    "application/vnd.google-apps.document": "gdoc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/msword": "doc",
+    "application/vnd.oasis.opendocument.text": "odt",
+    "application/pdf": "pdf",
+}
+
+
 def find_doc_by_name(
     service, folder_id: Optional[str], doc_name: str
 ) -> Optional[dict]:
-    """Find a Google Doc by name in a folder. Returns file metadata or None."""
+    """Find a convertible document by name in a folder. Returns file metadata or None."""
     parent = folder_id if folder_id else "root"
+
+    # Search for any convertible document type
+    type_conditions = " or ".join(
+        f"mimeType = '{mime}'" for mime in CONVERTIBLE_TYPES.keys()
+    )
     query = (
         f"name = '{doc_name}' and "
         f"'{parent}' in parents and "
-        f"mimeType = 'application/vnd.google-apps.document' and "
+        f"({type_conditions}) and "
         f"trashed = false"
     )
     results = (
         service.files()
-        .list(q=query, fields="files(id, name)", pageSize=1)
+        .list(
+            q=query,
+            fields="files(id, name, mimeType)",
+            pageSize=1,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
         .execute()
     )
     files = results.get("files", [])
@@ -51,36 +72,152 @@ def find_doc_by_name(
 
 
 def list_docs_in_folder(service, folder_id: Optional[str]) -> list[dict]:
-    """List all Google Docs in a folder."""
+    """List all convertible documents in a folder."""
     parent = folder_id if folder_id else "root"
+
+    # Search for any convertible document type
+    type_conditions = " or ".join(
+        f"mimeType = '{mime}'" for mime in CONVERTIBLE_TYPES.keys()
+    )
     query = (
         f"'{parent}' in parents and "
-        f"mimeType = 'application/vnd.google-apps.document' and "
+        f"({type_conditions}) and "
         f"trashed = false"
     )
     results = (
         service.files()
-        .list(q=query, fields="files(id, name)", pageSize=100, orderBy="name")
+        .list(
+            q=query,
+            fields="files(id, name, mimeType)",
+            pageSize=100,
+            orderBy="name",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
         .execute()
     )
     return results.get("files", [])
 
 
-def download_doc_as_markdown(service, file_id: str) -> Optional[str]:
-    """Download a Google Doc as Markdown content."""
+def download_doc_as_markdown(service, file_id: str, mime_type: str) -> Optional[str]:
+    """Download a document as Markdown content."""
     try:
-        # Export as markdown
-        content = (
-            service.files()
-            .export(fileId=file_id, mimeType="text/markdown")
-            .execute()
-        )
-        # Content is returned as bytes
-        if isinstance(content, bytes):
-            return content.decode("utf-8")
-        return content
+        # For Google Docs, use export API directly
+        if mime_type == "application/vnd.google-apps.document":
+            content = (
+                service.files()
+                .export(fileId=file_id, mimeType="text/markdown")
+                .execute()
+            )
+            if isinstance(content, bytes):
+                return content.decode("utf-8")
+            return content
+        else:
+            # For non-Google-Docs (PDF, DOCX, etc.), convert to Google Doc first
+            # This is what happens when you click "Open in Google Docs" in the UI
+            return convert_via_google_docs(service, file_id, mime_type)
     except Exception as e:
         console.print(f"[red]Export error:[/red] {e}")
+        return None
+
+
+def convert_via_google_docs(service, file_id: str, mime_type: str) -> Optional[str]:
+    """Convert a file to Google Doc, export as markdown, then delete the temp copy."""
+    try:
+        # Get the original file name
+        file_info = service.files().get(fileId=file_id, fields="name").execute()
+        original_name = file_info.get("name", "temp")
+
+        # Copy the file as a Google Doc (this triggers conversion)
+        console.print("[dim]Converting via Google Docs...[/dim]")
+        copy_metadata = {
+            "name": f"_temp_convert_{original_name}",
+            "mimeType": "application/vnd.google-apps.document",
+        }
+        copied_file = (
+            service.files()
+            .copy(fileId=file_id, body=copy_metadata, fields="id")
+            .execute()
+        )
+        temp_doc_id = copied_file["id"]
+
+        try:
+            # Export the Google Doc as markdown
+            content = (
+                service.files()
+                .export(fileId=temp_doc_id, mimeType="text/markdown")
+                .execute()
+            )
+
+            if isinstance(content, bytes):
+                content = content.decode("utf-8")
+
+            return content
+        finally:
+            # Clean up: delete the temporary Google Doc
+            console.print("[dim]Cleaning up temp file...[/dim]")
+            try:
+                service.files().delete(fileId=temp_doc_id).execute()
+            except Exception:
+                pass  # Best effort cleanup
+
+    except Exception as e:
+        console.print(f"[red]Conversion error:[/red] {e}")
+        console.print("[dim]Falling back to pandoc...[/dim]")
+        return download_and_convert_with_pandoc(service, file_id, mime_type)
+
+
+def download_and_convert_with_pandoc(
+    service, file_id: str, mime_type: str
+) -> Optional[str]:
+    """Download file and convert to markdown using pandoc."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    if not shutil.which("pandoc"):
+        console.print(
+            "[red]Error:[/red] pandoc required for non-Google-Docs files. "
+            "Install with: brew install pandoc"
+        )
+        return None
+
+    # Determine file extension
+    ext_map = {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/msword": ".doc",
+        "application/vnd.oasis.opendocument.text": ".odt",
+        "application/pdf": ".pdf",
+    }
+    ext = ext_map.get(mime_type, ".docx")
+
+    try:
+        # Download the file
+        content = service.files().get_media(fileId=file_id).execute()
+
+        # Save to temp file and convert
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        # Convert with pandoc
+        result = subprocess.run(
+            ["pandoc", tmp_path, "-t", "markdown", "-o", "-"],
+            capture_output=True,
+            text=True,
+        )
+
+        # Clean up
+        import os
+        os.unlink(tmp_path)
+
+        if result.returncode != 0:
+            console.print(f"[red]Pandoc error:[/red] {result.stderr}")
+            return None
+
+        return result.stdout
+    except Exception as e:
+        console.print(f"[red]Download/convert error:[/red] {e}")
         return None
 
 
@@ -161,12 +298,14 @@ Credentials (in order of precedence):
     if args.list:
         docs = list_docs_in_folder(service, folder_id)
         if not docs:
-            console.print("[yellow]No Google Docs found in this folder.[/yellow]")
+            console.print("[yellow]No convertible documents found in this folder.[/yellow]")
             sys.exit(0)
 
-        console.print(f"\n[bold]Google Docs in {args.folder or 'My Drive'}:[/bold]\n")
+        console.print(f"\n[bold]Documents in {args.folder or 'My Drive'}:[/bold]\n")
         for doc in docs:
-            console.print(f"  • {doc['name']}")
+            doc_type = CONVERTIBLE_TYPES.get(doc.get('mimeType', ''), 'unknown')
+            type_label = f"[dim]({doc_type})[/dim]" if doc_type != "gdoc" else ""
+            console.print(f"  • {doc['name']} {type_label}")
         console.print(f"\n[dim]Total: {len(docs)} document(s)[/dim]")
         sys.exit(0)
 
@@ -181,8 +320,9 @@ Credentials (in order of precedence):
         sys.exit(1)
 
     # Download as markdown
-    console.print(f"[cyan]Downloading[/cyan] {doc['name']} → Markdown...")
-    content = download_doc_as_markdown(service, doc["id"])
+    doc_type = CONVERTIBLE_TYPES.get(doc.get('mimeType', ''), 'unknown')
+    console.print(f"[cyan]Downloading[/cyan] {doc['name']} ({doc_type}) → Markdown...")
+    content = download_doc_as_markdown(service, doc["id"], doc.get("mimeType", ""))
 
     if content is None:
         sys.exit(1)
