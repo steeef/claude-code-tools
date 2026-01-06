@@ -926,8 +926,10 @@ command-line options for switching models, see
 <a id="google-docs-tools"></a>
 ## 📝 Google Docs Tools (md2gdoc, gdoc2md)
 
-I work in Markdown but often need to collaborate with teammates via Google Docs.
-The problem: uploading a Markdown file to Google Drive with proper formatting
+When working with CLI agents like Claude-Code on writing projects, the most natural 
+generation format is markdown. But iterating on these docs via Google Docs is a pain
+since Gdocs are especially unfriendly to markdown:
+uploading a Markdown file to Google Drive with proper formatting
 is a pain. You have to:
 
 1. Upload the `.md` file to Google Drive
