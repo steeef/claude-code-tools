@@ -24,6 +24,11 @@
       "name": "workflow",
       "source": "./plugins/workflow",
       "description": "Workflow utilities and agents including code walkthrough tools, work logging, issue specification helpers, and a UI testing agent for browser-based validation"
+    },
+    {
+      "name": "langroid",
+      "source": "./plugins/langroid",
+      "description": "Design patterns for the Langroid multi-agent LLM framework, with a skill to add new patterns as you learn them"
     }
   ]
 }

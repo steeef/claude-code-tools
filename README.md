@@ -145,6 +145,7 @@ This repo also provides plugins for the
 | `tmux-cli` | Terminal automation skill for interacting with other tmux panes |
 | `workflow` | Work logging, code walk-through, issue specs, UI testing |
 | `safety-hooks` | Prevent destructive git/docker/rm commands |
+| `langroid` | Design patterns for the Langroid multi-agent LLM framework |
 
 **Install the plugins:**
 
@@ -163,12 +164,14 @@ claude plugin install "aichat@cctools-plugins"
 claude plugin install "tmux-cli@cctools-plugins"
 claude plugin install "workflow@cctools-plugins"
 claude plugin install "safety-hooks@cctools-plugins"
+claude plugin install "langroid@cctools-plugins"
 
 # Or in-session
 /plugin install aichat@cctools-plugins
 /plugin install tmux-cli@cctools-plugins
 /plugin install workflow@cctools-plugins
 /plugin install safety-hooks@cctools-plugins
+/plugin install langroid@cctools-plugins
 ```
 
 You can also use `/plugin` without arguments to launch a TUI for browsing and installing.
@@ -217,6 +220,16 @@ The `workflow` plugin provides:
 | `/log-work` | Log work progress to `WORKLOG/YYYYMMDD.md` |
 | `/make-issue-spec` | Create task specs at `issues/YYYYMMDD-topic.md` |
 | `ui-tester` agent | Browser-based UI testing via Chrome DevTools MCP |
+
+#### Langroid Plugin Details
+
+The `langroid` plugin provides design pattern knowledge for the
+[Langroid](https://github.com/langroid/langroid) multi-agent LLM framework:
+
+| Skill | What it does |
+|-------|--------------|
+| `/patterns` | Index of Langroid design patterns (agent config, tools, task control, MCP integration) |
+| `/add-pattern` | Record new patterns as you learn them from the Langroid codebase |
 
 </details>
 
