@@ -27,6 +27,7 @@ def _load_alias_cache() -> dict[str, str]:
             capture_output=True,
             text=True,
             timeout=5,
+            start_new_session=True,
             env={**os.environ, 'PS1': ''},
         )
         output = result.stdout
