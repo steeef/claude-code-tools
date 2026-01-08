@@ -142,8 +142,9 @@ def claude_continue(
     try:
         # Run shell in interactive mode to load rc files (for shell functions like ccrja)
         # Use jq to add a marker prefix so we can reliably extract the session ID
+        # Filter to only JSON lines (starting with {) to avoid shell startup noise
         shell = os.environ.get('SHELL', '/bin/sh')
-        cmd = f'{claude_cli} -p {shlex.quote(analysis_prompt)} --output-format json | jq -r \'"SESSION_ID:" + .session_id\''
+        cmd = f'{claude_cli} -p {shlex.quote(analysis_prompt)} --output-format json | grep "^{{" | jq -r \'"SESSION_ID:" + .session_id\''
         print(f"$ {claude_cli} -p '<analysis prompt>' --output-format json | jq ...")
         result = subprocess.run(
             [shell, "-i", "-c", cmd],
